@@ -1,0 +1,19 @@
+PostgreSQL Database Configuration
+================================
+
+Host: localhost
+Port: 5432
+Database: erp_merchandiser
+Username: postgres
+Password: db123
+
+Connection String: postgresql://postgres:db123@localhost:5432/erp_merchandiser
+
+Environment Variables:
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=erp_merchandiser
+DB_USER=postgres
+DB_PASSWORD=db123
+
+Save these credentials securely!

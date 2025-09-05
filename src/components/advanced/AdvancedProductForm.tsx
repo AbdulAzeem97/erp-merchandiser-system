@@ -237,16 +237,16 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
     try {
       // Map material name to UUID (temporary solution)
       const materialNameToId = {
-        'Art Card': 'e093da3e-06da-4ba0-8271-795f10817c92',
-        'Craft Card': 'da80a8c8-7ef5-4958-be5e-0367ff895a09',
-        'Tyvek': '075c4906-a738-474e-8bc8-4a6b9acdbadb',
-        'Art Paper': 'e093da3e-06da-4ba0-8271-795f10817c92', // Map to Art Card for now
-        'C1S': 'e093da3e-06da-4ba0-8271-795f10817c92',
-        'C2S': 'da80a8c8-7ef5-4958-be5e-0367ff895a09',
-        'Kraft': 'da80a8c8-7ef5-4958-be5e-0367ff895a09',
-        'Duplex': 'da80a8c8-7ef5-4958-be5e-0367ff895a09',
-        'Corrugated': '075c4906-a738-474e-8bc8-4a6b9acdbadb',
-        'Coated Paper': 'e093da3e-06da-4ba0-8271-795f10817c92'
+        'Art Card': '2432d810-ff09-489e-b52d-0e473053f09b',
+        'Craft Card': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
+        'Tyvek': '5d2d5694-4732-4c0d-97c6-7e3a45e97088',
+        'Art Paper': '2432d810-ff09-489e-b52d-0e473053f09b', // Map to Art Card for now
+        'C1S': '2432d810-ff09-489e-b52d-0e473053f09b',
+        'C2S': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
+        'Kraft': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
+        'Duplex': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
+        'Corrugated': '5d2d5694-4732-4c0d-97c6-7e3a45e97088',
+        'Coated Paper': '2432d810-ff09-489e-b52d-0e473053f09b'
       };
 
       // Try with absolutely minimal required fields only - no foreign keys
@@ -279,7 +279,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       }
 
       // Re-enable category_id for complete product information
-      productData.category_id = '68f0f011-cea0-409f-87d4-961b8cf48168';
+      productData.category_id = 'bfbcfcd8-46ec-4abb-b4b6-74c755db7fed';
 
       // Save product to API
       console.log('Sending product data:', productData);

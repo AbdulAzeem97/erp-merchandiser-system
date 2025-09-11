@@ -125,7 +125,7 @@ const BackendStatusIndicator: React.FC<BackendStatusIndicatorProps> = ({
             <div className="flex items-center space-x-2">
               <Server className="w-3 h-3 text-blue-600" />
               <span className="text-gray-600">API Server:</span>
-              <span className="font-mono text-gray-800">localhost:5001</span>
+              <span className="font-mono text-gray-800">localhost:3002</span>
             </div>
             <div className="flex items-center space-x-2">
               <Database className="w-3 h-3 text-green-600" />

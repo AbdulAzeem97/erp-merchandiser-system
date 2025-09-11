@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Browser Cache</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #c82333;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Clear Browser Cache</h1>
+        
+        <div class="info">
+            <strong>💡 Instructions:</strong><br>
+            1. Click the button below to clear localStorage<br>
+            2. Then press <strong>Ctrl+Shift+R</strong> (or <strong>Cmd+Shift+R</strong> on Mac) to hard refresh<br>
+            3. This will clear any cached JavaScript that might be causing the "tokens" error
+        </div>
+
+        <button onclick="clearCache()">🗑️ Clear Local Storage & Cache</button>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        function clearCache() {
+            try {
+                // Clear localStorage
+                localStorage.clear();
+                console.log('✅ localStorage cleared');
+                
+                // Clear sessionStorage
+                sessionStorage.clear();
+                console.log('✅ sessionStorage cleared');
+                
+                // Show result
+                document.getElementById('result').innerHTML = `
+                    <div style="background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                        ✅ Cache cleared successfully!<br>
+                        Now press <strong>Ctrl+Shift+R</strong> to hard refresh the page.
+                    </div>
+                `;
+                
+                // Try to clear service worker cache if available
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                        for(let registration of registrations) {
+                            registration.unregister();
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <div style="background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-top: 10px;">
+                        ❌ Error clearing cache: ${error.message}
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

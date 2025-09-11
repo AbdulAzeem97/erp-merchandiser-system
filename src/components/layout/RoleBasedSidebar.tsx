@@ -1,0 +1,497 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Home,
+  Package,
+  FileText,
+  Users,
+  Settings,
+  BarChart3,
+  Activity,
+  User,
+  Factory,
+  Palette,
+  Eye,
+  Bell,
+  Calendar,
+  TrendingUp,
+  Layers,
+  Target,
+  Zap,
+  Shield,
+  Database,
+  Monitor,
+  Briefcase,
+  PieChart,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  Menu,
+  X,
+  ChevronDown,
+  ChevronRight,
+  LogOut
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { authAPI } from '@/services/api';
+
+interface SidebarProps {
+  currentPage: string;
+  onNavigate: (page: string) => void;
+  onLogout: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+}
+
+interface MenuItem {
+  id: string;
+  label: string;
+  icon: React.ComponentType<any>;
+  page?: string;
+  badge?: string | number;
+  badgeColor?: string;
+  children?: MenuItem[];
+  roles: string[];
+}
+
+const menuItems: MenuItem[] = [
+  {
+    id: 'dashboard',
+    label: 'Dashboard',
+    icon: Home,
+    page: 'dashboard',
+    roles: ['ADMIN', 'MERCHANDISER', 'HOD_PREPRESS', 'DESIGNER', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION']
+  },
+  
+  // Merchandiser Section
+  {
+    id: 'merchandiser',
+    label: 'Merchandiser',
+    icon: Briefcase,
+    roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER'],
+    children: [
+      {
+        id: 'create-product',
+        label: 'Create Product',
+        icon: Package,
+        page: 'productForm',
+        roles: ['ADMIN', 'MERCHANDISER']
+      },
+      {
+        id: 'create-job',
+        label: 'Create Job Order',
+        icon: FileText,
+        page: 'jobForm',
+        roles: ['ADMIN', 'MERCHANDISER']
+      },
+      {
+        id: 'job-monitoring',
+        label: 'Job Monitoring',
+        icon: Monitor,
+        page: 'jobMonitoring',
+        badge: 'Live',
+        badgeColor: 'bg-green-500',
+        roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER']
+      },
+      {
+        id: 'my-jobs',
+        label: 'My Jobs',
+        icon: Eye,
+        page: 'myJobs',
+        roles: ['ADMIN', 'MERCHANDISER']
+      }
+    ]
+  },
+
+  // Prepress Section
+  {
+    id: 'prepress',
+    label: 'Prepress',
+    icon: Palette,
+    roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER'],
+    children: [
+      {
+        id: 'hod-dashboard',
+        label: 'HOD Dashboard',
+        icon: Shield,
+        page: 'prepressHOD',
+        roles: ['ADMIN', 'HOD_PREPRESS']
+      },
+      {
+        id: 'designer-dashboard',
+        label: 'Designer Portal',
+        icon: User,
+        page: 'designer-dashboard',
+        roles: ['ADMIN', 'DESIGNER']
+      },
+      {
+        id: 'job-queue',
+        label: 'Job Queue',
+        icon: Layers,
+        page: 'jobQueue',
+        roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER']
+      },
+      {
+        id: 'design-resources',
+        label: 'Design Resources',
+        icon: Target,
+        page: 'designResources',
+        roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER']
+      }
+    ]
+  },
+
+  // Production Section
+  {
+    id: 'production',
+    label: 'Production',
+    icon: Factory,
+    roles: ['ADMIN', 'HEAD_OF_PRODUCTION'],
+    children: [
+      {
+        id: 'production-dashboard',
+        label: 'Production Dashboard',
+        icon: BarChart3,
+        page: 'productionDashboard',
+        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
+      },
+      {
+        id: 'production-schedule',
+        label: 'Schedule',
+        icon: Calendar,
+        page: 'productionSchedule',
+        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
+      },
+      {
+        id: 'quality-control',
+        label: 'Quality Control',
+        icon: CheckCircle,
+        page: 'qualityControl',
+        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
+      }
+    ]
+  },
+
+  // Analytics & Reports
+  {
+    id: 'analytics',
+    label: 'Analytics',
+    icon: TrendingUp,
+    roles: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS'],
+    children: [
+      {
+        id: 'performance-metrics',
+        label: 'Performance',
+        icon: PieChart,
+        page: 'performanceMetrics',
+        roles: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS']
+      },
+      {
+        id: 'time-tracking',
+        label: 'Time Tracking',
+        icon: Clock,
+        page: 'timeTracking',
+        roles: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS']
+      },
+      {
+        id: 'reports',
+        label: 'Reports',
+        icon: FileText,
+        page: 'reports',
+        roles: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS']
+      }
+    ]
+  },
+
+  // Management
+  {
+    id: 'management',
+    label: 'Management',
+    icon: Settings,
+    roles: ['ADMIN'],
+    children: [
+      {
+        id: 'user-management',
+        label: 'Users',
+        icon: Users,
+        page: 'users',
+        roles: ['ADMIN']
+      },
+      {
+        id: 'system-monitoring',
+        label: 'System Monitor',
+        icon: Activity,
+        page: 'systemMonitoring',
+        badge: 'Live',
+        badgeColor: 'bg-blue-500',
+        roles: ['ADMIN']
+      },
+      {
+        id: 'database-management',
+        label: 'Database',
+        icon: Database,
+        page: 'databaseManagement',
+        roles: ['ADMIN']
+      },
+      {
+        id: 'system-settings',
+        label: 'Settings',
+        icon: Settings,
+        page: 'settings',
+        roles: ['ADMIN']
+      }
+    ]
+  }
+];
+
+export const RoleBasedSidebar: React.FC<SidebarProps> = ({
+  currentPage,
+  onNavigate,
+  onLogout,
+  isCollapsed = false,
+  onToggleCollapse
+}) => {
+  const [expandedItems, setExpandedItems] = useState<string[]>([]);
+  const [user, setUser] = useState<any>(null);
+  const [notifications, setNotifications] = useState(12);
+
+  useEffect(() => {
+    const currentUser = authAPI.getCurrentUser();
+    setUser(currentUser);
+    
+    // Auto-expand current section
+    if (currentUser) {
+      const currentItem = findCurrentMenuItem(currentPage);
+      if (currentItem?.parentId) {
+        setExpandedItems(prev => [...prev, currentItem.parentId]);
+      }
+    }
+  }, [currentPage]);
+
+  const findCurrentMenuItem = (page: string, items = menuItems, parentId?: string): any => {
+    for (const item of items) {
+      if (item.page === page) {
+        return { ...item, parentId };
+      }
+      if (item.children) {
+        const found = findCurrentMenuItem(page, item.children, item.id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const hasAccess = (roles: string[]) => {
+    if (!user) return false;
+    return roles.includes(user.role) || user.role === 'ADMIN';
+  };
+
+  const toggleExpanded = (itemId: string) => {
+    setExpandedItems(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
+    );
+  };
+
+  const filteredMenuItems = menuItems.filter(item => hasAccess(item.roles));
+
+  const renderMenuItem = (item: MenuItem, level = 0) => {
+    if (!hasAccess(item.roles)) return null;
+
+    const isExpanded = expandedItems.includes(item.id);
+    const isActive = item.page === currentPage;
+    const hasChildren = item.children && item.children.length > 0;
+
+    return (
+      <div key={item.id} className="w-full">
+        <motion.div
+          whileHover={{ x: level === 0 ? 4 : 2 }}
+          whileTap={{ scale: 0.98 }}
+          className={`
+            flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200
+            ${level > 0 ? 'ml-6 pl-8' : ''}
+            ${isActive 
+              ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg' 
+              : 'hover:bg-gray-100 text-gray-700 hover:text-gray-900'
+            }
+          `}
+          onClick={() => {
+            if (hasChildren) {
+              toggleExpanded(item.id);
+            } else if (item.page) {
+              onNavigate(item.page);
+            }
+          }}
+        >
+          <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-500'}`} />
+          
+          {!isCollapsed && (
+            <>
+              <span className="flex-1 font-medium">{item.label}</span>
+              
+              {item.badge && (
+                <Badge 
+                  className={`px-2 py-1 text-xs ${
+                    item.badgeColor || 'bg-blue-500'
+                  } text-white border-none`}
+                >
+                  {item.badge}
+                </Badge>
+              )}
+              
+              {hasChildren && (
+                <motion.div
+                  animate={{ rotate: isExpanded ? 90 : 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </motion.div>
+              )}
+            </>
+          )}
+        </motion.div>
+
+        {hasChildren && !isCollapsed && (
+          <Collapsible open={isExpanded}>
+            <CollapsibleContent className="space-y-1 mt-1">
+              <AnimatePresence>
+                {item.children?.map(child => 
+                  <motion.div
+                    key={child.id}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    {renderMenuItem(child, level + 1)}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <motion.div
+      initial={{ x: -300 }}
+      animate={{ x: 0 }}
+      className={`
+        h-screen bg-white border-r border-gray-200 shadow-xl flex flex-col
+        transition-all duration-300 ease-in-out
+        ${isCollapsed ? 'w-20' : 'w-80'}
+      `}
+    >
+      {/* Header */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          {!isCollapsed && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-3"
+            >
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                <Package className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900">ERP System</h2>
+                <p className="text-xs text-gray-500">
+                  {user?.role?.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
+                </p>
+              </div>
+            </motion.div>
+          )}
+          
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleCollapse}
+            className="p-2"
+          >
+            {isCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+          </Button>
+        </div>
+
+        {!isCollapsed && user && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 p-3 bg-gradient-to-r from-gray-50 to-blue-50 rounded-xl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-gray-900 text-sm">
+                  {user.first_name} {user.last_name}
+                </p>
+                <p className="text-xs text-gray-600">{user.email}</p>
+              </div>
+              <div className="relative">
+                <Bell className="w-4 h-4 text-gray-500" />
+                {notifications > 0 && (
+                  <span className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                    {notifications > 9 ? '9+' : notifications}
+                  </span>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
+        <div className="p-4 space-y-2">
+          {filteredMenuItems.map(item => renderMenuItem(item))}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t border-gray-200">
+        {!isCollapsed && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-3"
+          >
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="text-center p-2 bg-green-50 rounded-lg">
+                <div className="font-semibold text-green-700">24</div>
+                <div className="text-xs text-green-600">Active</div>
+              </div>
+              <div className="text-center p-2 bg-blue-50 rounded-lg">
+                <div className="font-semibold text-blue-700">8</div>
+                <div className="text-xs text-blue-600">Pending</div>
+              </div>
+            </div>
+
+            <Separator />
+          </motion.div>
+        )}
+
+        {/* Logout Button */}
+        <Button
+          onClick={onLogout}
+          variant="ghost"
+          className={`
+            w-full gap-3 justify-start text-red-600 hover:text-red-700 hover:bg-red-50
+            ${isCollapsed ? 'px-0 justify-center' : ''}
+          `}
+        >
+          <LogOut className="w-5 h-5" />
+          {!isCollapsed && 'Logout'}
+        </Button>
+      </div>
+    </motion.div>
+  );
+};

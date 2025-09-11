@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult, query } from 'express-validator';
-import pool from '../database/config.js';
+import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -63,7 +63,7 @@ router.get('/', [
     FROM companies c
     ${whereClause}
   `;
-  const countResult = await pool.query(countQuery, params);
+  const countResult = await dbAdapter.query(countQuery, params);
   const total = parseInt(countResult.rows[0].total);
 
   // Get companies
@@ -79,7 +79,7 @@ router.get('/', [
     LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
   `;
 
-  const companiesResult = await pool.query(companiesQuery, [...params, limit, offset]);
+  const companiesResult = await dbAdapter.query(companiesQuery, [...params, limit, offset]);
   const companies = companiesResult.rows;
 
   res.json({
@@ -109,7 +109,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     GROUP BY c.id
   `;
 
-  const result = await pool.query(query, [id]);
+  const result = await dbAdapter.query(query, [id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({
@@ -144,7 +144,7 @@ router.post('/', companyValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if company code already exists
-  const existingCompany = await pool.query(
+  const existingCompany = await dbAdapter.query(
     'SELECT id FROM companies WHERE code = $1',
     [code]
   );
@@ -163,7 +163,7 @@ router.post('/', companyValidation, asyncHandler(async (req, res) => {
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
+  const result = await dbAdapter.query(query, [
     name,
     code,
     contact_person,
@@ -203,7 +203,7 @@ router.put('/:id', companyValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if company exists
-  const existingCompany = await pool.query(
+  const existingCompany = await dbAdapter.query(
     'SELECT id FROM companies WHERE id = $1 AND is_active = true',
     [id]
   );
@@ -216,7 +216,7 @@ router.put('/:id', companyValidation, asyncHandler(async (req, res) => {
   }
 
   // Check if new company code conflicts with existing companies
-  const codeConflict = await pool.query(
+  const codeConflict = await dbAdapter.query(
     'SELECT id FROM companies WHERE code = $1 AND id != $2',
     [code, id]
   );
@@ -243,7 +243,7 @@ router.put('/:id', companyValidation, asyncHandler(async (req, res) => {
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
+  const result = await dbAdapter.query(query, [
     name,
     code,
     contact_person,
@@ -267,7 +267,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Check if company exists
-  const existingCompany = await pool.query(
+  const existingCompany = await dbAdapter.query(
     'SELECT id FROM companies WHERE id = $1 AND is_active = true',
     [id]
   );
@@ -280,7 +280,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   // Check if company has active jobs
-  const activeJobs = await pool.query(
+  const activeJobs = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE company_id = $1 AND status IN ($2, $3)',
     [id, 'Pending', 'In Progress']
   );
@@ -293,7 +293,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   // Soft delete
-  await pool.query(
+  await dbAdapter.query(
     'UPDATE companies SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
     [id]
   );
@@ -314,7 +314,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
     FROM companies
   `;
 
-  const statsResult = await pool.query(statsQuery);
+  const statsResult = await dbAdapter.query(statsQuery);
   const stats = statsResult.rows[0];
 
   // Get recent companies
@@ -330,7 +330,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
     LIMIT 5
   `;
 
-  const recentResult = await pool.query(recentQuery);
+  const recentResult = await dbAdapter.query(recentQuery);
   const recent = recentResult.rows;
 
   res.json({

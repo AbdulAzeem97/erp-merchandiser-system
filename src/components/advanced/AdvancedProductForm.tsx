@@ -112,6 +112,29 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
   const [formProgress, setFormProgress] = useState(0);
   const [smartSuggestions, setSmartSuggestions] = useState<string[]>([]);
   const [selectedProcessSteps, setSelectedProcessSteps] = useState<any[]>([]);
+  const [materials, setMaterials] = useState<{id: string, name: string}[]>([]);
+  const [isLoadingMaterials, setIsLoadingMaterials] = useState(true);
+
+  // Fetch materials from API
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      try {
+        setIsLoadingMaterials(true);
+        console.log('🔄 Fetching materials from API...');
+        const response = await productsAPI.getMaterials();
+        console.log('📦 Materials response:', response);
+        setMaterials(response.materials || []);
+        console.log('✅ Materials loaded:', response.materials?.length || 0);
+      } catch (error) {
+        console.error('❌ Error fetching materials:', error);
+        toast.error('Failed to load materials');
+      } finally {
+        setIsLoadingMaterials(false);
+      }
+    };
+
+    fetchMaterials();
+  }, []);
 
   // Smart validation
   const validateField = (field: keyof ProductMaster, value: any): string | null => {
@@ -131,8 +154,8 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       case 'gsm':
         if (!value.trim()) return 'GSM is required';
         const gsmNum = parseInt(value);
-        if (isNaN(gsmNum) || gsmNum < 50 || gsmNum > 1000) {
-          return 'GSM must be between 50 and 1000';
+        if (isNaN(gsmNum) || gsmNum < 25 || gsmNum > 1500) {
+          return 'GSM must be between 25 and 1500';
         }
         return null;
       case 'color':
@@ -235,19 +258,12 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
 
     setIsSaving(true);
     try {
-      // Map material name to UUID (temporary solution)
-      const materialNameToId = {
-        'Art Card': '2432d810-ff09-489e-b52d-0e473053f09b',
-        'Craft Card': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
-        'Tyvek': '5d2d5694-4732-4c0d-97c6-7e3a45e97088',
-        'Art Paper': '2432d810-ff09-489e-b52d-0e473053f09b', // Map to Art Card for now
-        'C1S': '2432d810-ff09-489e-b52d-0e473053f09b',
-        'C2S': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
-        'Kraft': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
-        'Duplex': '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba',
-        'Corrugated': '5d2d5694-4732-4c0d-97c6-7e3a45e97088',
-        'Coated Paper': '2432d810-ff09-489e-b52d-0e473053f09b'
-      };
+      // Find the selected material from the fetched materials
+      const selectedMaterial = materials.find(m => m.name === formData.material);
+      
+      console.log('🔍 Debug - formData.material:', formData.material);
+      console.log('🔍 Debug - materials array:', materials);
+      console.log('🔍 Debug - selectedMaterial:', selectedMaterial);
 
       // Try with absolutely minimal required fields only - no foreign keys
       const productData = {
@@ -258,8 +274,11 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       };
 
       // Add optional fields only if they have values
-      if (formData.material && materialNameToId[formData.material]) {
-        productData.material_id = materialNameToId[formData.material];
+      if (formData.material && selectedMaterial) {
+        productData.material_id = selectedMaterial.id;
+        console.log('✅ Using material ID:', selectedMaterial.id);
+      } else {
+        console.log('❌ No material selected or material not found');
       }
       
       if (formData.color) {
@@ -279,7 +298,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       }
 
       // Re-enable category_id for complete product information
-      productData.category_id = 'bfbcfcd8-46ec-4abb-b4b6-74c755db7fed';
+      productData.category_id = '82d1039f-48ec-4a6a-a143-6388919c5f1e'; // T-Shirts category
 
       // Save product to API
       console.log('Sending product data:', productData);
@@ -384,72 +403,78 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Advanced Header */}
         <motion.div 
-          className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 mb-8 border border-white/20 shadow-xl"
+          className="modern-card p-8 mb-8 shadow-2xl overflow-hidden relative"
           variants={itemVariants}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/50 to-indigo-50/50"></div>
+          <div className="relative z-10 flex items-center justify-between">
+            <div className="flex items-center gap-6">
               <Button 
-                variant="outline" 
-                size="sm" 
                 onClick={onBack} 
-                className="gap-2 hover:bg-white/80"
+                className="btn-secondary-modern"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Back
               </Button>
-              <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
-                <Factory className="w-6 h-6 text-white" />
+              <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 via-purple-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform duration-200">
+                <Factory className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                <h1 className="text-display-3 font-bold text-gradient mb-2">
                   Advanced Product Master
                 </h1>
-                <p className="text-gray-600">
-                  Step {currentStep + 1} of {FORM_STEPS.length} • {FORM_STEPS[currentStep].description}
+                <p className="text-body text-slate-600 flex items-center gap-2">
+                  <span>Step {currentStep + 1} of {FORM_STEPS.length}</span>
+                  <span className="w-1 h-1 bg-slate-400 rounded-full"></span>
+                  <span>{FORM_STEPS[currentStep].description}</span>
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4">
-              {/* Progress Circle */}
-              <div className="relative w-16 h-16">
-                <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 36 36">
-                  <path
-                    d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
-                    fill="none"
-                    stroke="#E5E7EB"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
-                    fill="none"
-                    stroke="url(#progressGradient)"
-                    strokeWidth="2"
-                    strokeDasharray={`${formProgress}, 100`}
-                    strokeLinecap="round"
-                  />
-                  <defs>
-                    <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#6366F1" />
-                      <stop offset="100%" stopColor="#8B5CF6" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-sm font-bold text-gray-700">{Math.round(formProgress)}%</span>
+            <div className="flex items-center gap-6">
+              {/* Modern Progress Circle */}
+              <div className="modern-card p-4 bg-gradient-to-br from-slate-50 to-blue-50/50">
+                <div className="relative w-20 h-20">
+                  <svg className="w-20 h-20 transform -rotate-90 filter drop-shadow-sm" viewBox="0 0 36 36">
+                    <path
+                      d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                      fill="none"
+                      stroke="#E2E8F0"
+                      strokeWidth="3"
+                    />
+                    <path
+                      d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                      fill="none"
+                      stroke="url(#modernProgressGradient)"
+                      strokeWidth="3"
+                      strokeDasharray={`${formProgress}, 100`}
+                      strokeLinecap="round"
+                      className="filter drop-shadow-sm"
+                    />
+                    <defs>
+                      <linearGradient id="modernProgressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor="#3B82F6" />
+                        <stop offset="50%" stopColor="#6366F1" />
+                        <stop offset="100%" stopColor="#8B5CF6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-lg font-bold text-slate-800">{Math.round(formProgress)}%</span>
+                    <span className="text-caption text-slate-500">Complete</span>
+                  </div>
                 </div>
               </div>
               
               <Button 
                 onClick={handleSave} 
                 disabled={isSaving || validationErrors.length > 0}
-                className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+                className="btn-primary-modern"
               >
                 {isSaving ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Saving...
+                    Saving Product...
                   </>
                 ) : (
                   <>
@@ -637,9 +662,13 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                                 <SelectValue placeholder="Select material" />
                               </SelectTrigger>
                               <SelectContent>
-                                {MATERIALS.map(material => (
-                                  <SelectItem key={material} value={material}>{material}</SelectItem>
-                                ))}
+                                {isLoadingMaterials ? (
+                                  <SelectItem value="" disabled>Loading materials...</SelectItem>
+                                ) : (
+                                  materials.map(material => (
+                                    <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
                             {getFieldError('material') && (

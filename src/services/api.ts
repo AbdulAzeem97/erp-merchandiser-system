@@ -1,5 +1,5 @@
 // API Service for ERP Merchandiser System
-const API_BASE_URL = 'http://localhost:5001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
 
 // Helper function for API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
@@ -15,11 +15,24 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   };
 
   try {
+    console.log(`🌐 Making API call to: ${API_BASE_URL}${endpoint}`);
+    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    
+    console.log(`📊 Response status: ${response.status}`);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('API Error Response:', errorData);
+      console.error('❌ API Error Response:', errorData);
+      
+      // Handle authentication errors
+      if (response.status === 401 || (errorData.error === 'Invalid token' && errorData.message === 'User not found')) {
+        console.log('🔐 Invalid token detected, clearing authentication...');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('user');
+        window.location.href = '/';
+        return;
+      }
       
       // Create a custom error object that preserves the error details
       const apiError = new Error(errorData.error || `HTTP error! status: ${response.status}`);
@@ -28,9 +41,17 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       throw apiError;
     }
     
-    return await response.json();
+    const data = await response.json();
+    console.log('✅ API call successful');
+    return data;
   } catch (error) {
-    console.error('API call failed:', error);
+    console.error('❌ API call failed:', error);
+    
+    // Handle network errors
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
+    }
+    
     throw error;
   }
 }
@@ -38,17 +59,57 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
 // Authentication API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    const response = await apiCall('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    
-    if (response.token) {
-      localStorage.setItem('authToken', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+    try {
+      console.log('🔐 Starting login process for:', email);
+      
+      // Special login API call that handles 401 as normal response
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+      
+      console.log(`📊 Login response status: ${response.status}`);
+      
+      const data = await response.json();
+      console.log('📋 Login response received:', data);
+      
+      if (!response.ok) {
+        // Handle login failure
+        if (response.status === 401) {
+          throw new Error('Invalid email or password. Please try again.');
+        } else if (response.status === 500) {
+          throw new Error('Server error. Please try again later.');
+        } else {
+          throw new Error(data.error || data.message || 'Login failed. Please try again.');
+        }
+      }
+      
+      // Handle successful login
+      const token = data.token || data.tokens?.access_token || data.tokens?.token;
+      
+      if (token) {
+        localStorage.setItem('authToken', token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        console.log('✅ Login successful, token stored');
+        return data;
+      } else {
+        console.error('❌ No token found in response:', data);
+        throw new Error('No authentication token received from server');
+      }
+      
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw new Error('Network error: Unable to connect to server. Please check your connection.');
+      } else {
+        throw new Error(error.message || 'Login failed. Please try again.');
+      }
     }
-    
-    return response;
   },
 
   register: async (userData: any) => {
@@ -135,6 +196,16 @@ export const productsAPI = {
   // Get product types
   getProductTypes: async () => {
     return await apiCall('/products/types');
+  },
+
+  // Get materials
+  getMaterials: async () => {
+    return await apiCall('/products/materials');
+  },
+
+  // Get categories
+  getCategories: async () => {
+    return await apiCall('/products/categories');
   },
 
   // Save process selections for a product
@@ -232,11 +303,16 @@ export const jobsAPI = {
   },
 
   // Update job status
-  updateStatus: async (id: string, status: string, progress?: number) => {
+  updateStatus: async (id: string, statusData: any) => {
     return await apiCall(`/jobs/${id}/status`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, progress }),
+      body: JSON.stringify(statusData),
     });
+  },
+
+  // Get jobs by designer
+  getByDesigner: async (designerId: string) => {
+    return await apiCall(`/jobs/designer/${designerId}`);
   },
 
   // Get job statistics
@@ -295,6 +371,64 @@ export const companiesAPI = {
   // Get company statistics
   getStats: async () => {
     return await apiCall('/companies/stats');
+  }
+};
+
+// Users API
+export const usersAPI = {
+  // Get all users with pagination and filtering
+  getAll: async (params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    role?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    return await apiCall(`/users?${queryParams.toString()}`);
+  },
+
+  // Get user by ID
+  getById: async (id: string) => {
+    return await apiCall(`/users/${id}`);
+  },
+
+  // Create new user
+  create: async (userData: any) => {
+    return await apiCall('/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  },
+
+  // Update user
+  update: async (id: string, userData: any) => {
+    return await apiCall(`/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+  },
+
+  // Delete user
+  delete: async (id: string) => {
+    return await apiCall(`/users/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Get users by role
+  getByRole: async (role: string) => {
+    return await apiCall(`/users/role/${role}`);
+  },
+
+  // Get user statistics
+  getStats: async () => {
+    return await apiCall('/users/stats');
   }
 };
 
@@ -396,7 +530,9 @@ export const uploadAPI = {
 export const healthAPI = {
   check: async () => {
     try {
-      const response = await fetch('http://localhost:5001/health');
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
+      const healthUrl = baseUrl.replace('/api', '/health');
+      const response = await fetch(healthUrl);
       if (response.ok) {
         return await response.json();
       }
@@ -430,12 +566,128 @@ export const processSequencesAPI = {
   }
 };
 
+// Inventory API
+export const inventoryAPI = {
+  // Dashboard
+  getDashboard: async () => {
+    return await apiCall('/inventory/dashboard');
+  },
+
+  // Materials
+  getMaterials: async (params: {
+    page?: number;
+    limit?: number;
+    category_id?: string;
+    low_stock?: boolean;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    return await apiCall(`/inventory/materials?${queryParams.toString()}`);
+  },
+
+  // Stock Management
+  receiveStock: async (data: {
+    inventory_material_id: string;
+    quantity: number;
+    unit_cost: number;
+    reference_id: string;
+  }) => {
+    return await apiCall('/inventory/stock/receive', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  adjustStock: async (data: {
+    inventory_material_id: string;
+    adjustment_quantity: number;
+    reason: string;
+  }) => {
+    return await apiCall('/inventory/stock/adjust', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Job Management
+  getPendingJobs: async () => {
+    return await apiCall('/inventory/jobs/pending');
+  },
+
+  analyzeJob: async (jobId: string, materialsRequired: any[]) => {
+    return await apiCall(`/inventory/jobs/${jobId}/analyze`, {
+      method: 'POST',
+      body: JSON.stringify({ materials_required: materialsRequired }),
+    });
+  },
+
+  approveJob: async (jobId: string, data: {
+    status: string;
+    approval_percentage?: number;
+    special_approval_reason?: string;
+    remarks?: string;
+  }) => {
+    return await apiCall(`/inventory/jobs/${jobId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Purchase Requests
+  getPurchaseRequests: async (params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    return await apiCall(`/inventory/purchase-requests?${queryParams.toString()}`);
+  },
+
+  createPurchaseRequest: async (data: {
+    materials: any[];
+    reason: string;
+  }) => {
+    return await apiCall('/inventory/purchase-requests', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Alerts
+  getAlerts: async (params: {
+    status?: string;
+    alert_type?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    return await apiCall(`/inventory/alerts?${queryParams.toString()}`);
+  }
+};
+
 export default {
   auth: authAPI,
   products: productsAPI,
   jobs: jobsAPI,
   companies: companiesAPI,
+  users: usersAPI,
   dashboard: dashboardAPI,
   upload: uploadAPI,
   health: healthAPI,
+  inventory: inventoryAPI,
 };

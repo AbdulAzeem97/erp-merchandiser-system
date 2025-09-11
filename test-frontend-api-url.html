@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Frontend API URL</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .result { margin-top: 20px; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        pre { background-color: #f8f9fa; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test Frontend API URL Configuration</h2>
+        <button onclick="testAPI()">Test API Configuration</button>
+        <div id="result"></div>
+    </div>
+
+    <script type="module">
+        window.testAPI = async function() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="info">Testing API configuration...</div>';
+            
+            // Test different possible API URLs
+            const possibleUrls = [
+                'http://192.168.2.56:3001/api',
+                'http://localhost:3001/api',
+                'http://127.0.0.1:3001/api'
+            ];
+            
+            let results = [];
+            
+            for (const apiUrl of possibleUrls) {
+                try {
+                    console.log(`Testing ${apiUrl}...`);
+                    
+                    const response = await fetch(`${apiUrl}/auth/login`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            email: 'admin@horizonsourcing.com', 
+                            password: 'password123' 
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    results.push({
+                        url: apiUrl,
+                        status: response.status,
+                        success: response.ok,
+                        data: data
+                    });
+                    
+                    console.log(`${apiUrl}: ${response.status} - ${response.ok ? 'SUCCESS' : 'FAILED'}`);
+                    
+                } catch (error) {
+                    results.push({
+                        url: apiUrl,
+                        status: 'ERROR',
+                        success: false,
+                        error: error.message
+                    });
+                    
+                    console.log(`${apiUrl}: ERROR - ${error.message}`);
+                }
+            }
+            
+            // Display results
+            let html = '<h3>API URL Test Results</h3>';
+            
+            results.forEach(result => {
+                const statusClass = result.success ? 'success' : 'error';
+                html += `
+                    <div class="result ${statusClass}">
+                        <h4>${result.url}</h4>
+                        <p><strong>Status:</strong> ${result.status}</p>
+                        <p><strong>Result:</strong> ${result.success ? 'SUCCESS' : 'FAILED'}</p>
+                        ${result.error ? `<p><strong>Error:</strong> ${result.error}</p>` : ''}
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    </div>
+                `;
+            });
+            
+            // Find the working URL
+            const workingUrl = results.find(r => r.success);
+            if (workingUrl) {
+                html += `
+                    <div class="result success">
+                        <h4>✅ Working API URL Found!</h4>
+                        <p><strong>URL:</strong> ${workingUrl.url}</p>
+                        <p>This is the URL the frontend should be using.</p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="result error">
+                        <h4>❌ No Working API URL Found</h4>
+                        <p>All API URLs failed. Check if the backend is running.</p>
+                    </div>
+                `;
+            }
+            
+            resultDiv.innerHTML = html;
+        };
+    </script>
+</body>
+</html>
+
+
+

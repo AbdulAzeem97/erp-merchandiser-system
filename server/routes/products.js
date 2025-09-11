@@ -1,16 +1,39 @@
 import express from 'express';
 import { body, validationResult, query } from 'express-validator';
-import pool from '../database/sqlite-config.js';
+import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const router = express.Router();
+
+// Get all materials
+router.get('/materials', asyncHandler(async (req, res) => {
+  try {
+    const result = await dbAdapter.query(`
+      SELECT id, name, code, type, gsm_range, description, is_active, created_at
+      FROM materials 
+      WHERE is_active = true
+      ORDER BY name
+    `);
+    
+    res.json({
+      materials: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching materials:', error);
+    res.status(500).json({
+      error: 'Server error',
+      message: 'Failed to fetch materials'
+    });
+  }
+}));
 
 // Validation middleware
 const productValidation = [
   body('product_item_code').isLength({ min: 3, max: 100 }).trim(),
   body('brand').isLength({ min: 2, max: 100 }).trim(),
-  body('gsm').isInt({ min: 50, max: 500 }),
+  body('gsm').isInt({ min: 25, max: 1500 }),
   body('product_type').isLength({ min: 2, max: 100 }).trim(),
   body('material_id').optional(),
   body('category_id').optional()
@@ -45,30 +68,25 @@ router.get('/', [
   const offset = (page - 1) * limit;
   const conditions = [];
   const params = [];
-  let paramCount = 0;
 
   // Build WHERE clause
   if (search) {
-    paramCount++;
-    conditions.push(`(p.product_item_code ILIKE $${paramCount} OR p.brand ILIKE $${paramCount} OR p.product_type ILIKE $${paramCount})`);
-    params.push(`%${search}%`);
+    conditions.push(`(p.product_item_code LIKE $${params.length + 1} OR p.brand LIKE $${params.length + 2} OR p.product_type LIKE $${params.length + 3})`);
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   if (brand) {
-    paramCount++;
-    conditions.push(`p.brand = $${paramCount}`);
+    conditions.push(`p.brand = $${params.length + 1}`);
     params.push(brand);
   }
 
   if (product_type) {
-    paramCount++;
-    conditions.push(`p.product_type = $${paramCount}`);
+    conditions.push(`p.product_type = $${params.length + 1}`);
     params.push(product_type);
   }
 
   if (category_id) {
-    paramCount++;
-    conditions.push(`p.category_id = $${paramCount}`);
+    conditions.push(`p.category_id = $${params.length + 1}`);
     params.push(category_id);
   }
 
@@ -80,27 +98,24 @@ router.get('/', [
     FROM products p
     ${whereClause}
   `;
-  const countResult = await pool.query(countQuery, params);
+  const countResult = await dbAdapter.query(countQuery, [...params]);
   const total = parseInt(countResult.rows[0].total);
 
   // Get products
+  const limitParam = params.length + 1;
+  const offsetParam = params.length + 2;
   const productsQuery = `
     SELECT 
       p.*,
       m.name as material_name,
-      m.code as material_code,
-      pc.name as category_name,
-      u.first_name || ' ' || u.last_name as created_by_name
+      m.code as material_code
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN product_categories pc ON p.category_id = pc.id
-    LEFT JOIN users u ON p.created_by = u.id
     ${whereClause}
     ORDER BY p.created_at DESC
-    LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-  `;
+    LIMIT $${limitParam} OFFSET $${offsetParam}`;
 
-  const productsResult = await pool.query(productsQuery, [...params, limit, offset]);
+  const productsResult = await dbAdapter.query(productsQuery, [...params, limit, offset]);
   const products = productsResult.rows;
 
   res.json({
@@ -122,28 +137,28 @@ router.get('/stats', asyncHandler(async (req, res) => {
       COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as active,
       COUNT(CASE WHEN created_at >= CURRENT_DATE THEN 1 END) as created_today
     FROM products 
-    WHERE is_active = 1
+    WHERE is_active = true
   `;
 
-  const statsResult = await pool.query(statsQuery);
-  const stats = statsResult.rows[0];
+  const statsResultResult = await dbAdapter.query(statsQuery);
+  const statsResult = statsResultResult.rows?.[0] || {};
+  const stats = statsResult;
 
   // Get recent products
   const recentQuery = `
     SELECT 
       p.*,
-      m.name as material_name,
-      pc.name as category_name
+      m.name as material_name
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN product_categories pc ON p.category_id = pc.id
-    WHERE p.is_active = 1
+    WHERE p.is_active = true
     ORDER BY p.created_at DESC
     LIMIT 5
   `;
 
-  const recentResult = await pool.query(recentQuery);
-  const recent = recentResult.rows;
+  const recentResultResult = await dbAdapter.query(recentQuery);
+  const recentResult = recentResultResult.rows || [];
+  const recent = recentResult;
 
   res.json({
     total: parseInt(stats.total),
@@ -162,28 +177,28 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
       COUNT(DISTINCT brand) as unique_brands,
       COUNT(DISTINCT product_type) as unique_types
     FROM products 
-    WHERE is_active = 1
+    WHERE is_active = true
   `;
 
-  const statsResult = await pool.query(statsQuery);
-  const stats = statsResult.rows[0];
+  const statsResultResult = await dbAdapter.query(statsQuery);
+  const statsResult = statsResultResult.rows?.[0] || {};
+  const stats = statsResult;
 
   // Get recent products
   const recentQuery = `
     SELECT 
       p.*,
-      m.name as material_name,
-      pc.name as category_name
+      m.name as material_name
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN product_categories pc ON p.category_id = pc.id
-    WHERE p.is_active = 1
+    WHERE p.is_active = true
     ORDER BY p.created_at DESC
     LIMIT 5
   `;
 
-  const recentResult = await pool.query(recentQuery);
-  const recent = recentResult.rows;
+  const recentResultResult = await dbAdapter.query(recentQuery);
+  const recentResult = recentResultResult.rows || [];
+  const recent = recentResult;
 
   res.json({
     stats,
@@ -198,21 +213,20 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const query = `
     SELECT 
       p.*,
-      m.name as material_name,
+      m.name as material_name
       m.code as material_code,
       m.type as material_type,
-      pc.name as category_name,
+,
       u.first_name || ' ' || u.last_name as created_by_name
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN product_categories pc ON p.category_id = pc.id
     LEFT JOIN users u ON p.created_by = u.id
-    WHERE p.id = $1 AND p.is_active = 1
+    WHERE p.id = ? AND p.is_active = true
   `;
 
-  const result = await pool.query(query, [id]);
+  const result = await dbAdapter.query(query, [id]);
 
-  if (result.rows.length === 0) {
+  if (!result) {
     return res.status(404).json({
       error: 'Product not found',
       message: 'The requested product does not exist'
@@ -220,12 +234,12 @@ router.get('/:id', asyncHandler(async (req, res) => {
   }
 
   res.json({
-    product: result.rows[0]
+    product: result
   });
 }));
 
 // Create new product
-router.post('/', productValidation, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, productValidation, asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.log('Validation errors:', errors.array());
@@ -243,6 +257,7 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
     gsm,
     product_type,
     category_id,
+    description,
     fsc,
     fsc_claim,
     color_specifications,
@@ -250,7 +265,7 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if product code already exists
-  const existingProduct = await pool.query(
+  const existingProduct = await dbAdapter.query(
     'SELECT id FROM products WHERE product_item_code = $1',
     [product_item_code]
   );
@@ -262,67 +277,91 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
     });
   }
 
-  // Handle material_id - if it's a string, find or create the material
+  // Handle material_id - validate UUID format
   let finalMaterialId = material_id;
-  if (material_id && typeof material_id === 'string' && !material_id.includes('-')) {
-    // It's a material name, find or create the material
-    const materialResult = await pool.query(
-      'SELECT id FROM materials WHERE name = $1 OR code = $1',
-      [material_id]
-    );
-    
-    if (materialResult.rows.length > 0) {
-      finalMaterialId = materialResult.rows[0].id;
+  if (material_id && typeof material_id === 'string') {
+    // Check if it's a valid UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidRegex.test(material_id)) {
+      // It's a valid UUID, use it as is
+      finalMaterialId = material_id;
     } else {
-      // Create a new material
-      const newMaterialResult = await pool.query(
-        'INSERT INTO materials (name, code, type, gsm_range, description) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-        [material_id, material_id.substring(0, 6).toUpperCase(), 'Paper', '200-300 GSM', `Auto-created material: ${material_id}`]
+      // It's a material name, try to find the material
+      const materialResult = await dbAdapter.query(
+        'SELECT id FROM materials WHERE name = $1 OR code = $1',
+        [material_id]
       );
-      finalMaterialId = newMaterialResult.rows[0].id;
+      
+      if (materialResult.rows.length > 0) {
+        finalMaterialId = materialResult.rows[0].id;
+      } else {
+        // If material not found, set to null
+        finalMaterialId = null;
+      }
     }
   }
 
-  // Handle category_id - if it's null, use a default category
+  // Handle category_id - make it optional
   let finalCategoryId = category_id;
   if (!category_id) {
-    const defaultCategoryResult = await pool.query(
-      'SELECT id FROM product_categories LIMIT 1'
-    );
-    if (defaultCategoryResult.rows.length > 0) {
-      finalCategoryId = defaultCategoryResult.rows[0].id;
-    }
+    // Set to null instead of using a default category
+    finalCategoryId = null;
   }
 
-  // Create product
+  // Create product - include all the new columns
   const query = `
     INSERT INTO products (
-      product_item_code, brand, material_id, gsm, product_type, category_id,
-      fsc, fsc_claim, color_specifications, remarks, created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      product_item_code, brand, material_id, product_type, category_id, description,
+      gsm, fsc, fsc_claim, color_specifications, remarks, created_by
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
-    product_item_code,
-    brand,
-    finalMaterialId,
-    gsm,
-    product_type,
-    finalCategoryId,
-    fsc,
-    fsc_claim,
-    color_specifications,
-    remarks,
-    req.user?.id || null
-  ]);
+  try {
+    const result = await dbAdapter.query(query, [
+      product_item_code,
+      brand,
+      finalMaterialId,
+      product_type,
+      finalCategoryId,
+      description || '',
+      gsm || null,
+      fsc || null,
+      fsc_claim || null,
+      color_specifications || null,
+      remarks || null,
+      req.user?.id || null
+    ]);
 
-  const product = result.rows[0];
+    const product = result.rows[0];
 
-  res.status(201).json({
-    message: 'Product created successfully',
-    product
-  });
+    res.status(201).json({
+      message: 'Product created successfully',
+      product
+    });
+  } catch (error) {
+    console.error('Product creation error:', error);
+    
+    // Handle foreign key constraint errors
+    if (error.code === '23503') {
+      return res.status(400).json({
+        error: 'Invalid reference',
+        message: 'The selected material does not exist. Please select a valid material.',
+        details: error.detail
+      });
+    }
+    
+    // Handle other database errors
+    if (error.code) {
+      return res.status(400).json({
+        error: 'Database error',
+        message: 'An error occurred while creating the product',
+        details: error.message
+      });
+    }
+    
+    throw error;
+  }
 }));
 
 // Update product
@@ -350,8 +389,8 @@ router.put('/:id', productValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if product exists
-  const existingProduct = await pool.query(
-    'SELECT id FROM products WHERE id = $1 AND is_active = 1',
+  const existingProduct = await dbAdapter.query(
+    'SELECT id FROM products WHERE id = $1 AND is_active = true',
     [id]
   );
 
@@ -363,7 +402,7 @@ router.put('/:id', productValidation, asyncHandler(async (req, res) => {
   }
 
   // Check if new product code conflicts with existing products
-  const codeConflict = await pool.query(
+  const codeConflict = await dbAdapter.query(
     'SELECT id FROM products WHERE product_item_code = $1 AND id != $2',
     [product_item_code, id]
   );
@@ -393,7 +432,7 @@ router.put('/:id', productValidation, asyncHandler(async (req, res) => {
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
+  const result = await dbAdapter.query(query, [
     product_item_code,
     brand,
     material_id,
@@ -420,8 +459,8 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Check if product exists
-  const existingProduct = await pool.query(
-    'SELECT id FROM products WHERE id = $1 AND is_active = 1',
+  const existingProduct = await dbAdapter.query(
+    'SELECT id FROM products WHERE id = $1 AND is_active = true',
     [id]
   );
 
@@ -433,7 +472,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   // Check if product is used in any job cards
-  const jobCards = await pool.query(
+  const jobCards = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE product_id = $1',
     [id]
   );
@@ -446,8 +485,8 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   // Soft delete
-  await pool.query(
-    'UPDATE products SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+  await dbAdapter.query(
+    'UPDATE products SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
     [id]
   );
 
@@ -479,16 +518,16 @@ router.post('/:id/process-selections', [
 
   try {
     // Validate that product exists
-    const productCheck = await pool.query('SELECT id FROM products WHERE id = $1', [productId]);
-    if (!productCheck.rows || productCheck.rows.length === 0) {
+    const productCheck = await dbAdapter.query('SELECT id FROM products WHERE id = $1', [productId]);
+    if (!productCheck || productCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
     // Validate that all step IDs exist
     for (const step of selectedSteps) {
       if (step.is_selected) {
-        const stepCheck = await pool.query('SELECT id FROM process_steps WHERE id = $1', [step.step_id]);
-        if (!stepCheck.rows || stepCheck.rows.length === 0) {
+        const stepCheck = await dbAdapter.query('SELECT id FROM process_steps WHERE id = $1', [step.step_id]);
+        if (!stepCheck || stepCheck.rows.length === 0) {
           console.log('Invalid step ID:', step.step_id);
           return res.status(400).json({ error: `Invalid step ID: ${step.step_id}` });
         }
@@ -496,7 +535,7 @@ router.post('/:id/process-selections', [
     }
 
     // Clear existing selections for this product
-    await pool.query(
+    await dbAdapter.query(
       'DELETE FROM product_process_selections WHERE product_id = $1',
       [productId]
     );
@@ -510,10 +549,10 @@ router.post('/:id/process-selections', [
           isSelected: step.is_selected
         });
         
-        await pool.query(`
+        await dbAdapter.query(`
           INSERT INTO product_process_selections (id, product_id, process_step_id, is_selected)
           VALUES ($1, $2, $3, $4)
-        `, [uuidv4(), productId, step.step_id, step.is_selected ? 1 : 0]);
+        `, [uuidv4(), productId, step.step_id, step.is_selected ? true : false]);
       }
     }
 
@@ -547,11 +586,11 @@ router.get('/:id/process-selections', asyncHandler(async (req, res) => {
     ORDER BY ps.step_order
   `;
 
-  const result = await pool.query(query, [productId]);
+  const result = await dbAdapter.query(query, [productId]);
 
   res.json({
     product_id: productId,
-    selected_steps: result.rows
+    selected_steps: result
   });
 }));
 
@@ -560,8 +599,8 @@ router.get('/:id/complete-process-info', asyncHandler(async (req, res) => {
   const { id: productId } = req.params;
 
   // First get the product info
-  const productResult = await pool.query(
-    'SELECT * FROM products WHERE id = $1 AND is_active = 1',
+  const productResult = await dbAdapter.query(
+    'SELECT * FROM products WHERE id = $1 AND is_active = true',
     [productId]
   );
 
@@ -586,17 +625,18 @@ router.get('/:id/complete-process-info', asyncHandler(async (req, res) => {
     FROM process_sequences prs
     JOIN process_steps ps ON prs.id = ps.process_sequence_id
     LEFT JOIN product_process_selections pps ON ps.id = pps.process_step_id AND pps.product_id = $1
-    WHERE prs.product_type = $2 AND ps.is_active = 1
+    WHERE prs.product_type = $2 AND ps.is_active = true
     ORDER BY ps.step_order
   `;
 
-  const stepsResult = await pool.query(stepsQuery, [productId, product.product_type]);
+  const stepsResult = await dbAdapter.query(stepsQuery, [productId, product.product_type]);
+  const steps = stepsResult.rows || [];
 
   res.json({
     product,
     process_sequence: {
       product_type: product.product_type,
-      steps: stepsResult.rows
+      steps: steps
     }
   });
 }));

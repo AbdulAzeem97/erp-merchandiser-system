@@ -153,3 +153,90 @@ CREATE INDEX IF NOT EXISTS idx_job_cards_company ON job_cards(company_id);
 CREATE INDEX IF NOT EXISTS idx_job_cards_delivery_date ON job_cards(delivery_date);
 CREATE INDEX IF NOT EXISTS idx_product_process_selections_product_id ON product_process_selections(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_process_selections_process_step_id ON product_process_selections(process_step_id);
+
+-- Prepress Jobs
+CREATE TABLE IF NOT EXISTS prepress_jobs (
+    id TEXT PRIMARY KEY,
+    job_card_id TEXT NOT NULL,
+    assigned_designer_id TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    priority TEXT NOT NULL DEFAULT 'MEDIUM',
+    due_date TEXT,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_card_id) REFERENCES job_cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_designer_id) REFERENCES users(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Prepress Job Activity Log
+CREATE TABLE IF NOT EXISTS prepress_job_activities (
+    id TEXT PRIMARY KEY,
+    prepress_job_id TEXT NOT NULL,
+    status_from TEXT,
+    status_to TEXT NOT NULL,
+    action_taken TEXT NOT NULL,
+    remark TEXT,
+    performed_by TEXT NOT NULL,
+    performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (prepress_job_id) REFERENCES prepress_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (performed_by) REFERENCES users(id)
+);
+
+-- Prepress Job Comments/Remarks
+CREATE TABLE IF NOT EXISTS prepress_job_remarks (
+    id TEXT PRIMARY KEY,
+    prepress_job_id TEXT NOT NULL,
+    remark TEXT NOT NULL,
+    is_hod_remark INTEGER DEFAULT 0,
+    created_by TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (prepress_job_id) REFERENCES prepress_jobs(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Create indexes for prepress tables
+CREATE INDEX IF NOT EXISTS idx_prepress_jobs_status ON prepress_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_prepress_jobs_assigned_designer ON prepress_jobs(assigned_designer_id);
+CREATE INDEX IF NOT EXISTS idx_prepress_jobs_due_date ON prepress_jobs(due_date);
+CREATE INDEX IF NOT EXISTS idx_prepress_job_activities_prepress_job_id ON prepress_job_activities(prepress_job_id);
+CREATE INDEX IF NOT EXISTS idx_prepress_job_remarks_prepress_job_id ON prepress_job_remarks(prepress_job_id);
+
+-- Job Lifecycle Tracking
+CREATE TABLE IF NOT EXISTS job_lifecycle (
+    id TEXT PRIMARY KEY,
+    job_card_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'CREATED',
+    prepress_job_id TEXT,
+    prepress_status TEXT,
+    prepress_notes TEXT,
+    assigned_designer_id TEXT,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_card_id) REFERENCES job_cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (prepress_job_id) REFERENCES prepress_jobs(id),
+    FOREIGN KEY (assigned_designer_id) REFERENCES users(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+-- Job Lifecycle Status History
+CREATE TABLE IF NOT EXISTS job_lifecycle_history (
+    id TEXT PRIMARY KEY,
+    job_lifecycle_id TEXT NOT NULL,
+    status_from TEXT,
+    status_to TEXT NOT NULL,
+    notes TEXT,
+    changed_by TEXT NOT NULL,
+    changed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (job_lifecycle_id) REFERENCES job_lifecycle(id) ON DELETE CASCADE,
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+);
+
+-- Create indexes for job lifecycle tables
+CREATE INDEX IF NOT EXISTS idx_job_lifecycle_status ON job_lifecycle(status);
+CREATE INDEX IF NOT EXISTS idx_job_lifecycle_designer ON job_lifecycle(assigned_designer_id);
+CREATE INDEX IF NOT EXISTS idx_job_lifecycle_created_by ON job_lifecycle(created_by);
+CREATE INDEX IF NOT EXISTS idx_job_lifecycle_history_lifecycle_id ON job_lifecycle_history(job_lifecycle_id);
+CREATE INDEX IF NOT EXISTS idx_job_lifecycle_history_changed_at ON job_lifecycle_history(changed_at);

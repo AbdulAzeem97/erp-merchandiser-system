@@ -1,9 +1,9 @@
 import bcrypt from 'bcryptjs';
-import pool from './config.js';
+import dbAdapter from './adapter.js';
 
 async function seedDatabase() {
   try {
-    console.log('Starting PostgreSQL database seeding...');
+    console.log('Starting SQLite database seeding...');
     
     // Create admin user
     const adminPassword = await bcrypt.hash('admin123', 10);
@@ -63,13 +63,13 @@ async function seedDatabase() {
       `, material);
     }
 
-    console.log('✅ PostgreSQL database seeding completed successfully!');
+    console.log('✅ SQLite database seeding completed successfully!');
     
   } catch (error) {
     console.error('❌ Seeding failed:', error);
     process.exit(1);
   } finally {
-    await pool.end();
+    // SQLite doesn't need explicit connection closing like PostgreSQL
   }
 }
 

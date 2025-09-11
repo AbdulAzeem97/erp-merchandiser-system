@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import pool from '../database/config.js';
+import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -71,7 +71,7 @@ router.post('/job/:jobId', upload.array('files', 5), asyncHandler(async (req, re
   }
 
   // Check if job exists
-  const jobExists = await pool.query(
+  const jobExists = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE id = $1',
     [jobId]
   );
@@ -94,7 +94,7 @@ router.post('/job/:jobId', upload.array('files', 5), asyncHandler(async (req, re
       RETURNING *
     `;
 
-    const fileResult = await pool.query(fileQuery, [
+    const fileResult = await dbAdapter.query(fileQuery, [
       jobId,
       file.originalname,
       file.filename,
@@ -133,7 +133,7 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
     ORDER BY ja.created_at DESC
   `;
 
-  const result = await pool.query(query, [jobId]);
+  const result = await dbAdapter.query(query, [jobId]);
   const files = result.rows;
 
   res.json({
@@ -152,7 +152,7 @@ router.get('/file/:fileId', asyncHandler(async (req, res) => {
     WHERE ja.id = $1
   `;
 
-  const result = await pool.query(query, [fileId]);
+  const result = await dbAdapter.query(query, [fileId]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({
@@ -187,7 +187,7 @@ router.delete('/file/:fileId', asyncHandler(async (req, res) => {
 
   // Get file information
   const fileQuery = 'SELECT * FROM job_attachments WHERE id = $1';
-  const fileResult = await pool.query(fileQuery, [fileId]);
+  const fileResult = await dbAdapter.query(fileQuery, [fileId]);
 
   if (fileResult.rows.length === 0) {
     return res.status(404).json({
@@ -205,7 +205,7 @@ router.delete('/file/:fileId', asyncHandler(async (req, res) => {
   }
 
   // Delete file record from database
-  await pool.query('DELETE FROM job_attachments WHERE id = $1', [fileId]);
+  await dbAdapter.query('DELETE FROM job_attachments WHERE id = $1', [fileId]);
 
   res.json({
     message: 'File deleted successfully'
@@ -224,7 +224,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
     FROM job_attachments
   `;
 
-  const statsResult = await pool.query(statsQuery);
+  const statsResult = await dbAdapter.query(statsQuery);
   const stats = statsResult.rows[0];
 
   // Get recent uploads
@@ -240,7 +240,7 @@ router.get('/stats', asyncHandler(async (req, res) => {
     LIMIT 10
   `;
 
-  const recentResult = await pool.query(recentQuery);
+  const recentResult = await dbAdapter.query(recentQuery);
   const recentUploads = recentResult.rows;
 
   res.json({

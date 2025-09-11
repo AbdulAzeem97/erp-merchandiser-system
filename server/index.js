@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -14,10 +16,23 @@ import companyRoutes from './routes/companies.js';
 import dashboardRoutes from './routes/dashboard.js';
 import uploadRoutes from './routes/upload.js';
 import processSequenceRoutes from './routes/processSequences.js';
+import prepressRoutes from './routes/prepress.js';
+import enhancedPrepressRoutes, { initializePrepressService } from './routes/enhancedPrepress.js';
+import reportsRoutes from './routes/reports.js';
+import jobLifecycleRoutes, { setLifecycleSocketHandler } from './routes/jobLifecycle.js';
+import inventoryRoutes from './routes/inventory.js';
+// import productionRoutes from './routes/production.js';
+import jobAssignmentRoutes from './routes/jobAssignment.js';
 
 // Import middleware
 import { authenticateToken } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
+
+// Import socket handler
+import SocketHandler from './socket/socketHandler.js';
+
+// Import services
+import EnhancedJobLifecycleService from './services/enhancedJobLifecycleService.js';
 
 dotenv.config();
 
@@ -25,7 +40,34 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV === 'development' ? true : [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://localhost:8080',
+      'http://localhost:8081',
+      'http://localhost:3000',
+      /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
+      /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/  // Allow local network access
+    ],
+    credentials: true,
+    methods: ['GET', 'POST']
+  }
+});
+
 const PORT = process.env.PORT || 5001;
+
+// Initialize socket handler
+const socketHandler = new SocketHandler(io);
+
+// Initialize enhanced job lifecycle service with socket handler
+const jobLifecycleService = new EnhancedJobLifecycleService(io);
+setLifecycleSocketHandler(io);
+
+// Initialize enhanced prepress service with Socket.io
+initializePrepressService(io);
 
 // Security middleware
 app.use(helmet({
@@ -54,7 +96,10 @@ const corsOptions = {
     process.env.FRONTEND_URL || 'http://localhost:5173',
     'http://localhost:8080',
     'http://localhost:8081',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
+    /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/  // Allow local network access
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -66,6 +111,7 @@ app.use(cors(corsOptions));
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -81,12 +127,19 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes); // Temporarily removed auth for testing
-app.use('/api/jobs', jobRoutes); // Temporarily removed auth for testing
-app.use('/api/companies', authenticateToken, companyRoutes);
+app.use('/api/products', productRoutes); // Re-enabled with SQLite syntax
+app.use('/api/jobs', jobRoutes); // Re-enabled for job lifecycle
+app.use('/api/companies', authenticateToken, companyRoutes); // Re-enabled for job lifecycle
 app.use('/api/dashboard', authenticateToken, dashboardRoutes);
-app.use('/api/upload', authenticateToken, uploadRoutes);
-app.use('/api/process-sequences', processSequenceRoutes); // Temporarily removed auth for testing
+app.use('/api/upload', authenticateToken, uploadRoutes); // Re-enabled for job lifecycle
+app.use('/api/process-sequences', processSequenceRoutes); // Re-enabled for job lifecycle
+app.use('/api/prepress', prepressRoutes);
+app.use('/api/enhanced-prepress', enhancedPrepressRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/job-lifecycle', authenticateToken, jobLifecycleRoutes);
+app.use('/api/inventory', authenticateToken, inventoryRoutes);
+// app.use('/api/production', authenticateToken, productionRoutes);
+app.use('/api/job-assignment', jobAssignmentRoutes);
 
 // Serve React app in production
 if (process.env.NODE_ENV === 'production') {
@@ -108,10 +161,19 @@ app.use('*', (req, res) => {
   });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 ERP Merchandiser Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🌐 Network access: http://0.0.0.0:${PORT}`);
+  console.log(`🔌 Socket.io server initialized`);
 });
+
+// Make socket handler, io instance, and services available globally for use in routes
+global.socketHandler = socketHandler;
+global.jobLifecycleService = jobLifecycleService;
+app.set('io', io);
+
+export { socketHandler, jobLifecycleService };
 
 export default app;

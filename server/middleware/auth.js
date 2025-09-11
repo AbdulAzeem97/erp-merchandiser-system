@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import pool from '../database/config.js';
+import dbAdapter from '../database/adapter.js';
 
 export const authenticateToken = async (req, res, next) => {
   try {
@@ -16,19 +16,18 @@ export const authenticateToken = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     
     // Get user from database
-    const userResult = await pool.query(
+    const userResult = await dbAdapter.query(
       'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
-      [decoded.userId]
+      [decoded.id]
     );
+    const user = userResult.rows?.[0] || null;
 
-    if (userResult.rows.length === 0) {
+    if (!user) {
       return res.status(401).json({ 
         error: 'Invalid token',
         message: 'User not found' 
       });
     }
-
-    const user = userResult.rows[0];
 
     if (!user.is_active) {
       return res.status(401).json({ 
@@ -83,7 +82,7 @@ export const requireRole = (roles) => {
 
 export const generateToken = (userId) => {
   return jwt.sign(
-    { userId },
+    { id: userId },
     process.env.JWT_SECRET || 'your-secret-key',
     { expiresIn: '24h' }
   );

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend API Configuration Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Frontend API Configuration Test</h1>
+        
+        <div class="info">
+            <strong>📍 Current Configuration:</strong><br>
+            <span id="currentConfig">Loading...</span>
+        </div>
+
+        <div>
+            <button onclick="testAPI()">🔌 Test API Connection</button>
+            <button onclick="testLogin()">🔐 Test Login</button>
+            <button onclick="testProductCreation()">📦 Test Product Creation</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Get the current API configuration
+        function getCurrentConfig() {
+            const config = {
+                apiBaseUrl: window.location.origin.includes('192.168') ? 
+                    `http://192.168.2.56:3001/api` : 
+                    'http://localhost:3001/api',
+                currentUrl: window.location.origin,
+                isNetwork: window.location.origin.includes('192.168')
+            };
+            return config;
+        }
+
+        // Display current configuration
+        function displayConfig() {
+            const config = getCurrentConfig();
+            const configElement = document.getElementById('currentConfig');
+            configElement.innerHTML = `
+                <strong>API Base URL:</strong> ${config.apiBaseUrl}<br>
+                <strong>Current URL:</strong> ${config.currentUrl}<br>
+                <strong>Network Mode:</strong> ${config.isNetwork ? '✅ YES' : '❌ NO (using localhost)'}
+            `;
+        }
+
+        // Add result to the results div
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = message;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        // Test API connection
+        async function testAPI() {
+            const config = getCurrentConfig();
+            addResult('🔌 Testing API connection...', 'info');
+            
+            try {
+                const response = await fetch(`${config.apiBaseUrl.replace('/api', '')}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ API Connection: SUCCESS<br>Status: ${data.status}<br>Environment: ${data.environment}`, 'success');
+                } else {
+                    addResult(`❌ API Connection: FAILED<br>Status: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ API Connection: ERROR<br>Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test login
+        async function testLogin() {
+            const config = getCurrentConfig();
+            addResult('🔐 Testing login...', 'info');
+            
+            try {
+                const response = await fetch(`${config.apiBaseUrl}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@horizonsourcing.com',
+                        password: 'password123'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ Login: SUCCESS<br>User: ${data.user.first_name} ${data.user.last_name}<br>Role: ${data.user.role}`, 'success');
+                    // Store token for product creation test
+                    localStorage.setItem('testToken', data.token);
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    addResult(`❌ Login: FAILED<br>Status: ${response.status}<br>Error: ${errorData.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Login: ERROR<br>Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test product creation
+        async function testProductCreation() {
+            const config = getCurrentConfig();
+            const token = localStorage.getItem('testToken');
+            
+            if (!token) {
+                addResult('❌ Product Creation: No token found. Please test login first.', 'error');
+                return;
+            }
+            
+            addResult('📦 Testing product creation...', 'info');
+            
+            try {
+                const timestamp = Date.now();
+                const testProduct = {
+                    product_item_code: `WEB-TEST-${timestamp}`,
+                    brand: 'Web Test Brand',
+                    material_id: '4d4c1fb7-5e20-46d1-9c6e-2db71fdfc9ba', // Craft Card
+                    gsm: 200,
+                    product_type: 'Offset',
+                    category_id: 'bfbcfcd8-46ec-4abb-b4b6-74c755db7fed', // Hang Tags
+                    fsc: 'Yes',
+                    fsc_claim: 'Mixed',
+                    color_specifications: 'Black',
+                    remarks: 'Web test product'
+                };
+                
+                const response = await fetch(`${config.apiBaseUrl}/products`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testProduct)
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    addResult(`✅ Product Creation: SUCCESS<br>Product Code: ${data.product.product_item_code}<br>Brand: ${data.product.brand}`, 'success');
+                } else {
+                    const errorData = await response.json().catch(() => ({}));
+                    addResult(`❌ Product Creation: FAILED<br>Status: ${response.status}<br>Error: ${errorData.error || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                addResult(`❌ Product Creation: ERROR<br>Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize
+        displayConfig();
+    </script>
+</body>
+</html>

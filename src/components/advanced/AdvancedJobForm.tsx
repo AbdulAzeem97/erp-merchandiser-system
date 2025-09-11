@@ -46,6 +46,13 @@ import { ProcessPreview } from '../ProcessPreview';
 
 const MERCHANDISER_OPTIONS = ['Abdullah', 'Jaseem', 'Ali', 'Ahmed'];
 
+// Designer options - will be fetched from API
+const DESIGNER_OPTIONS = [
+  { id: '62081101-7c55-4a1e-bdfb-980e64999a74', name: 'Emma Wilson', email: 'emma.wilson@horizonsourcing.com' },
+  { id: '57c715e5-b409-4a3d-98f1-a37ab8b36215', name: 'James Brown', email: 'james.brown@horizonsourcing.com' },
+  { id: 'c77488cf-fec8-4b5e-804a-23edcc644bb7', name: 'Lisa Garcia', email: 'lisa.garcia@horizonsourcing.com' }
+];
+
 interface AdvancedJobFormProps {
   product?: ProductMaster;
   onBack: () => void;
@@ -69,6 +76,7 @@ interface JobCardData {
   specialInstructions: string;
   companyId: string;
   merchandiser: string;
+  assignedDesigner: string;
 }
 
 
@@ -96,7 +104,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     shippingMethod: 'Standard',
     specialInstructions: '',
     companyId: '',
-    merchandiser: ''
+    merchandiser: '',
+    assignedDesigner: ''
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -135,11 +144,12 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     if (!jobCardData.deliveryDate) errors.push('Delivery date required');
     if (!jobCardData.customerInfo.name.trim()) errors.push('Customer name required');
     if (!jobCardData.merchandiser.trim()) errors.push('Merchandiser required');
+    if (!jobCardData.assignedDesigner.trim()) errors.push('Designer assignment required');
 
     setValidationErrors(errors);
 
     // Calculate progress
-    const totalFields = 9; // Total required fields
+    const totalFields = 10; // Total required fields
     const completedFields = [
       product,
       jobCardData.poNumber.trim(),
@@ -147,9 +157,10 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       jobCardData.deliveryDate,
       jobCardData.customerInfo.name.trim(),
       jobCardData.customerInfo.email.trim(),
+      jobCardData.merchandiser.trim(),
+      jobCardData.assignedDesigner.trim(),
       jobCardData.customerInfo.phone.trim(),
-      jobCardData.customerInfo.address.trim(),
-      jobCardData.merchandiser.trim()
+      jobCardData.customerInfo.address.trim()
     ].filter(Boolean).length;
 
     setFormProgress((completedFields / totalFields) * 100);
@@ -410,8 +421,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         target_date: deliveryDate.toISOString(),
         customer_notes: jobCardData.customerNotes,
         special_instructions: jobCardData.specialInstructions,
-        priority: jobCardData.priority,
-        status: 'Pending',
+        priority: jobCardData.priority.toUpperCase(),
+        status: 'PENDING',
         merchandiser: jobCardData.merchandiser
       };
 
@@ -425,6 +436,42 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       
       // Save job to API
       const savedJob = await jobsAPI.create(jobData);
+      
+      // Create prepress job automatically
+      if (jobCardData.assignedDesigner) {
+        try {
+          const prepressJobData = {
+            jobCardId: savedJob.job.id, // Use the actual job ID from the saved job
+            assignedDesignerId: jobCardData.assignedDesigner,
+            priority: jobCardData.priority.toUpperCase() === 'URGENT' ? 'CRITICAL' : jobCardData.priority.toUpperCase(),
+            dueDate: deliveryDate.toISOString()
+          };
+          
+          console.log('Creating prepress job:', prepressJobData);
+          
+          // Create prepress job via API
+          const prepressJob = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/prepress/jobs`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            },
+            body: JSON.stringify(prepressJobData)
+          });
+          
+          if (prepressJob.ok) {
+            const createdPrepressJob = await prepressJob.json();
+            console.log('Prepress job created:', createdPrepressJob);
+            toast.success(`Job assigned to designer successfully! 🎨`);
+          } else {
+            console.error('Failed to create prepress job:', await prepressJob.text());
+            toast.warning('Job created but designer assignment failed');
+          }
+        } catch (prepressError) {
+          console.error('Error creating prepress job:', prepressError);
+          toast.warning('Job created but designer assignment failed');
+        }
+      }
       
       // Generate PDF
       await handleGeneratePDF();
@@ -989,6 +1036,25 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                     </div>
                     
                     <div className="space-y-2">
+                      <Label htmlFor="assignedDesigner">Assign to Designer *</Label>
+                      <Select value={jobCardData.assignedDesigner} onValueChange={(value) => handleInputChange('assignedDesigner', value)}>
+                        <SelectTrigger className={!jobCardData.assignedDesigner.trim() && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}>
+                          <SelectValue placeholder="Select designer for this job" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DESIGNER_OPTIONS.map((designer) => (
+                            <SelectItem key={designer.id} value={designer.id}>
+                              {designer.name} ({designer.email})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-gray-500">
+                        This job will be automatically assigned to the selected designer after submission.
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
                       <Label>Priority Level</Label>
                       <div className="flex gap-2">
                         {(['Low', 'Medium', 'High', 'Urgent'] as const).map((priority) => (
@@ -1257,7 +1323,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                       const filteredSteps = processSequence?.steps
                         ?.filter((step: any) => step.is_selected || step.isSelected || step.is_compulsory || step.isCompulsory);
                       return filteredSteps?.map((step, index) => (
-                        <div key={step.id} className="flex items-center gap-2 text-sm">
+                        <div key={step.id || `step-${index}`} className="flex items-center gap-2 text-sm">
                           <div className={`w-2 h-2 rounded-full ${
                             (step.isCompulsory || step.is_compulsory) ? 'bg-green-500' : 'bg-blue-500'
                           }`} />

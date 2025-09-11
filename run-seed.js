@@ -13,6 +13,17 @@ async function runSeed() {
   } catch (error) {
     console.error('❌ Error running seed:', error);
   }
+
 }
 
 runSeed();
+
+
+
+
+
+
+
+
+
+  

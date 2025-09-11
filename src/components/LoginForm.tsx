@@ -23,10 +23,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     try {
-      await authAPI.login(email, password);
+      console.log('🔐 Attempting login for:', email);
+      const response = await authAPI.login(email, password);
+      console.log('✅ Login response received:', response);
       toast.success('Login successful! Welcome back! 🎉');
       onLoginSuccess();
     } catch (error: any) {
+      console.error('❌ Login error details:', error);
       toast.error(error.message || 'Login failed. Please try again.');
     } finally {
       setIsLoading(false);

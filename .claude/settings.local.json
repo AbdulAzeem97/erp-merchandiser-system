@@ -20,7 +20,21 @@
       "Bash(PORT=5002 node index.js)",
       "Bash(npm run dev:*)",
       "Bash(timeout:*)",
-      "Bash(npm run type-check:*)"
+      "Bash(npm run type-check:*)",
+      "Bash(npm run start:*)",
+      "Bash(dir)",
+      "Bash(copy env.example .env)",
+      "Bash(npm run:*)",
+      "Bash(sed:*)",
+      "Bash(tasklist:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(tree:*)",
+      "Bash(dir:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

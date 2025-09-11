@@ -1,6 +1,6 @@
 import express from 'express';
 import { query, validationResult } from 'express-validator';
-import pool from '../database/sqlite-config.js';
+import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -37,7 +37,7 @@ router.get('/by-product-type', [
       FROM process_sequences ps
       JOIN process_steps pst ON ps.id = pst.process_sequence_id
       LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $2
-      WHERE ps.product_type = $1 AND ps.is_active = 1 AND pst.is_active = 1
+      WHERE ps.product_type = $1 AND ps.is_active = true AND pst.is_active = true
       AND (pst.is_compulsory = 1 OR pps.is_selected = 1)
       ORDER BY pst.step_order ASC
     `;
@@ -55,13 +55,13 @@ router.get('/by-product-type', [
         pst.step_order
       FROM process_sequences ps
       LEFT JOIN process_steps pst ON ps.id = pst.process_sequence_id
-      WHERE ps.product_type = $1 AND ps.is_active = 1
+      WHERE ps.product_type = $1 AND ps.is_active = true
       ORDER BY pst.step_order ASC
     `;
     params = [product_type];
   }
 
-  const result = await pool.query(query, params);
+  const result = await dbAdapter.query(query, params);
 
   if (result.rows.length === 0) {
     return res.status(404).json({
@@ -95,7 +95,7 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
   const { productId } = req.params;
 
   // First get the product to find its type
-  const productResult = await pool.query(
+  const productResult = await dbAdapter.query(
     'SELECT product_type FROM products WHERE id = $1 AND is_active = true',
     [productId]
   );
@@ -123,12 +123,12 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
     FROM process_sequences ps
     JOIN process_steps pst ON ps.id = pst.process_sequence_id
     LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $1
-    WHERE ps.product_type = $2 AND ps.is_active = 1 AND pst.is_active = 1
+    WHERE ps.product_type = $2 AND ps.is_active = true AND pst.is_active = true
     AND (pst.is_compulsory = 1 OR pps.is_selected = 1)
     ORDER BY pst.step_order ASC
   `;
 
-  const result = await pool.query(stepsQuery, [productId, productType]);
+  const result = await dbAdapter.query(stepsQuery, [productId, productType]);
 
   // Group the results
   const sequence = {
@@ -166,7 +166,7 @@ router.get('/', asyncHandler(async (req, res) => {
     ORDER BY ps.product_type ASC
   `;
 
-  const result = await pool.query(query);
+  const result = await dbAdapter.query(query);
   
   res.json({
     process_sequences: result.rows

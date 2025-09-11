@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
-import pool from '../database/config.js';
+import dbAdapter from '../database/adapter.js';
 import { generateToken } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
@@ -36,19 +36,18 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
   // Find user by email
-  const userResult = await pool.query(
+  const userResult = await dbAdapter.query(
     'SELECT * FROM users WHERE email = $1 AND is_active = true',
     [email]
   );
+  const user = userResult.rows?.[0] || null;
 
-  if (userResult.rows.length === 0) {
+  if (!user) {
     return res.status(401).json({
       error: 'Authentication failed',
       message: 'Invalid email or password'
     });
   }
-
-  const user = userResult.rows[0];
 
   // Check password
   const isValidPassword = await bcrypt.compare(password, user.password_hash);
@@ -86,12 +85,13 @@ router.post('/register', registerValidation, asyncHandler(async (req, res) => {
   const { username, email, password, first_name, last_name, role = 'user' } = req.body;
 
   // Check if user already exists
-  const existingUser = await pool.query(
+  const existingUserResult = await dbAdapter.query(
     'SELECT id FROM users WHERE email = $1 OR username = $2',
     [email, username]
   );
+  const existingUser = existingUserResult.rows?.[0] || null;
 
-  if (existingUser.rows.length > 0) {
+  if (existingUser) {
     return res.status(409).json({
       error: 'User already exists',
       message: 'A user with this email or username already exists'
@@ -102,14 +102,13 @@ router.post('/register', registerValidation, asyncHandler(async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
 
   // Create user
-  const newUser = await pool.query(
+  const result = await dbAdapter.query(
     `INSERT INTO users (username, email, password_hash, first_name, last_name, role)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, username, email, first_name, last_name, role, created_at`,
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, email, first_name, last_name, role, created_at`,
     [username, email, passwordHash, first_name, last_name, role]
   );
-
-  const user = newUser.rows[0];
+  
+  const user = result.rows[0];
   const token = generateToken(user.id);
 
   res.status(201).json({
@@ -153,7 +152,7 @@ router.post('/change-password', [
   }
 
   // Get current user
-  const userResult = await pool.query(
+  const userResult = await dbAdapter.query(
     'SELECT password_hash FROM users WHERE id = $1',
     [userId]
   );
@@ -180,7 +179,7 @@ router.post('/change-password', [
   const newPasswordHash = await bcrypt.hash(new_password, 10);
 
   // Update password
-  await pool.query(
+  await dbAdapter.query(
     'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
     [newPasswordHash, userId]
   );

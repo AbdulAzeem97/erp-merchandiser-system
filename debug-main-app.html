@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Main App Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug Main App Login Issue</h1>
+        
+        <div class="info">
+            <strong>🎯 Goal:</strong> Identify why the main ERP app shows "cannot read properties of undefined (reading tokens)" error
+        </div>
+
+        <div>
+            <button onclick="testMainAppLogin()">🔐 Test Main App Login</button>
+            <button onclick="checkLocalStorage()">💾 Check Local Storage</button>
+            <button onclick="clearStorage()">🗑️ Clear Storage</button>
+            <button onclick="testDirectAPI()">🌐 Test Direct API</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Add result to the results div
+        function addResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = message;
+            resultsDiv.appendChild(resultDiv);
+        }
+
+        // Test the main app login by simulating the exact same flow
+        async function testMainAppLogin() {
+            addResult('🔐 Testing Main App Login Flow...', 'info');
+            
+            try {
+                // Simulate the exact same API call the main app makes
+                const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@horizonsourcing.com',
+                        password: 'password123'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                addResult('✅ API Response received successfully', 'success');
+                addResult(`📋 Response structure: <pre>${JSON.stringify(data, null, 2)}</pre>`, 'info');
+
+                // Test the exact same logic as the main app
+                try {
+                    // This is the exact logic from the main app's authAPI.login
+                    const token = data.token || data.tokens?.access_token || data.tokens?.token;
+                    
+                    if (token) {
+                        localStorage.setItem('authToken', token);
+                        localStorage.setItem('user', JSON.stringify(data.user));
+                        addResult('✅ Token stored successfully using main app logic', 'success');
+                        addResult(`🔑 Token: ${token.substring(0, 50)}...`, 'info');
+                    } else {
+                        addResult('❌ No token found in response', 'error');
+                    }
+                } catch (error) {
+                    addResult(`❌ Error in main app logic: ${error.message}`, 'error');
+                }
+
+            } catch (error) {
+                addResult(`❌ API call failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Check what's in localStorage
+        function checkLocalStorage() {
+            addResult('💾 Checking Local Storage...', 'info');
+            
+            const authToken = localStorage.getItem('authToken');
+            const user = localStorage.getItem('user');
+            
+            if (authToken) {
+                addResult(`✅ Auth Token: ${authToken.substring(0, 50)}...`, 'success');
+            } else {
+                addResult('❌ No auth token found', 'error');
+            }
+            
+            if (user) {
+                try {
+                    const userData = JSON.parse(user);
+                    addResult(`✅ User Data: ${userData.first_name} ${userData.last_name} (${userData.role})`, 'success');
+                } catch (e) {
+                    addResult(`❌ Invalid user data: ${user}`, 'error');
+                }
+            } else {
+                addResult('❌ No user data found', 'error');
+            }
+        }
+
+        // Clear localStorage
+        function clearStorage() {
+            localStorage.clear();
+            addResult('🗑️ Local Storage cleared', 'info');
+        }
+
+        // Test direct API call
+        async function testDirectAPI() {
+            addResult('🌐 Testing Direct API Call...', 'info');
+            
+            try {
+                const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@horizonsourcing.com',
+                        password: 'password123'
+                    })
+                });
+
+                const responseText = await response.text();
+                addResult(`📊 Response Status: ${response.status}`, 'info');
+                addResult(`📝 Raw Response: <pre>${responseText}</pre>`, 'info');
+                
+                if (response.ok) {
+                    const data = JSON.parse(responseText);
+                    
+                    // Test all possible token access patterns
+                    addResult('🔍 Testing Token Access Patterns:', 'info');
+                    
+                    try {
+                        const token1 = data.token;
+                        addResult(`✅ data.token: ${token1 ? 'EXISTS' : 'MISSING'}`, token1 ? 'success' : 'error');
+                    } catch (e) {
+                        addResult(`❌ data.token access error: ${e.message}`, 'error');
+                    }
+                    
+                    try {
+                        const tokens = data.tokens;
+                        addResult(`✅ data.tokens: ${tokens ? 'EXISTS' : 'MISSING'}`, tokens ? 'success' : 'error');
+                    } catch (e) {
+                        addResult(`❌ data.tokens access error: ${e.message}`, 'error');
+                    }
+                    
+                    try {
+                        const userToken = data.user?.token;
+                        addResult(`✅ data.user.token: ${userToken ? 'EXISTS' : 'MISSING'}`, userToken ? 'success' : 'error');
+                    } catch (e) {
+                        addResult(`❌ data.user.token access error: ${e.message}`, 'error');
+                    }
+                }
+                
+            } catch (error) {
+                addResult(`❌ Direct API test failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize
+        addResult('🚀 Debug tool ready', 'info');
+        addResult('💡 Click "Test Main App Login" to simulate the exact same flow as the main app', 'info');
+    </script>
+</body>
+</html>

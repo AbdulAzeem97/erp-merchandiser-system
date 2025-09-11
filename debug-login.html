@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        input, button { width: 100%; padding: 10px; margin: 5px 0; }
+        .result { margin-top: 20px; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .debug { background-color: #f8f9fa; color: #495057; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Debug Login - Admin</h2>
+        <form id="loginForm">
+            <input type="email" id="email" placeholder="Email" value="admin@horizonsourcing.com" required>
+            <input type="password" id="password" placeholder="Password" value="password123" required>
+            <button type="submit">Debug Login</button>
+        </form>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://192.168.2.56:3001/api';
+        
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result');
+            
+            // Debug information
+            const debugInfo = {
+                email: email,
+                emailLength: email.length,
+                password: password,
+                passwordLength: password.length,
+                passwordBytes: new TextEncoder().encode(password).length,
+                timestamp: new Date().toISOString()
+            };
+            
+            console.log('🔍 Debug Info:', debugInfo);
+            
+            try {
+                console.log('🔐 Starting login process...');
+                console.log('📤 Request URL:', `${API_BASE_URL}/auth/login`);
+                console.log('📤 Request body:', JSON.stringify({ email, password }));
+                
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                console.log(`📊 Response status: ${response.status}`);
+                console.log('📊 Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const data = await response.json();
+                console.log('📋 Response data:', data);
+                
+                if (response.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.innerHTML = `
+                        <h3>✅ Login Successful!</h3>
+                        <p><strong>User:</strong> ${data.user?.first_name} ${data.user?.last_name}</p>
+                        <p><strong>Role:</strong> ${data.user?.role || 'Unknown'}</p>
+                        <p><strong>Token:</strong> ${data.token ? 'Present' : 'Missing'}</p>
+                    `;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.innerHTML = `
+                        <h3>❌ Login Failed</h3>
+                        <p><strong>Status:</strong> ${response.status}</p>
+                        <p><strong>Error:</strong> ${data.error || data.message || 'Unknown error'}</p>
+                        ${data.details ? `<p><strong>Details:</strong> ${JSON.stringify(data.details)}</p>` : ''}
+                    `;
+                }
+                
+                // Show debug info
+                const debugDiv = document.createElement('div');
+                debugDiv.className = 'result debug';
+                debugDiv.innerHTML = `
+                    <h4>🔍 Debug Information:</h4>
+                    <pre>${JSON.stringify(debugInfo, null, 2)}</pre>
+                `;
+                resultDiv.appendChild(debugDiv);
+                
+            } catch (error) {
+                console.error('❌ Login error:', error);
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    <h3>❌ Network Error</h3>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>
+
+
+

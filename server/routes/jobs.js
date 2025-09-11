@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, validationResult, query } from 'express-validator';
-import pool from '../database/sqlite-config.js';
+import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
@@ -12,8 +12,8 @@ const jobValidation = [
   body('company_id').optional().isUUID(),
   body('quantity').isInt({ min: 1 }),
   body('delivery_date').isISO8601(),
-  body('priority').isIn(['Low', 'Medium', 'High', 'Urgent']),
-  body('status').isIn(['Pending', 'In Progress', 'Quality Check', 'Completed', 'Cancelled'])
+  body('priority').isIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
+  body('status').isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
 ];
 
 // Get all jobs with pagination and filtering
@@ -80,7 +80,7 @@ router.get('/', [
     FROM job_cards jc
     ${whereClause}
   `;
-  const countResult = await pool.query(countQuery, params);
+  const countResult = await dbAdapter.query(countQuery, params);
   const total = parseInt(countResult.rows[0].total);
 
   // Get jobs
@@ -102,7 +102,7 @@ router.get('/', [
     LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
   `;
 
-  const jobsResult = await pool.query(jobsQuery, [...params, limit, offset]);
+  const jobsResult = await dbAdapter.query(jobsQuery, [...params, limit, offset]);
   const jobs = jobsResult.rows;
 
   res.json({
@@ -141,7 +141,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
     WHERE jc.id = $1
   `;
 
-  const result = await pool.query(query, [id]);
+  const result = await dbAdapter.query(query, [id]);
 
   if (result.rows.length === 0) {
     return res.status(404).json({
@@ -180,7 +180,7 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if job card ID already exists
-  const existingJob = await pool.query(
+  const existingJob = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE job_card_id = $1',
     [job_card_id]
   );
@@ -201,7 +201,7 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
+  const result = await dbAdapter.query(query, [
     job_card_id,
     product_id,
     company_id,
@@ -217,6 +217,68 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
   ]);
 
   const job = result.rows[0];
+
+  // Create job lifecycle entry
+  try {
+    if (global.jobLifecycleService) {
+      await global.jobLifecycleService.createJobLifecycle(job.id, req.user?.id || null);
+    }
+  } catch (lifecycleError) {
+    console.error('Error creating job lifecycle:', lifecycleError);
+    // Don't fail the job creation if lifecycle fails
+  }
+
+  // Emit real-time updates via Socket.io
+  const io = req.app.get('io');
+  if (io) {
+    console.log('🔌 Emitting Socket.io events for job creation:', job.job_card_id);
+    
+    // Notify all connected users about the new job
+    io.emit('job_created', {
+      jobCardId: job.job_card_id,
+      jobId: job.id,
+      productId: job.product_id,
+      quantity: job.quantity,
+      priority: job.priority,
+      status: job.status,
+      createdBy: req.user?.firstName + ' ' + req.user?.lastName || 'System',
+      createdAt: new Date().toISOString(),
+      message: `New job ${job.job_card_id} has been created`
+    });
+
+    // Notify HOD and ADMIN users specifically
+    io.emit('new_job_for_assignment', {
+      jobCardId: job.job_card_id,
+      jobId: job.id,
+      priority: job.priority,
+      status: job.status,
+      createdAt: new Date().toISOString(),
+      message: `New job ${job.job_card_id} is ready for assignment`
+    });
+
+    // Notify role-specific rooms
+    io.to('role:HOD_PREPRESS').emit('new_job_for_assignment', {
+      jobCardId: job.job_card_id,
+      jobId: job.id,
+      priority: job.priority,
+      status: job.status,
+      createdAt: new Date().toISOString(),
+      message: `New job ${job.job_card_id} is ready for assignment`
+    });
+
+    io.to('role:ADMIN').emit('new_job_for_assignment', {
+      jobCardId: job.job_card_id,
+      jobId: job.id,
+      priority: job.priority,
+      status: job.status,
+      createdAt: new Date().toISOString(),
+      message: `New job ${job.job_card_id} is ready for assignment`
+    });
+    
+    console.log('✅ Socket.io events emitted successfully for job creation');
+  } else {
+    console.log('❌ Socket.io instance not found for job creation');
+  }
 
   res.status(201).json({
     message: 'Job created successfully',
@@ -251,7 +313,7 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
   } = req.body;
 
   // Check if job exists
-  const existingJob = await pool.query(
+  const existingJob = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE id = $1',
     [id]
   );
@@ -264,7 +326,7 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
   }
 
   // Check if new job card ID conflicts with existing jobs
-  const idConflict = await pool.query(
+  const idConflict = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE job_card_id = $1 AND id != $2',
     [job_card_id, id]
   );
@@ -296,7 +358,7 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
     RETURNING *
   `;
 
-  const result = await pool.query(query, [
+  const result = await dbAdapter.query(query, [
     job_card_id,
     product_id,
     company_id,
@@ -325,7 +387,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   // Check if job exists
-  const existingJob = await pool.query(
+  const existingJob = await dbAdapter.query(
     'SELECT id FROM job_cards WHERE id = $1',
     [id]
   );
@@ -338,7 +400,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   }
 
   // Delete job (cascade will handle related records)
-  await pool.query('DELETE FROM job_cards WHERE id = $1', [id]);
+  await dbAdapter.query('DELETE FROM job_cards WHERE id = $1', [id]);
 
   res.json({
     message: 'Job deleted successfully'
@@ -358,7 +420,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
     FROM job_cards
   `;
 
-  const statsResult = await pool.query(statsQuery);
+  const statsResult = await dbAdapter.query(statsQuery);
   const stats = statsResult.rows[0];
 
   // Get recent jobs
@@ -375,7 +437,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
     LIMIT 5
   `;
 
-  const recentResult = await pool.query(recentQuery);
+  const recentResult = await dbAdapter.query(recentQuery);
   const recent = recentResult.rows;
 
   res.json({

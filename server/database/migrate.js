@@ -1,29 +1,38 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pool from './config.js';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function migrateDatabase() {
+function migrateDatabase() {
   try {
-    console.log('Starting PostgreSQL database migration...');
+    console.log('Starting SQLite database migration...');
     
-    // Read the schema file
-    const schemaPath = path.join(__dirname, 'schema.sql');
+    // Initialize database directly
+    const dbPath = path.resolve(__dirname, '../../erp_merchandiser.db');
+    const db = new Database(dbPath);
+    
+    console.log('Connected to SQLite database at:', dbPath);
+    
+    // Enable foreign keys
+    db.pragma('foreign_keys = ON');
+    
+    // Read the SQLite schema file
+    const schemaPath = path.join(__dirname, 'schema.sqlite.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
-    // Execute the schema
-    await pool.query(schema);
+    // Execute the entire schema using exec()
+    db.exec(schema);
     
-    console.log('✅ PostgreSQL database migration completed successfully!');
+    console.log('✅ SQLite database migration completed successfully!');
+    
+    db.close();
     
   } catch (error) {
     console.error('❌ Migration failed:', error);
     process.exit(1);
-  } finally {
-    await pool.end();
   }
 }
 

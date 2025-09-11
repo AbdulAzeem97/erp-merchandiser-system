@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test API URL</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .result { margin-top: 20px; padding: 10px; border-radius: 5px; background-color: #f8f9fa; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Test API URL Configuration</h2>
+        <button onclick="testAPIURL()">Test API URL</button>
+        <div id="result"></div>
+    </div>
+
+    <script type="module">
+        // This simulates what the frontend is doing
+        const API_BASE_URL = 'http://192.168.2.56:3001/api';
+        
+        window.testAPIURL = async function() {
+            const resultDiv = document.getElementById('result');
+            
+            console.log('🔍 Testing API URL configuration...');
+            console.log('API_BASE_URL:', API_BASE_URL);
+            
+            try {
+                // Test the health endpoint first
+                console.log('🧪 Testing health endpoint...');
+                const healthResponse = await fetch(`${API_BASE_URL.replace('/api', '')}/health`);
+                console.log('Health response status:', healthResponse.status);
+                
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    console.log('Health data:', healthData);
+                }
+                
+                // Test login endpoint
+                console.log('🧪 Testing login endpoint...');
+                const loginResponse = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        email: 'admin@horizonsourcing.com', 
+                        password: 'password123' 
+                    })
+                });
+                
+                console.log('Login response status:', loginResponse.status);
+                const loginData = await loginResponse.json();
+                console.log('Login data:', loginData);
+                
+                resultDiv.innerHTML = `
+                    <h3>API URL Test Results</h3>
+                    <p><strong>API_BASE_URL:</strong> ${API_BASE_URL}</p>
+                    <p><strong>Health Status:</strong> ${healthResponse.status}</p>
+                    <p><strong>Login Status:</strong> ${loginResponse.status}</p>
+                    <p><strong>Login Result:</strong> ${loginResponse.ok ? 'SUCCESS' : 'FAILED'}</p>
+                    <pre>${JSON.stringify(loginData, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <h3>Error</h3>
+                    <p>${error.message}</p>
+                `;
+            }
+        };
+    </script>
+</body>
+</html>
+
+
+

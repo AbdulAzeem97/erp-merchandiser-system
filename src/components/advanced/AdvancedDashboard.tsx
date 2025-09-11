@@ -48,13 +48,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { dashboardAPI, productsAPI, jobsAPI } from '@/services/api';
+import { dashboardAPI, productsAPI, jobsAPI, authAPI } from '@/services/api';
 import BackendStatusIndicator from '../BackendStatusIndicator';
+import { MainLayout } from '../layout/MainLayout';
 
 interface DashboardProps {
-  onNavigateToProductForm: () => void;
-  onNavigateToJobForm: () => void;
-  onLogout?: () => void;
+  onNavigate: (page: string) => void;
+  onLogout: () => void;
+  currentPage?: string;
+  isLoading?: boolean;
 }
 
 // Mock data for charts
@@ -91,14 +93,19 @@ const notifications = [
 ];
 
 export const AdvancedDashboard: React.FC<DashboardProps> = ({ 
-  onNavigateToProductForm, 
-  onNavigateToJobForm,
-  onLogout 
+  onNavigate,
+  onLogout,
+  currentPage = 'dashboard',
+  isLoading = false
 }) => {
   const [activeTimeframe, setActiveTimeframe] = useState('6M');
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMetric, setSelectedMetric] = useState('production');
+  
+  // Get current user role
+  const currentUser = authAPI.getCurrentUser();
+  const userRole = currentUser?.role;
   const [productsSummary, setProductsSummary] = useState({
     totalProducts: 0,
     activeProducts: 0,
@@ -114,60 +121,87 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   // Load dashboard data from API
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      setIsLoading(true);
-      try {
-        const [overallStats, jobStatusStats, recentActivity, monthlyTrends, productsStats] = await Promise.all([
-          dashboardAPI.getOverallStats(),
-          dashboardAPI.getJobStatusStats(),
-          dashboardAPI.getRecentActivity(),
-          dashboardAPI.getMonthlyTrends(),
-          productsAPI.getStats()
-        ]);
+  const loadDashboardData = async () => {
+    setIsLoading(true);
+    try {
+      console.log('🔄 Loading dashboard data...');
+      
+      // Check if user is authenticated
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      console.log('✅ Authentication token found');
+      
+      const [overallStats, jobStatusStats, recentActivity, monthlyTrends, productsStats] = await Promise.all([
+        dashboardAPI.getOverallStats(),
+        dashboardAPI.getJobStatusStats(),
+        dashboardAPI.getRecentActivity(),
+        dashboardAPI.getMonthlyTrends(),
+        productsAPI.getStats()
+      ]);
 
-        setDashboardData({
-          overallStats,
-          jobStatusStats,
-          recentActivity,
-          monthlyTrends
+      console.log('✅ Dashboard data loaded successfully:', {
+        overallStats,
+        jobStatusStats,
+        recentActivity: recentActivity?.length || 0,
+        monthlyTrends: monthlyTrends?.length || 0,
+        productsStats: productsStats?.total || 0
+      });
+
+      setDashboardData({
+        overallStats,
+        jobStatusStats,
+        recentActivity,
+        monthlyTrends
+      });
+
+      // Update products summary
+      if (productsStats) {
+        setProductsSummary({
+          totalProducts: productsStats.total || 0,
+          activeProducts: productsStats.active || 0,
+          recentProducts: productsStats.recent || []
         });
+      }
+    } catch (error) {
+      console.error('❌ Failed to load dashboard data:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.status,
+        response: error.response
+      });
+      // Fallback to mock data if API fails
+      setDashboardData({
+        overallStats: { totalJobs: 0, totalProducts: 0, totalCompanies: 0 },
+        jobStatusStats: [],
+        recentActivity: [
+          { id: 'JC-001234', product: 'BR-00-139-A', status: 'In Progress', progress: 75, priority: 'High', customer: 'JCP Brand', dueDate: '2024-01-15' },
+          { id: 'JC-001235', product: 'BR-00-140-B', status: 'Quality Check', progress: 90, priority: 'Medium', customer: 'Nike', dueDate: '2024-01-18' }
+        ],
+        monthlyTrends: []
+      });
+      setProductsSummary({
+        totalProducts: 0,
+        activeProducts: 0,
+        recentProducts: [
+          { id: '1', productItemCode: 'BR-00-139-A', brand: 'Sample Brand', productType: 'Box', material: 'C1S', gsm: 250, createdAt: '2024-01-15' },
+          { id: '2', productItemCode: 'BR-00-140-B', brand: 'Sample Brand', productType: 'Bag', material: 'Kraft', gsm: 200, createdAt: '2024-01-18' }
+        ]
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        // Update products summary
-        if (productsStats) {
-          setProductsSummary({
-            totalProducts: productsStats.total || 0,
-            activeProducts: productsStats.active || 0,
-            recentProducts: productsStats.recent || []
-          });
-        }
-              } catch (error) {
-          console.error('Failed to load dashboard data:', error);
-          // Fallback to mock data if API fails
-          setDashboardData({
-            overallStats: { totalJobs: 0, totalProducts: 0, totalCompanies: 0 },
-            jobStatusStats: [],
-            recentActivity: [
-              { id: 'JC-001234', product: 'BR-00-139-A', status: 'In Progress', progress: 75, priority: 'High', customer: 'JCP Brand', dueDate: '2024-01-15' },
-              { id: 'JC-001235', product: 'BR-00-140-B', status: 'Quality Check', progress: 90, priority: 'Medium', customer: 'Nike', dueDate: '2024-01-18' }
-            ],
-            monthlyTrends: []
-          });
-          setProductsSummary({
-            totalProducts: 0,
-            activeProducts: 0,
-            recentProducts: [
-              { id: '1', productItemCode: 'BR-00-139-A', brand: 'Sample Brand', productType: 'Box', material: 'C1S', gsm: 250, createdAt: '2024-01-15' },
-              { id: '2', productItemCode: 'BR-00-140-B', brand: 'Sample Brand', productType: 'Bag', material: 'Kraft', gsm: 200, createdAt: '2024-01-18' }
-            ]
-          });
-        } finally {
-          setIsLoading(false);
-        }
-    };
-
+  useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Refresh function for manual refresh
+  const handleRefresh = async () => {
+    await loadDashboardData();
+  };
 
   // Animation variants
   const containerVariants = {
@@ -196,119 +230,20 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
   };
 
   return (
-    <motion.div 
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
+    <MainLayout
+      currentPage={currentPage}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      isLoading={isLoading}
+      pageTitle="Dashboard"
+      pageDescription="Real-time overview of production and job management"
     >
-      {/* Advanced Header */}
       <motion.div 
-        className="bg-white/80 backdrop-blur-lg border-b border-white/20 sticky top-0 z-50"
-        variants={itemVariants}
+        className="p-6 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 min-h-full"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
       >
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl flex items-center justify-center">
-                  <Factory className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-                    ERP Command Center
-                  </h1>
-                  <p className="text-sm text-gray-500">Production Management Dashboard</p>
-                </div>
-              </div>
-              
-              {/* Advanced Search */}
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <Input
-                  placeholder="Search jobs, products, customers..."
-                  className="pl-10 w-80 bg-white/50 border-white/30 focus:bg-white/80 transition-all duration-200"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Backend Status Indicator */}
-              <BackendStatusIndicator />
-              
-              {/* Notifications */}
-              <div className="relative">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowNotifications(!showNotifications)}
-                  className="relative hover:bg-white/60 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
-                </Button>
-
-                <AnimatePresence>
-                  {showNotifications && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                      className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50"
-                    >
-                      <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-purple-50">
-                        <h3 className="font-semibold text-gray-900">Notifications</h3>
-                        <p className="text-sm text-gray-500">{notifications.length} new updates</p>
-                      </div>
-                      <div className="max-h-80 overflow-y-auto">
-                        {notifications.map((notification) => (
-                          <div key={notification.id} className="p-4 border-b hover:bg-gray-50 transition-colors">
-                            <div className="flex items-start space-x-3">
-                              <div className={`w-2 h-2 rounded-full mt-2 ${
-                                notification.type === 'success' ? 'bg-green-500' :
-                                notification.type === 'warning' ? 'bg-yellow-500' :
-                                notification.type === 'error' ? 'bg-red-500' : 'bg-blue-500'
-                              }`} />
-                              <div className="flex-1">
-                                <p className="font-medium text-gray-900">{notification.title}</p>
-                                <p className="text-sm text-gray-600">{notification.message}</p>
-                                <p className="text-xs text-gray-400 mt-1">{notification.time}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <Button variant="ghost" size="sm" className="hover:bg-white/60">
-                <Settings className="w-5 h-5" />
-              </Button>
-
-              {onLogout && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={onLogout}
-                  className="hover:bg-red-50 hover:text-red-600 transition-colors"
-                >
-                  <LogOut className="w-5 h-5" />
-                </Button>
-              )}
-
-              <div className="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">A</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* KPI Cards */}
         <motion.div 
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
@@ -426,47 +361,121 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={onNavigateToProductForm}
-                  className="p-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-left group transition-all duration-200"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <Package className="w-8 h-8" />
-                    <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
-                  </div>
-                  <h3 className="font-semibold mb-1">Create Product Master</h3>
-                  <p className="text-sm text-blue-100">Define new product specifications</p>
-                </motion.button>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {/* Only show product creation for non-prepress roles */}
+                {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('productForm')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Package className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">Create Product Master</h3>
+                    <p className="text-sm text-blue-100">Define new product specifications</p>
+                  </motion.button>
+                )}
 
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={onNavigateToJobForm}
-                  className="p-4 rounded-xl bg-gradient-to-r from-green-500 to-green-600 text-white text-left group transition-all duration-200"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <Factory className="w-8 h-8" />
-                    <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
-                  </div>
-                  <h3 className="font-semibold mb-1">New Job Card</h3>
-                  <p className="text-sm text-green-100">Create production job order</p>
-                </motion.button>
+                {/* Only show job creation for non-prepress roles */}
+                {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('jobForm')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-green-500 to-green-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Factory className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">New Job Card</h3>
+                    <p className="text-sm text-green-100">Create production job order</p>
+                  </motion.button>
+                )}
 
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="p-4 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white text-left group transition-all duration-200"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <BarChart3 className="w-8 h-8" />
-                    <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
-                  </div>
-                  <h3 className="font-semibold mb-1">Analytics Report</h3>
-                  <p className="text-sm text-purple-100">View detailed analytics</p>
-                </motion.button>
+                {/* Only show reports for non-prepress roles */}
+                {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('reports')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-purple-500 to-purple-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <BarChart3 className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">Reports Suite</h3>
+                    <p className="text-sm text-purple-100">Analytics & metrics</p>
+                  </motion.button>
+                )}
+
+                {(userRole === 'HOD_PREPRESS' || userRole === 'ADMIN') && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('prepressHOD')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Users className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">Prepress HOD</h3>
+                    <p className="text-sm text-orange-100">Design management</p>
+                  </motion.button>
+                )}
+
+                {(userRole === 'DESIGNER' || userRole === 'ADMIN') && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('prepressDesigner')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Target className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">My Tasks</h3>
+                    <p className="text-sm text-teal-100">Designer workbench</p>
+                  </motion.button>
+                )}
+
+                {(userRole === 'HEAD_OF_PRODUCTION' || userRole === 'ADMIN') && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('productionDashboard')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Factory className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">Production</h3>
+                    <p className="text-sm text-indigo-100">Manufacturing control</p>
+                  </motion.button>
+                )}
+
+                {(userRole === 'HEAD_OF_MERCHANDISER' || userRole === 'ADMIN') && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => onNavigate('jobMonitoring')}
+                    className="p-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-left group transition-all duration-200"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <Activity className="w-8 h-8" />
+                      <div className="w-2 h-2 bg-white/30 rounded-full group-hover:bg-white/50 transition-colors" />
+                    </div>
+                    <h3 className="font-semibold mb-1">Job Monitoring</h3>
+                    <p className="text-sm text-emerald-100">Real-time tracking</p>
+                  </motion.button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -578,7 +587,7 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-2 mt-4">
                   {departmentData.map((dept, index) => (
-                    <div key={index} className="flex items-center space-x-2">
+                    <div key={`dept-${index}-${dept.name}`} className="flex items-center space-x-2">
                       <div 
                         className="w-3 h-3 rounded-full" 
                         style={{ backgroundColor: dept.color }}
@@ -603,14 +612,16 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                   <span>Recent Products</span>
                 </CardTitle>
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                  <Button variant="outline" size="sm" onClick={handleRefresh}>
                     <Activity className="w-4 h-4 mr-2" />
                     Refresh
                   </Button>
-                  <Button variant="outline" size="sm" onClick={onNavigateToProductForm}>
-                    <Package className="w-4 h-4 mr-2" />
-                    Add Product
-                  </Button>
+                  {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                    <Button variant="outline" size="sm" onClick={() => onNavigate('productForm')}>
+                      <Package className="w-4 h-4 mr-2" />
+                      Add Product
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -620,29 +631,29 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                   <Package className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No products created yet</h3>
                   <p className="text-gray-500 mb-4">Create your first product to get started</p>
-                  <Button onClick={onNavigateToProductForm} className="gap-2">
+                  <Button onClick={() => onNavigate('productForm')} className="gap-2">
                     <Package className="w-4 h-4" />
                     Create Product
                   </Button>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <table className="w-full">
-                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Code</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Material</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GSM</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
+                                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full min-w-[700px]">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Code</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Material</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GSM</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {(productsSummary.recentProducts || []).map((product, index) => (
                         <motion.tr
-                          key={product.id}
+                          key={product.id || `product-${index}`}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.1 }}
@@ -675,7 +686,7 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                               variant="ghost" 
                               size="sm" 
                               className="mr-2"
-                              onClick={() => onNavigateToJobForm()}
+                              onClick={() => onNavigate('jobForm')}
                             >
                               <FileText className="w-4 h-4" />
                             </Button>
@@ -703,14 +714,16 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                   <span>Recent Jobs</span>
                 </CardTitle>
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                  <Button variant="outline" size="sm" onClick={handleRefresh}>
                     <Activity className="w-4 h-4 mr-2" />
                     Refresh
                   </Button>
-                  <Button variant="outline" size="sm" onClick={onNavigateToJobForm}>
-                    <FileText className="w-4 h-4 mr-2" />
-                    Create Job
-                  </Button>
+                  {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                    <Button variant="outline" size="sm" onClick={() => onNavigate('jobForm')}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Create Job
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardHeader>
@@ -720,43 +733,49 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                   <FileText className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs created yet</h3>
                   <p className="text-gray-500 mb-4">Create your first job to get started</p>
-                  <Button onClick={onNavigateToJobForm} className="gap-2">
-                    <FileText className="w-4 h-4" />
-                    Create Job
-                  </Button>
+                  {userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER' && (
+                    <Button onClick={() => onNavigate('jobForm')} className="gap-2">
+                      <FileText className="w-4 h-4" />
+                      Create Job
+                    </Button>
+                  )}
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <table className="w-full">
-                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job ID</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
+                                  <div className="overflow-x-auto rounded-lg border border-gray-200">
+                    <table className="w-full min-w-[800px]">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job ID</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Code</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Progress</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {(dashboardData.recentActivity || []).map((job, index) => (
                         <motion.tr
-                          key={job.id}
+                          key={job.id || `job-${index}`}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: index * 0.1 }}
                           className="hover:bg-gray-50 transition-colors"
                         >
+                                                      <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-mono font-medium text-gray-900">{job.identifier || job.id}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-mono text-gray-600">{job.product_code || 'N/A'}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{job.product_name || job.product}</div>
+                            </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-mono font-medium text-gray-900">{job.id}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{job.product}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{job.customer}</div>
+                            <div className="text-sm text-gray-900">{job.company_name || job.customer}</div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Badge 
@@ -773,31 +792,33 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center space-x-2">
-                              <Progress value={job.progress} className="w-16 h-2" />
-                              <span className="text-sm text-gray-600">{job.progress}%</span>
+                              <Progress value={job.progress || 0} className="w-16 h-2" />
+                              <span className="text-sm text-gray-600">{job.progress || 0}%</span>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Badge 
                               variant="outline" 
                               className={`${
-                                job.priority === 'High' ? 'bg-red-50 text-red-700' :
-                                job.priority === 'Medium' ? 'bg-yellow-50 text-yellow-700' :
+                                (job.priority || '').toUpperCase() === 'HIGH' ? 'bg-red-50 text-red-700' :
+                                (job.priority || '').toUpperCase() === 'MEDIUM' ? 'bg-yellow-50 text-yellow-700' :
                                 'bg-green-50 text-green-700'
                               }`}
                             >
-                              {job.priority}
+                              {job.priority || 'Low'}
                             </Badge>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(job.dueDate).toLocaleDateString()}
+                            {(job.due_date || job.dueDate || job.created_at) && !isNaN(new Date(job.due_date || job.dueDate || job.created_at).getTime()) 
+                              ? new Date(job.due_date || job.dueDate || job.created_at).toLocaleDateString() 
+                              : 'N/A'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               className="mr-2"
-                              onClick={() => onNavigateToJobForm()}
+                              onClick={() => onNavigate('jobForm')}
                             >
                               <Eye className="w-4 h-4" />
                             </Button>
@@ -814,7 +835,7 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
             </CardContent>
           </Card>
         </motion.div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </MainLayout>
   );
 };

@@ -13,6 +13,7 @@ A complete, production-ready ERP system for merchandising and production managem
 - **File Upload System** - Secure file handling for job attachments
 - **PDF Generation** - Professional job card PDF generation
 - **Audit Logging** - Complete activity tracking
+- **Audit Loggin** -
 
 ### Technical Features
 - **PostgreSQL Database** - Properly normalized schema

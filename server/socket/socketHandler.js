@@ -20,10 +20,12 @@ class SocketHandler {
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
         
         // Get user data from database
-        const user = pool.prepare(
-          'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = ?'
-        ).get(decoded.id);
+        const userResult = await dbAdapter.query(
+          'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
+          [decoded.id]
+        );
 
+        const user = userResult.rows[0];
         if (!user || !user.is_active) {
           return next(new Error('User not found or inactive'));
         }

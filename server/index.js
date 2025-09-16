@@ -20,9 +20,12 @@ import prepressRoutes from './routes/prepress.js';
 import enhancedPrepressRoutes, { initializePrepressService } from './routes/enhancedPrepress.js';
 import reportsRoutes from './routes/reports.js';
 import jobLifecycleRoutes, { setLifecycleSocketHandler } from './routes/jobLifecycle.js';
+import completeJobLifecycleRoutes from './routes/completeJobLifecycle.js';
 import inventoryRoutes from './routes/inventory.js';
 // import productionRoutes from './routes/production.js';
 import jobAssignmentRoutes from './routes/jobAssignment.js';
+import prismaApiRoutes from './routes/prisma-api.js';
+import prismaAuthRoutes from './routes/prisma-auth.js';
 
 // Import middleware
 import { authenticateToken } from './middleware/auth.js';
@@ -30,6 +33,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 
 // Import socket handler
 import SocketHandler from './socket/socketHandler.js';
+import EnhancedSocketHandler from './socket/enhancedSocketHandler.js';
 
 // Import services
 import EnhancedJobLifecycleService from './services/enhancedJobLifecycleService.js';
@@ -47,6 +51,10 @@ const io = new Server(server, {
       process.env.FRONTEND_URL || 'http://localhost:5173',
       'http://localhost:8080',
       'http://localhost:8081',
+      'http://localhost:8082',
+      'http://localhost:8083',
+      'http://localhost:8084',
+      'http://localhost:8081',
       'http://localhost:3000',
       /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
       /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
@@ -59,11 +67,12 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 5001;
 
-// Initialize socket handler
+// Initialize socket handlers
 const socketHandler = new SocketHandler(io);
+const enhancedSocketHandler = new EnhancedSocketHandler(io);
 
 // Initialize enhanced job lifecycle service with socket handler
-const jobLifecycleService = new EnhancedJobLifecycleService(io);
+const jobLifecycleService = new EnhancedJobLifecycleService(enhancedSocketHandler);
 setLifecycleSocketHandler(io);
 
 // Initialize enhanced prepress service with Socket.io
@@ -96,10 +105,13 @@ const corsOptions = {
     process.env.FRONTEND_URL || 'http://localhost:5173',
     'http://localhost:8080',
     'http://localhost:8081',
+    'http://localhost:8082',
+    'http://localhost:8083',
+    'http://localhost:8084',
     'http://localhost:3000',
-    /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
-    /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
-    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/  // Allow local network access
+    /^http:\/\/192\.168\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,  // Allow local network access
+    /^http:\/\/10\.\d+\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,   // Allow local network access
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/  // Allow local network access
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -137,9 +149,14 @@ app.use('/api/prepress', prepressRoutes);
 app.use('/api/enhanced-prepress', enhancedPrepressRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/job-lifecycle', authenticateToken, jobLifecycleRoutes);
+app.use('/api/complete-job-lifecycle', authenticateToken, completeJobLifecycleRoutes);
 app.use('/api/inventory', authenticateToken, inventoryRoutes);
 // app.use('/api/production', authenticateToken, productionRoutes);
 app.use('/api/job-assignment', jobAssignmentRoutes);
+
+// NEW: Prisma-based API routes (working with correct column names)
+app.use('/api/v2', prismaApiRoutes);
+app.use('/api/v2/auth', prismaAuthRoutes);
 
 // Serve React app in production
 if (process.env.NODE_ENV === 'production') {
@@ -161,13 +178,24 @@ app.use('*', (req, res) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 ERP Merchandiser Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌐 Network access: http://0.0.0.0:${PORT}`);
-  console.log(`🔌 Socket.io server initialized`);
-});
+// Initialize database adapter after environment variables are loaded
+(async () => {
+  try {
+    const dbAdapter = (await import('./database/adapter.js')).default;
+    await dbAdapter.initialize();
+
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 ERP Merchandiser Server running on port ${PORT}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      console.log(`🌐 Network access: http://0.0.0.0:${PORT}`);
+      console.log(`🔌 Socket.io server initialized`);
+    });
+  } catch (error) {
+    console.error('❌ Server startup failed:', error.message);
+    process.exit(1);
+  }
+})();
 
 // Make socket handler, io instance, and services available globally for use in routes
 global.socketHandler = socketHandler;

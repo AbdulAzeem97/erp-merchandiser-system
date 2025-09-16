@@ -3,12 +3,12 @@ import dbAdapter from './adapter.js';
 
 async function seedDatabase() {
   try {
-    console.log('Starting SQLite database seeding...');
+    console.log('Starting database seeding...');
     
     // Create admin user
     const adminPassword = await bcrypt.hash('admin123', 10);
     
-    await pool.query(`
+    await dbAdapter.query(`
       INSERT INTO users (username, email, password_hash, first_name, last_name, role)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (email) DO NOTHING
@@ -23,7 +23,7 @@ async function seedDatabase() {
     ];
 
     for (const company of companies) {
-      await pool.query(`
+      await dbAdapter.query(`
         INSERT INTO companies (name, code, contact_person, email, phone, address, country)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (code) DO NOTHING
@@ -40,7 +40,7 @@ async function seedDatabase() {
     ];
 
     for (const category of categories) {
-      await pool.query(`
+      await dbAdapter.query(`
         INSERT INTO product_categories (name, description)
         VALUES ($1, $2)
         ON CONFLICT DO NOTHING
@@ -56,20 +56,20 @@ async function seedDatabase() {
     ];
 
     for (const material of materials) {
-      await pool.query(`
+      await dbAdapter.query(`
         INSERT INTO materials (name, code, type, gsm_range, description)
         VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (code) DO NOTHING
       `, material);
     }
 
-    console.log('✅ SQLite database seeding completed successfully!');
+    console.log('✅ Database seeding completed successfully!');
     
   } catch (error) {
     console.error('❌ Seeding failed:', error);
     process.exit(1);
   } finally {
-    // SQLite doesn't need explicit connection closing like PostgreSQL
+    // Database connection handled by adapter
   }
 }
 

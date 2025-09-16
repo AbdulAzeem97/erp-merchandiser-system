@@ -25,38 +25,37 @@ router.get('/by-product-type', [
   if (product_id) {
     // Get process steps with product-specific selections (compulsory + selected optional only)
     query = `
-      SELECT 
+      SELECT
         ps.id as sequence_id,
-        ps.product_type,
+        ps.name as product_type,
         ps.description,
         pst.id as step_id,
         pst.name as step_name,
-        pst.is_compulsory,
-        pst.step_order,
-        COALESCE(pps.is_selected, pst.is_compulsory) as is_selected
+        pst."isQualityCheck" as is_compulsory,
+        pst."stepNumber" as step_order,
+        COALESCE(pps.is_selected, pst."isQualityCheck") as is_selected
       FROM process_sequences ps
-      JOIN process_steps pst ON ps.id = pst.process_sequence_id
-      LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $2
-      WHERE ps.product_type = $1 AND ps.is_active = true AND pst.is_active = true
-      AND (pst.is_compulsory = 1 OR pps.is_selected = 1)
-      ORDER BY pst.step_order ASC
+      JOIN process_steps pst ON ps.id = pst."sequenceId"
+      LEFT JOIN product_process_selections pps ON pst.id::text = pps."processStepId"::text AND pps."productId" = $2
+      WHERE (ps.name = $1 OR ps.name LIKE $1 || '%') AND ps."isActive" = true AND pst."isActive" = true
+      ORDER BY pst."stepNumber" ASC
     `;
     params = [product_type, product_id];
   } else {
     // Get all process steps for the product type (original behavior)
     query = `
-      SELECT 
+      SELECT
         ps.id as sequence_id,
-        ps.product_type,
+        ps.name as product_type,
         ps.description,
         pst.id as step_id,
         pst.name as step_name,
-        pst.is_compulsory,
-        pst.step_order
+        pst."isQualityCheck" as is_compulsory,
+        pst."stepNumber" as step_order
       FROM process_sequences ps
-      LEFT JOIN process_steps pst ON ps.id = pst.process_sequence_id
-      WHERE ps.product_type = $1 AND ps.is_active = true
-      ORDER BY pst.step_order ASC
+      LEFT JOIN process_steps pst ON ps.id = pst."sequenceId"
+      WHERE (ps.name = $1 OR ps.name LIKE $1 || '%') AND ps."isActive" = true
+      ORDER BY pst."stepNumber" ASC
     `;
     params = [product_type];
   }
@@ -96,7 +95,7 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
 
   // First get the product to find its type
   const productResult = await dbAdapter.query(
-    'SELECT product_type FROM products WHERE id = $1 AND is_active = true',
+    'SELECT product_type FROM products WHERE id = $1',
     [productId]
   );
 
@@ -109,23 +108,22 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
 
   const productType = productResult.rows[0].product_type;
 
-  // Get process steps with product-specific selections (compulsory + selected optional only)
+  // Get all process steps for this product type with selection info
   const stepsQuery = `
-    SELECT 
+    SELECT
       ps.id as sequence_id,
-      ps.product_type,
+      ps.name as product_type,
       ps.description,
       pst.id as step_id,
       pst.name as step_name,
-      pst.is_compulsory,
-      pst.step_order,
-      COALESCE(pps.is_selected, pst.is_compulsory) as is_selected
+      pst."isQualityCheck" as is_compulsory,
+      pst."stepNumber" as step_order,
+      COALESCE(pps.is_selected, pst."isQualityCheck") as is_selected
     FROM process_sequences ps
-    JOIN process_steps pst ON ps.id = pst.process_sequence_id
-    LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $1
-    WHERE ps.product_type = $2 AND ps.is_active = true AND pst.is_active = true
-    AND (pst.is_compulsory = 1 OR pps.is_selected = 1)
-    ORDER BY pst.step_order ASC
+    JOIN process_steps pst ON ps.id = pst."sequenceId"
+    LEFT JOIN product_process_selections pps ON pst.id = pps."processStepId" AND pps."productId" = $1
+    WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
+    ORDER BY pst."stepNumber" ASC
   `;
 
   const result = await dbAdapter.query(stepsQuery, [productId, productType]);
@@ -140,7 +138,70 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
       name: row.step_name,
       isCompulsory: row.is_compulsory,
       order: row.step_order,
-      isSelected: row.is_selected
+      isSelected: row.is_selected !== null ? row.is_selected : row.is_compulsory
+    }))
+  };
+
+  res.json({
+    process_sequence: sequence
+  });
+}));
+
+// Simple endpoint to get process steps for a product without boolean issues
+router.get('/simple-for-product/:productId', asyncHandler(async (req, res) => {
+  const { productId } = req.params;
+
+  // First get the product to find its type
+  const productResult = await dbAdapter.query(
+    'SELECT product_type FROM products WHERE id = $1',
+    [productId]
+  );
+
+  if (productResult.rows.length === 0) {
+    return res.status(404).json({
+      error: 'Product not found',
+      message: 'The requested product does not exist'
+    });
+  }
+
+  const productType = productResult.rows[0].product_type;
+
+  // Get all process steps with minimal filtering
+  const stepsQuery = `
+    SELECT
+      ps.id as sequence_id,
+      ps.name as product_type,
+      ps.description,
+      pst.id as step_id,
+      pst.name as step_name,
+      pst."isQualityCheck" as is_compulsory,
+      pst."stepNumber" as step_order,
+      pps.is_selected
+    FROM process_sequences ps
+    JOIN process_steps pst ON ps.id = pst."sequenceId"
+    LEFT JOIN product_process_selections pps ON pst.id = pps."processStepId" AND pps."productId" = $1
+    WHERE ps.name = $2
+    ORDER BY pst."stepNumber" ASC
+  `;
+
+  const result = await dbAdapter.query(stepsQuery, [productId, productType]);
+
+  // Filter in JavaScript instead of SQL to avoid boolean comparison issues
+  const allSteps = result.rows;
+  const filteredSteps = allSteps.filter(row => {
+    return row.is_compulsory || (row.is_selected !== null && row.is_selected === true);
+  });
+
+  const sequence = {
+    product_id: productId,
+    product_type: productType,
+    description: result.rows[0]?.description || '',
+    steps: filteredSteps.map(row => ({
+      id: row.step_id,
+      name: row.step_name,
+      isCompulsory: row.is_compulsory,
+      order: row.step_order,
+      isSelected: row.is_selected !== null ? row.is_selected : row.is_compulsory
     }))
   };
 
@@ -154,16 +215,16 @@ router.get('/', asyncHandler(async (req, res) => {
   const query = `
     SELECT 
       ps.id,
-      ps.product_type,
+      ps.name as product_type,
       ps.description,
-      ps.is_active,
-      ps.created_at,
+      ps."isActive" as is_active,
+      ps."createdAt" as created_at,
       COUNT(pst.id) as step_count
     FROM process_sequences ps
-    LEFT JOIN process_steps pst ON ps.id = pst.process_sequence_id
-    WHERE ps.is_active = true
-    GROUP BY ps.id, ps.product_type, ps.description, ps.is_active, ps.created_at
-    ORDER BY ps.product_type ASC
+    LEFT JOIN process_steps pst ON ps.id = pst."sequenceId"
+    WHERE ps."isActive" = true
+    GROUP BY ps.id, ps.name, ps.description, ps."isActive", ps."createdAt"
+    ORDER BY ps.name ASC
   `;
 
   const result = await dbAdapter.query(query);

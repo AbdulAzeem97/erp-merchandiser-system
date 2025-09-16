@@ -52,6 +52,7 @@ import { Progress } from '@/components/ui/progress';
 import { dashboardAPI, productsAPI, jobsAPI, authAPI } from '@/services/api';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 import SmartSidebar from '../layout/SmartSidebar';
+import { JobManagementTable } from '../JobManagementTable';
 
 interface DashboardProps {
   onNavigateToProductForm: () => void;
@@ -588,168 +589,21 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
             </motion.div>
           </div>
 
-          {/* Modern Recent Activity */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Recent Products */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-            >
-              <div className="modern-card hover:shadow-2xl transition-all duration-300 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50/50 border-b border-blue-200/30">
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl mr-4 shadow-lg">
-                        <Package className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-heading-3 text-slate-900">Recent Products</h3>
-                        <p className="text-body-small text-slate-600">Latest additions to inventory</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleRefresh} className="btn-secondary-modern">
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-                    Loading products...
-                  </div>
-                ) : productsSummary.recentProducts?.length === 0 ? (
-                  <div className="flex items-center justify-center py-8 text-gray-500">
-                    No recent products found
-                  </div>
-                ) : (
-                  <div className="table-modern">
-                    <table className="w-full">
-                      <thead className="table-header-modern">
-                        <tr>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Product Code</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Brand</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Type</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Material</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">GSM</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {productsSummary.recentProducts.map((product: any, index: number) => (
-                          <tr key={product.id || `product-${index}`} className="table-row-modern hover:scale-[1.01] transition-transform duration-150">
-                            <td className="table-cell-modern font-medium text-slate-900">
-                              <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span>{product.product_item_code}</span>
-                              </div>
-                            </td>
-                            <td className="table-cell-modern text-slate-700">{product.brand}</td>
-                            <td className="table-cell-modern">
-                              <div className="status-indicator bg-indigo-100 text-indigo-800">{product.product_type}</div>
-                            </td>
-                            <td className="table-cell-modern text-slate-700">{product.material_name || 'N/A'}</td>
-                            <td className="table-cell-modern">
-                              <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-md text-xs font-medium">{product.gsm} g/m²</span>
-                            </td>
-                            <td className="table-cell-modern text-slate-600">{formatDate(product.created_at)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-              </div>
-            </motion.div>
-
-            {/* Recent Jobs */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-            >
-              <div className="modern-card hover:shadow-2xl transition-all duration-300 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-emerald-50 to-green-50/50 border-b border-emerald-200/30">
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="p-3 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl mr-4 shadow-lg">
-                        <Factory className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-heading-3 text-slate-900">Recent Jobs</h3>
-                        <p className="text-body-small text-slate-600">Latest production orders</p>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleRefresh} className="btn-secondary-modern">
-                      <RefreshCw className="w-4 h-4" />
-                    </Button>
-                  </CardTitle>
-                </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <RefreshCw className="w-6 h-6 animate-spin mr-2" />
-                    Loading jobs...
-                  </div>
-                ) : (
-                  <div className="table-modern overflow-x-auto">
-                    <table className="w-full min-w-[700px]">
-                      <thead className="table-header-modern">
-                        <tr>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Job ID</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Product Code</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Customer</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Status</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Progress</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Priority</th>
-                          <th className="table-cell-modern text-left font-semibold text-slate-700">Due Date</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dashboardData.recentActivity?.map((job: any, index: number) => (
-                          <tr key={job.id || `job-${index}`} className="table-row-modern hover:scale-[1.01] transition-transform duration-150 group">
-                            <td className="table-cell-modern font-medium text-slate-900">
-                              <div className="flex items-center space-x-2">
-                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                                <span>{job.identifier}</span>
-                              </div>
-                            </td>
-                            <td className="table-cell-modern text-slate-700">{job.product_code || 'N/A'}</td>
-                            <td className="table-cell-modern text-slate-700">{job.company_name || job.customer || 'N/A'}</td>
-                            <td className="table-cell-modern">
-                              <div className={`status-indicator ${getStatusColor(job.status).replace('bg-', 'bg-').replace('text-', 'text-')}`}>
-                                {job.status}
-                              </div>
-                            </td>
-                            <td className="table-cell-modern">
-                              <div className="flex items-center space-x-3">
-                                <div className="w-20 bg-slate-200 rounded-full h-2 overflow-hidden">
-                                  <div 
-                                    className="bg-gradient-to-r from-emerald-500 to-green-500 h-2 rounded-full transition-all duration-500 group-hover:shadow-sm" 
-                                    style={{ width: `${job.progress || 0}%` }}
-                                  />
-                                </div>
-                                <span className="text-body-small font-semibold text-slate-700 min-w-[40px]">{job.progress || 0}%</span>
-                              </div>
-                            </td>
-                            <td className="table-cell-modern">
-                              <div className={`status-indicator ${getPriorityColor(job.priority).replace('bg-', 'bg-').replace('text-', 'text-')}`}>
-                                {job.priority}
-                              </div>
-                            </td>
-                            <td className="table-cell-modern text-slate-600 font-mono text-xs">{formatDate(job.due_date)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-              </div>
-            </motion.div>
-          </div>
+          {/* Job Management Table */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.5 }}
+            className="col-span-full"
+          >
+            <JobManagementTable 
+              onCreateJob={() => onNavigateToJobForm()}
+              onEditJob={(job) => {
+                // Navigate to job form with job data for editing
+                onNavigateToJobForm(job);
+              }}
+            />
+          </motion.div>
         </div>
       </div>
     </div>

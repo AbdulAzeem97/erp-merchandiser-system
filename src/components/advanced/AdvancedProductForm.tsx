@@ -265,21 +265,16 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       console.log('🔍 Debug - materials array:', materials);
       console.log('🔍 Debug - selectedMaterial:', selectedMaterial);
 
-      // Try with absolutely minimal required fields only - no foreign keys
+      // Updated field names to match backend schema
       const productData = {
-        product_item_code: formData.productItemCode,
+        sku: formData.productItemCode,
         brand: formData.brand,
-        gsm: parseInt(formData.gsm) || 0,
-        product_type: formData.productType
+        gsm: parseInt(formData.gsm) || null,
+        description: formData.description || '',
+        category_id: 1 // Default category for now
       };
 
-      // Add optional fields only if they have values
-      if (formData.material && selectedMaterial) {
-        productData.material_id = selectedMaterial.id;
-        console.log('✅ Using material ID:', selectedMaterial.id);
-      } else {
-        console.log('❌ No material selected or material not found');
-      }
+      console.log('✅ Sending updated product data with correct field names');
       
       if (formData.color) {
         productData.color_specifications = formData.color;
@@ -298,7 +293,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       }
 
       // Re-enable category_id for complete product information
-      productData.category_id = '82d1039f-48ec-4a6a-a143-6388919c5f1e'; // T-Shirts category
+      productData.category_id = 1; // Default category ID as integer
 
       // Save product to API
       console.log('Sending product data:', productData);
@@ -325,10 +320,10 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       }
       
       // Check if savedProduct exists and has the expected structure
-      if (savedProduct && savedProduct.product && savedProduct.product.product_item_code) {
-        toast.success(`Product ${savedProduct.product.product_item_code} saved successfully! 🎉`);
-      } else if (savedProduct && savedProduct.product_item_code) {
-        toast.success(`Product ${savedProduct.product_item_code} saved successfully! 🎉`);
+      if (savedProduct && savedProduct.product && savedProduct.product.sku) {
+        toast.success(`Product ${savedProduct.product.sku} saved successfully! 🎉`);
+      } else if (savedProduct && savedProduct.sku) {
+        toast.success(`Product ${savedProduct.sku} saved successfully! 🎉`);
       } else {
         toast.success('Product saved successfully! 🎉');
       }

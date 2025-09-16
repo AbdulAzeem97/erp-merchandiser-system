@@ -1,0 +1,315 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id          Int      @id @default(autoincrement())
+  username    String   @unique
+  email       String   @unique
+  password    String
+  role        UserRole @default(USER)
+  firstName   String?
+  lastName    String?
+  phone       String?
+  isActive    Boolean  @default(true)
+  lastLogin   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  createdJobs    JobCard[]     @relation("CreatedBy")
+  assignedJobs   JobCard[]     @relation("AssignedTo")
+  jobLifecycles  JobLifecycle[]
+  inventoryLogs  InventoryLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  PRODUCTION_HEAD
+  OPERATOR
+  USER
+}
+
+// Company Management
+model Company {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  jobCards  JobCard[]
+
+  @@map("companies")
+}
+
+// Product Management
+model Product {
+  id          Int         @id @default(autoincrement())
+  name        String
+  description String?
+  sku         String      @unique
+  category    Category    @relation(fields: [categoryId], references: [id])
+  categoryId  Int
+  brand       String?
+  gsm         Float?
+  fscCertified Boolean    @default(false)
+  fscLicense  String?
+  basePrice   Decimal     @default(0)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  jobCards           JobCard[]
+  inventoryItems     InventoryItem[]
+  processSelections  ProductProcessSelection[]
+
+  @@map("products")
+}
+
+// Category Management
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  products Product[]
+
+  @@map("categories")
+}
+
+// Material Management
+model Material {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  unit        String   @default("pcs")
+  costPerUnit Decimal  @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  inventoryItems InventoryItem[]
+
+  @@map("materials")
+}
+
+// Inventory Management
+model InventoryItem {
+  id         Int      @id @default(autoincrement())
+  product    Product? @relation(fields: [productId], references: [id])
+  productId  Int?
+  material   Material? @relation(fields: [materialId], references: [id])
+  materialId Int?
+  quantity   Int      @default(0)
+  minStock   Int      @default(10)
+  maxStock   Int      @default(1000)
+  location   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  logs InventoryLog[]
+
+  @@map("inventory_items")
+}
+
+model InventoryLog {
+  id            Int           @id @default(autoincrement())
+  inventoryItem InventoryItem @relation(fields: [itemId], references: [id])
+  itemId        Int
+  type          InventoryLogType
+  quantity      Int
+  previousQty   Int
+  newQty        Int
+  notes         String?
+  user          User          @relation(fields: [userId], references: [id])
+  userId        Int
+  createdAt     DateTime      @default(now())
+
+  @@map("inventory_logs")
+}
+
+enum InventoryLogType {
+  IN
+  OUT
+  ADJUSTMENT
+  DAMAGE
+  RETURN
+}
+
+// Process Management
+model ProcessSequence {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  steps             ProcessStep[]
+  jobCards          JobCard[]
+  productSelections ProductProcessSelection[]
+
+  @@map("process_sequences")
+}
+
+model ProcessStep {
+  id                Int             @id @default(autoincrement())
+  sequence          ProcessSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  sequenceId        Int
+  stepNumber        Int
+  name              String
+  description       String?
+  estimatedDuration Int?
+  isQualityCheck    Boolean         @default(false)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  jobLifecycles JobLifecycle[]
+
+  @@unique([sequenceId, stepNumber])
+  @@map("process_steps")
+}
+
+model ProductProcessSelection {
+  id         Int             @id @default(autoincrement())
+  product    Product         @relation(fields: [productId], references: [id])
+  productId  Int
+  sequence   ProcessSequence @relation(fields: [sequenceId], references: [id])
+  sequenceId Int
+  isDefault  Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+
+  @@unique([productId, sequenceId])
+  @@map("product_process_selections")
+}
+
+// Job Management
+model JobCard {
+  id           Int             @id @default(autoincrement())
+  jobNumber    String          @unique
+  company      Company         @relation(fields: [companyId], references: [id])
+  companyId    Int
+  product      Product         @relation(fields: [productId], references: [id])
+  productId    Int
+  sequence     ProcessSequence @relation(fields: [sequenceId], references: [id])
+  sequenceId   Int
+  quantity     Int
+  urgency      JobUrgency      @default(NORMAL)
+  status       JobStatus       @default(PENDING)
+  dueDate      DateTime?
+  startDate    DateTime?
+  endDate      DateTime?
+  totalCost    Decimal         @default(0)
+  notes        String?
+  createdBy    User            @relation("CreatedBy", fields: [createdById], references: [id])
+  createdById  Int
+  assignedTo   User?           @relation("AssignedTo", fields: [assignedToId], references: [id])
+  assignedToId Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  // Relations
+  lifecycles JobLifecycle[]
+
+  @@map("job_cards")
+}
+
+enum JobStatus {
+  PENDING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum JobUrgency {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// Job Lifecycle Tracking
+model JobLifecycle {
+  id            Int         @id @default(autoincrement())
+  jobCard       JobCard     @relation(fields: [jobCardId], references: [id])
+  jobCardId     Int
+  processStep   ProcessStep @relation(fields: [processStepId], references: [id])
+  processStepId Int
+  status        StepStatus  @default(PENDING)
+  startTime     DateTime?
+  endTime       DateTime?
+  duration      Int?
+  qualityCheck  Boolean?
+  notes         String?
+  user          User        @relation(fields: [userId], references: [id])
+  userId        Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([jobCardId, processStepId])
+  @@map("job_lifecycles")
+}
+
+enum StepStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  FAILED
+}
+
+// System Configuration
+model SystemConfig {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique
+  value       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+// Audit Log
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  tableName String?
+  recordId  Int?
+  oldData   Json?
+  newData   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}

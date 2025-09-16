@@ -92,13 +92,13 @@ export const ProcessSequenceSection: React.FC<ProcessSequenceSectionProps> = ({
           initial => initial.id === step.id && initial.isSelected
         ))
       }));
-      
+
       setProcessSteps(updatedSteps);
       if (onProcessStepsChange) {
         onProcessStepsChange(updatedSteps);
       }
     }
-  }, [initialSelectedSteps, processSteps.length]);
+  }, [initialSelectedSteps]);
 
   const handleStepToggle = (stepId: string, checked: boolean) => {
     const updatedSteps = processSteps.map(step => 

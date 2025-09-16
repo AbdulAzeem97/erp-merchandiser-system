@@ -1,5 +1,5 @@
 // API Service for ERP Merchandiser System
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
 // Helper function for API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
@@ -530,7 +530,7 @@ export const uploadAPI = {
 export const healthAPI = {
   check: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3002/api';
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
       const healthUrl = baseUrl.replace('/api', '/health');
       const response = await fetch(healthUrl);
       if (response.ok) {

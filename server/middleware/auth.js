@@ -17,7 +17,7 @@ export const authenticateToken = async (req, res, next) => {
     
     // Get user from database
     const userResult = await dbAdapter.query(
-      'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
+      'SELECT id, username, email, "firstName", "lastName", role, "isActive" FROM users WHERE id = $1',
       [decoded.id]
     );
     const user = userResult.rows?.[0] || null;
@@ -29,10 +29,10 @@ export const authenticateToken = async (req, res, next) => {
       });
     }
 
-    if (!user.is_active) {
-      return res.status(401).json({ 
+    if (!user.isActive) {
+      return res.status(401).json({
         error: 'Account disabled',
-        message: 'Your account has been disabled' 
+        message: 'Your account has been disabled'
       });
     }
 

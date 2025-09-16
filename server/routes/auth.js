@@ -37,7 +37,7 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
 
   // Find user by email
   const userResult = await dbAdapter.query(
-    'SELECT * FROM users WHERE email = $1 AND is_active = true',
+    'SELECT * FROM users WHERE email = $1 AND "isActive" = true',
     [email]
   );
   const user = userResult.rows?.[0] || null;
@@ -50,7 +50,7 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
   }
 
   // Check password
-  const isValidPassword = await bcrypt.compare(password, user.password_hash);
+  const isValidPassword = await bcrypt.compare(password, user.password);
   if (!isValidPassword) {
     return res.status(401).json({
       error: 'Authentication failed',
@@ -62,7 +62,7 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
   const token = generateToken(user.id);
 
   // Remove password from response
-  const { password_hash, ...userWithoutPassword } = user;
+  const { password: userPassword, ...userWithoutPassword } = user;
 
   res.json({
     message: 'Login successful',
@@ -103,8 +103,8 @@ router.post('/register', registerValidation, asyncHandler(async (req, res) => {
 
   // Create user
   const result = await dbAdapter.query(
-    `INSERT INTO users (username, email, password_hash, first_name, last_name, role)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, email, first_name, last_name, role, created_at`,
+    `INSERT INTO users (username, email, password, "firstName", "lastName", role)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, email, "firstName", "lastName", role, "createdAt"`,
     [username, email, passwordHash, first_name, last_name, role]
   );
   
@@ -153,7 +153,7 @@ router.post('/change-password', [
 
   // Get current user
   const userResult = await dbAdapter.query(
-    'SELECT password_hash FROM users WHERE id = $1',
+    'SELECT password FROM users WHERE id = $1',
     [userId]
   );
 
@@ -167,7 +167,7 @@ router.post('/change-password', [
   const user = userResult.rows[0];
 
   // Verify current password
-  const isValidPassword = await bcrypt.compare(current_password, user.password_hash);
+  const isValidPassword = await bcrypt.compare(current_password, user.password);
   if (!isValidPassword) {
     return res.status(401).json({
       error: 'Invalid password',
@@ -180,7 +180,7 @@ router.post('/change-password', [
 
   // Update password
   await dbAdapter.query(
-    'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+    'UPDATE users SET password = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2',
     [newPasswordHash, userId]
   );
 

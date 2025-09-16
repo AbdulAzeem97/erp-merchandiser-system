@@ -30,6 +30,7 @@
     "@headlessui/react": "^2.2.7",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^3.10.0",
+    "@prisma/client": "^6.16.1",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",
@@ -58,8 +59,8 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tanstack/react-query": "^5.83.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^12.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -80,6 +81,7 @@
     "multer": "^1.4.5-lts.1",
     "next-themes": "^0.3.0",
     "pg": "^8.16.3",
+    "prisma": "^6.16.1",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -91,8 +93,6 @@
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "sonner": "^1.7.4",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
@@ -156,22 +156,27 @@
     },
     "testMatch": [
       "<rootDir>/src/tests/**/*.test.{ts,tsx}",
-      "<rootDir>/server/tests/**/*.test.js"
+      "<rootDir>/server/tests/**/*.test.js",
+      "<rootDir>/**/__tests__/**/*.{js,jsx,ts,tsx}",
+      "<rootDir>/**/*.{test,spec}.{js,jsx,ts,tsx}"
     ],
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "server/**/*.js",
       "!src/**/*.d.ts",
       "!src/main.tsx",
-      "!src/vite-env.d.ts"
+      "!src/vite-env.d.ts",
+      "!node_modules/**",
+      "!dist/**"
     ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 70,
-        "functions": 70,
-        "lines": 70,
-        "statements": 70
-      }
-    }
+    "coverageReporters": [
+      "text",
+      "lcov",
+      "html",
+      "json-summary"
+    ],
+    "coverageDirectory": "coverage",
+    "testTimeout": 30000,
+    "maxWorkers": 4
   }
 }

@@ -34,7 +34,14 @@
       "Bash(git config:*)",
       "Bash(tree:*)",
       "Bash(dir:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(docker:*)",
+      "Bash(pkill:*)",
+      "Bash(npm audit:*)",
+      "Bash(npx prisma:*)",
+      "Bash(copy .env.production .env)",
+      "Bash(PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION=\"yes but then i dont want further errors\" npx prisma db push --force-reset)",
+      "Bash(move:*)"
     ],
     "deny": [],
     "ask": []

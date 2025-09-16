@@ -18,15 +18,19 @@ interface ProductMasterFormProps {
 
 export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductSaved, onBack }) => {
   const [formData, setFormData] = useState<ProductMaster>({
-    productItemCode: 'BR-00-139-A',
+    id: '',
+    product_item_code: 'BR-00-139-A',
     brand: 'JCP',
-    material: 'C1S',
-    gsm: '350',
-    color: 'As per Approved Sample/Artwork',
+    material_name: 'C1S',
+    gsm: 350,
+    color_specifications: 'As per Approved Sample/Artwork',
     remarks: 'Print on Uncoated Side',
     fsc: 'Yes',
-    fscClaim: 'Recycled',
-    productType: 'Offset'
+    fsc_claim: 'Recycled',
+    product_type: 'Offset',
+    is_active: true,
+    created_at: '',
+    updated_at: ''
   });
   const [isSaving, setIsSaving] = useState(false);
 
@@ -39,15 +43,15 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
 
   const handleSave = async () => {
     // Validation
-    if (!formData.productItemCode.trim()) {
-      toast.error('Product Item Code is required');
+    if (!formData.product_item_code.trim()) {
+      toast.error('Product Code is required');
       return;
     }
     if (!formData.brand) {
       toast.error('Brand is required');
       return;
     }
-    if (!formData.material) {
+    if (!formData.material_name) {
       toast.error('Material is required');
       return;
     }
@@ -120,12 +124,12 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="productItemCode" className="text-sm font-medium">
-                    Product Item Code
+                    Product Code
                   </Label>
                   <Input
                     id="productItemCode"
-                    value={formData.productItemCode}
-                    onChange={(e) => handleInputChange('productItemCode', e.target.value)}
+                    value={formData.product_item_code}
+                    onChange={(e) => handleInputChange('product_item_code', e.target.value)}
                     placeholder="e.g., BR-00-139-A"
                     className="font-mono"
                   />
@@ -151,7 +155,7 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
                   <Label htmlFor="material" className="text-sm font-medium">
                     Material
                   </Label>
-                  <Select value={formData.material} onValueChange={(value) => handleInputChange('material', value)}>
+                  <Select value={formData.material_name} onValueChange={(value) => handleInputChange('material_name', value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select material" />
                     </SelectTrigger>
@@ -196,8 +200,8 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
                     FSC Claim
                   </Label>
                   <Select 
-                    value={formData.fscClaim} 
-                    onValueChange={(value: 'Recycled' | 'Mixed') => handleInputChange('fscClaim', value)}
+                    value={formData.fsc_claim} 
+                    onValueChange={(value: 'Recycled' | 'Mixed') => handleInputChange('fsc_claim', value)}
                     disabled={formData.fsc === 'No'}
                   >
                     <SelectTrigger>
@@ -217,8 +221,8 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
                 </Label>
                 <Input
                   id="color"
-                  value={formData.color}
-                  onChange={(e) => handleInputChange('color', e.target.value)}
+                  value={formData.color_specifications}
+                  onChange={(e) => handleInputChange('color_specifications', e.target.value)}
                   placeholder="e.g., As per Approved Sample/Artwork"
                 />
               </div>
@@ -240,8 +244,8 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
 
           {/* Process Sequence Card */}
           <ProcessSequenceSection 
-            selectedProductType={formData.productType}
-            onProductTypeChange={(productType) => handleInputChange('productType', productType)}
+            selectedProductType={formData.product_type}
+            onProductTypeChange={(productType) => handleInputChange('product_type', productType)}
           />
         </div>
       </div>

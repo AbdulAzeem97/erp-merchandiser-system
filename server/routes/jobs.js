@@ -8,138 +8,81 @@ const router = express.Router();
 // Validation middleware
 const jobValidation = [
   body('job_card_id').isLength({ min: 3, max: 50 }).trim(),
-  body('product_id').isUUID(),
-  body('company_id').optional().isUUID(),
+  body('product_id').isInt({ min: 1 }),
+  body('company_id').optional().isInt({ min: 1 }),
   body('quantity').isInt({ min: 1 }),
   body('delivery_date').isISO8601(),
-  body('priority').isIn(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
+  body('priority').isIn(['LOW', 'MEDIUM', 'NORMAL', 'HIGH', 'URGENT']),
   body('status').isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
 ];
 
 // Get all jobs with pagination and filtering
-router.get('/', [
-  query('page').optional().isInt({ min: 1 }),
-  query('limit').optional().isInt({ min: 1, max: 100 }),
-  query('search').optional().isLength({ min: 1 }),
-  query('status').optional().isIn(['Pending', 'In Progress', 'Quality Check', 'Completed', 'Cancelled']),
-  query('priority').optional().isIn(['Low', 'Medium', 'High', 'Urgent']),
-  query('company_id').optional().isUUID()
-], asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({
-      error: 'Validation error',
-      details: errors.array()
+router.get('/', asyncHandler(async (req, res) => {
+  try {
+    console.log('Getting jobs...');
+    
+    // Enhanced query with proper joins to get complete job information
+    const jobsQuery = `
+      SELECT 
+        jc.*,
+        p.sku as product_code,
+        p.name as product_name,
+        p.brand,
+        p.gsm,
+        p.description as product_description,
+        m.name as material_name,
+        c.name as company_name
+      FROM job_cards jc
+      LEFT JOIN products p ON jc."productId" = p.id
+      LEFT JOIN materials m ON p.material_id = m.id
+      LEFT JOIN companies c ON jc."companyId" = c.id
+      ORDER BY jc."createdAt" DESC
+      LIMIT 20
+    `;
+
+    const jobsResult = await dbAdapter.query(jobsQuery);
+    const jobs = jobsResult.rows;
+
+    console.log(`Found ${jobs.length} jobs`);
+
+    res.json({
+      jobs,
+      pagination: {
+        page: 1,
+        limit: 20,
+        total: jobs.length,
+        pages: 1
+      }
+    });
+  } catch (error) {
+    console.error('Error in jobs endpoint:', error);
+    res.status(500).json({
+      error: 'Internal server error',
+      message: error.message
     });
   }
-
-  const {
-    page = 1,
-    limit = 20,
-    search,
-    status,
-    priority,
-    company_id
-  } = req.query;
-
-  const offset = (page - 1) * limit;
-  const conditions = [];
-  const params = [];
-  let paramCount = 0;
-
-  // Build WHERE clause
-  if (search) {
-    paramCount++;
-    conditions.push(`(jc.job_card_id ILIKE $${paramCount} OR jc.po_number ILIKE $${paramCount})`);
-    params.push(`%${search}%`);
-  }
-
-  if (status) {
-    paramCount++;
-    conditions.push(`jc.status = $${paramCount}`);
-    params.push(status);
-  }
-
-  if (priority) {
-    paramCount++;
-    conditions.push(`jc.priority = $${paramCount}`);
-    params.push(priority);
-  }
-
-  if (company_id) {
-    paramCount++;
-    conditions.push(`jc.company_id = $${paramCount}`);
-    params.push(company_id);
-  }
-
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  // Get total count
-  const countQuery = `
-    SELECT COUNT(*) as total
-    FROM job_cards jc
-    ${whereClause}
-  `;
-  const countResult = await dbAdapter.query(countQuery, params);
-  const total = parseInt(countResult.rows[0].total);
-
-  // Get jobs
-  const jobsQuery = `
-    SELECT 
-      jc.*,
-      p.product_item_code,
-      p.brand,
-      p.product_type,
-      c.name as company_name,
-      c.code as company_code,
-      u.first_name || ' ' || u.last_name as created_by_name
-    FROM job_cards jc
-    LEFT JOIN products p ON jc.product_id = p.id
-    LEFT JOIN companies c ON jc.company_id = c.id
-    LEFT JOIN users u ON jc.created_by = u.id
-    ${whereClause}
-    ORDER BY jc.created_at DESC
-    LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}
-  `;
-
-  const jobsResult = await dbAdapter.query(jobsQuery, [...params, limit, offset]);
-  const jobs = jobsResult.rows;
-
-  res.json({
-    jobs,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  });
 }));
 
 // Get job by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const query = `
-    SELECT 
-      jc.*,
-      p.product_item_code,
-      p.brand,
-      p.product_type,
-      p.gsm,
-      m.name as material_name,
-      c.name as company_name,
-      c.code as company_code,
-      c.contact_person,
-      c.email as company_email,
-      u.first_name || ' ' || u.last_name as created_by_name
-    FROM job_cards jc
-    LEFT JOIN products p ON jc.product_id = p.id
-    LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN companies c ON jc.company_id = c.id
-    LEFT JOIN users u ON jc.created_by = u.id
-    WHERE jc.id = $1
-  `;
+    const query = `
+      SELECT 
+        jc.*,
+        p.sku as product_code,
+        p.name as product_name,
+        p.brand,
+        p.gsm,
+        p.description as product_description,
+        m.name as material_name,
+        c.name as company_name
+      FROM job_cards jc
+      LEFT JOIN products p ON jc."productId" = p.id
+      LEFT JOIN materials m ON p.material_id = m.id
+      LEFT JOIN companies c ON jc."companyId" = c.id
+      WHERE jc.id = $1
+    `;
 
   const result = await dbAdapter.query(query, [id]);
 
@@ -176,12 +119,16 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     customer_notes,
     special_instructions,
     priority,
-    status
+    status,
+    customer_name,
+    customer_email,
+    customer_phone,
+    customer_address
   } = req.body;
 
   // Check if job card ID already exists
   const existingJob = await dbAdapter.query(
-    'SELECT id FROM job_cards WHERE job_card_id = $1',
+    'SELECT id FROM job_cards WHERE "jobNumber" = $1',
     [job_card_id]
   );
 
@@ -195,25 +142,40 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
   // Create job
   const query = `
     INSERT INTO job_cards (
-      job_card_id, product_id, company_id, po_number, quantity, delivery_date,
-      target_date, customer_notes, special_instructions, priority, status, created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      "jobNumber", "productId", "companyId", "sequenceId", quantity, "dueDate",
+      notes, urgency, status, "totalCost", "createdById", "updatedAt", po_number,
+      customer_name, customer_email, customer_phone, customer_address
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
     RETURNING *
   `;
+
+  // Map priority values to database enum values
+  const urgencyMap = {
+    'LOW': 'LOW',
+    'MEDIUM': 'NORMAL',
+    'NORMAL': 'NORMAL', 
+    'HIGH': 'HIGH',
+    'URGENT': 'URGENT'
+  };
 
   const result = await dbAdapter.query(query, [
     job_card_id,
     product_id,
-    company_id,
-    po_number,
+    company_id || 1, // Default company ID
+    1, // Default sequence ID
     quantity,
     delivery_date,
-    target_date,
-    customer_notes,
-    special_instructions,
-    priority,
+    customer_notes || '',
+    urgencyMap[priority] || 'NORMAL',
     status,
-    req.user?.id || null
+    0, // totalCost - default to 0
+    req.user?.id || 1,
+    new Date(), // updatedAt - current timestamp
+    po_number || '', // PO number from user input
+    customer_name || '', // Customer name
+    customer_email || '', // Customer email
+    customer_phone || '', // Customer phone
+    customer_address || '' // Customer address
   ]);
 
   const job = result.rows[0];
@@ -327,7 +289,7 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
 
   // Check if new job card ID conflicts with existing jobs
   const idConflict = await dbAdapter.query(
-    'SELECT id FROM job_cards WHERE job_card_id = $1 AND id != $2',
+    'SELECT id FROM job_cards WHERE "jobNumber" = $1 AND id != $2',
     [job_card_id, id]
   );
 
@@ -338,22 +300,27 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
     });
   }
 
+  // Map priority values to database enum values
+  const urgencyMap = {
+    'LOW': 'LOW',
+    'MEDIUM': 'NORMAL',
+    'NORMAL': 'NORMAL', 
+    'HIGH': 'HIGH',
+    'URGENT': 'URGENT'
+  };
+
   // Update job
   const query = `
     UPDATE job_cards SET
-      job_card_id = $1,
-      product_id = $2,
-      company_id = $3,
-      po_number = $4,
+      "jobNumber" = $1,
+      "productId" = $2,
+      "companyId" = $3,
       quantity = $5,
-      delivery_date = $6,
-      target_date = $7,
-      customer_notes = $8,
-      special_instructions = $9,
-      priority = $10,
+      "dueDate" = $6,
+      notes = $8,
+      urgency = $10,
       status = $11,
-      progress = $12,
-      updated_at = CURRENT_TIMESTAMP
+      "updatedAt" = $12
     WHERE id = $13
     RETURNING *
   `;
@@ -362,15 +329,12 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
     job_card_id,
     product_id,
     company_id,
-    po_number,
     quantity,
     delivery_date,
-    target_date,
     customer_notes,
-    special_instructions,
-    priority,
+    urgencyMap[priority] || 'NORMAL',
     status,
-    progress,
+    new Date(), // updatedAt
     id
   ]);
 
@@ -407,16 +371,112 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   });
 }));
 
+// Generate job PDF
+router.get('/:id/pdf', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // Get job details with product and company information
+  const query = `
+    SELECT 
+      jc.*,
+      p.name as product_name,
+      p.sku as product_code,
+      p.brand,
+      c.name as company_name
+    FROM job_cards jc
+    LEFT JOIN products p ON jc."productId" = p.id
+    LEFT JOIN companies c ON jc."companyId" = c.id
+    WHERE jc.id = $1
+  `;
+
+  const result = await dbAdapter.query(query, [id]);
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({
+      error: 'Job not found'
+    });
+  }
+
+  const job = result.rows[0];
+
+  // Generate PDF content (simplified version)
+  const pdfContent = `
+    <html>
+      <head>
+        <title>Job Card - ${job.jobNumber}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; margin-bottom: 30px; }
+          .job-info { margin-bottom: 20px; }
+          .section { margin-bottom: 15px; }
+          .label { font-weight: bold; }
+          .value { margin-left: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>JOB CARD</h1>
+          <h2>${job.jobNumber}</h2>
+        </div>
+        
+        <div class="job-info">
+          <div class="section">
+            <span class="label">Job Number:</span>
+            <span class="value">${job.jobNumber}</span>
+          </div>
+          <div class="section">
+            <span class="label">Product:</span>
+            <span class="value">${job.product_name || 'N/A'} (${job.product_code || 'N/A'})</span>
+          </div>
+          <div class="section">
+            <span class="label">Brand:</span>
+            <span class="value">${job.brand || 'N/A'}</span>
+          </div>
+          <div class="section">
+            <span class="label">Company:</span>
+            <span class="value">${job.company_name || 'N/A'}</span>
+          </div>
+          <div class="section">
+            <span class="label">Quantity:</span>
+            <span class="value">${job.quantity}</span>
+          </div>
+          <div class="section">
+            <span class="label">Due Date:</span>
+            <span class="value">${new Date(job.dueDate).toLocaleDateString()}</span>
+          </div>
+          <div class="section">
+            <span class="label">Status:</span>
+            <span class="value">${job.status}</span>
+          </div>
+          <div class="section">
+            <span class="label">Priority:</span>
+            <span class="value">${job.urgency}</span>
+          </div>
+          <div class="section">
+            <span class="label">Notes:</span>
+            <span class="value">${job.notes || 'None'}</span>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  // Set headers for PDF download
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Content-Disposition', `attachment; filename="job-${job.jobNumber}.html"`);
+  
+  res.send(pdfContent);
+}));
+
 // Get job statistics
 router.get('/stats/summary', asyncHandler(async (req, res) => {
   const statsQuery = `
     SELECT 
       COUNT(*) as total_jobs,
-      COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending_jobs,
-      COUNT(CASE WHEN status = 'In Progress' THEN 1 END) as in_progress_jobs,
-      COUNT(CASE WHEN status = 'Completed' THEN 1 END) as completed_jobs,
-      COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as recent_jobs,
-      AVG(progress) as avg_progress
+      COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_jobs,
+      COUNT(CASE WHEN status = 'IN_PROGRESS' THEN 1 END) as in_progress_jobs,
+      COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completed_jobs,
+      COUNT(CASE WHEN "createdAt" >= CURRENT_DATE - INTERVAL '30 days' THEN 1 END) as recent_jobs
     FROM job_cards
   `;
 
@@ -427,13 +487,13 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
   const recentQuery = `
     SELECT 
       jc.*,
-      p.product_item_code,
+      p.sku as product_code,
       p.brand,
       c.name as company_name
     FROM job_cards jc
-    LEFT JOIN products p ON jc.product_id = p.id
-    LEFT JOIN companies c ON jc.company_id = c.id
-    ORDER BY jc.created_at DESC
+    LEFT JOIN products p ON jc."productId" = p.id
+    LEFT JOIN companies c ON jc."companyId" = c.id
+    ORDER BY jc."createdAt" DESC
     LIMIT 5
   `;
 
@@ -447,3 +507,5 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
 }));
 
 export default router;
+
+

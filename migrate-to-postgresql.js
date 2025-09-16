@@ -1,6 +1,21 @@
-import Database from 'better-sqlite3';
-import { Pool } from 'pg';
+#!/usr/bin/env node
+
+/**
+ * Complete PostgreSQL Migration Script
+ * Migrates existing SQLite data to PostgreSQL and handles duplicates
+ */
+
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pkg from 'pg';
+import sqlite3 from 'sqlite3';
+import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcryptjs';
+
+const { Pool } = pkg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('=== POSTGRESQL MIGRATION SCRIPT ===');
 

@@ -6,7 +6,7 @@ class DatabaseAdapter {
         this.type = 'postgresql';
         this.connection = null;
         this.initialized = false;
-        this.initialize();
+        // Don't initialize in constructor - wait for explicit call
     }
 
     async initialize() {
@@ -18,11 +18,11 @@ class DatabaseAdapter {
         console.log('🐘 Using PostgreSQL database');
         
         const pgConfig = {
-            user: process.env.PG_USER || 'erp_user',
-            host: process.env.PG_HOST || 'localhost',
-            database: process.env.PG_DATABASE || 'erp_merchandiser',
-            password: process.env.PG_PASSWORD || 'secure_password_123',
-            port: process.env.PG_PORT || 5432,
+            user: process.env.DB_USER || 'erp_user',
+            host: process.env.DB_HOST || 'localhost',
+            database: process.env.DB_NAME || 'erp_merchandiser',
+            password: process.env.DB_PASSWORD || 'secure_password_123',
+            port: process.env.DB_PORT || 5432,
             max: parseInt(process.env.PG_MAX_CONNECTIONS) || 20,
             idleTimeoutMillis: parseInt(process.env.PG_IDLE_TIMEOUT) || 60000, // Increased timeout
             connectionTimeoutMillis: parseInt(process.env.PG_CONNECTION_TIMEOUT) || 30000, // Increased timeout

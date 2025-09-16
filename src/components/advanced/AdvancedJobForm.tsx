@@ -368,7 +368,12 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       
       await generateJobCardPDF({
         product: completeProduct,
-        jobCardData,
+        jobCardData: {
+          ...jobCardData,
+          customerName: jobCardData.customerInfo.name,
+          salesman: jobCardData.merchandiser,
+          jobCode: jobCardId
+        },
         jobCardId
       });
       
@@ -423,7 +428,11 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         special_instructions: jobCardData.specialInstructions,
         priority: jobCardData.priority.toUpperCase(),
         status: 'PENDING',
-        merchandiser: jobCardData.merchandiser
+        merchandiser: jobCardData.merchandiser,
+        customer_name: jobCardData.customerInfo.name,
+        customer_email: jobCardData.customerInfo.email,
+        customer_phone: jobCardData.customerInfo.phone,
+        customer_address: jobCardData.customerInfo.address
       };
 
       // Only include company_id if it has a valid value

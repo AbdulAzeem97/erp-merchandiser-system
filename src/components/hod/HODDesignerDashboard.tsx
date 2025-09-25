@@ -65,7 +65,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
-import { authAPI } from '@/services/api';
+import { authAPI, jobsAPI, usersAPI } from '@/services/api';
 import { getProcessSequence } from '@/data/processSequences';
 import { Separator } from '@/components/ui/separator';
 import AnimatedKPICards from '@/components/ui/animated-kpi-cards';
@@ -182,6 +182,7 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const [designerFilter, setDesignerFilter] = useState('all');
   const [selectedJob, setSelectedJob] = useState<HODJob | null>(null);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
+  const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
@@ -211,13 +212,13 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
       const token = localStorage.getItem('authToken');
 
       const [jobsResponse, designersResponse] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/hod/dashboard?limit=200`, {
+        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/hod/dashboard?limit=200`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/designers`, {
+        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/designers`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -279,7 +280,7 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const updateJobStatus = async (jobId: string, status: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/${jobId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -308,7 +309,7 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const assignJobToDesigner = async (jobCardId: string, designerId: string, priority: string, dueDate: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/assign`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/assign`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -338,6 +339,43 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
     } catch (error) {
       console.error('Error assigning job:', error);
       toast.error('Error assigning job');
+    }
+  };
+
+  const reassignJobToDesigner = async (jobCardId: string, designerId: string, priority: string, dueDate: string, notes: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/assign`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          jobCardId,
+          designerId,
+          priority,
+          dueDate,
+          notes,
+          isReassignment: true
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Job reassigned successfully');
+        setIsReassignDialogOpen(false);
+        setSelectedDesigner('');
+        setAssignPriority('MEDIUM');
+        setAssignDueDate('');
+        setAssignNotes('');
+        loadDashboardData();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || 'Failed to reassign job');
+      }
+    } catch (error) {
+      console.error('Error reassigning job:', error);
+      toast.error('Failed to reassign job');
     }
   };
 
@@ -699,6 +737,21 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                               <Edit className="h-4 w-4 mr-2" />
                               Update Status
                             </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedJob(job);
+                                setSelectedDesigner(job.designer_id);
+                                setAssignPriority(job.priority);
+                                setAssignDueDate(job.due_date);
+                                setAssignNotes('');
+                                setIsReassignDialogOpen(true);
+                              }}
+                            >
+                              <UserPlus className="h-4 w-4 mr-2" />
+                              Reassign
+                            </Button>
                             <Button variant="outline" size="sm">
                               <Eye className="h-4 w-4 mr-2" />
                               View Details
@@ -903,6 +956,86 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                 }}
               >
                 Assign Job
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Job Reassignment Dialog */}
+      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reassign Job to Designer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Job: {selectedJob?.job_card_number}</Label>
+              <p className="text-sm text-gray-500">Currently assigned to: {selectedJob?.designer_first_name} {selectedJob?.designer_last_name}</p>
+            </div>
+            <div>
+              <Label htmlFor="designer">Select New Designer</Label>
+              <Select value={selectedDesigner} onValueChange={setSelectedDesigner}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select designer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {designers.map((designer) => (
+                    <SelectItem key={designer.id} value={designer.id}>
+                      {designer.first_name} {designer.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="priority">Priority</Label>
+              <Select value={assignPriority} onValueChange={setAssignPriority}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="CRITICAL">Critical</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="dueDate">Due Date</Label>
+              <Input
+                type="datetime-local"
+                value={assignDueDate}
+                onChange={(e) => setAssignDueDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="notes">Reassignment Notes</Label>
+              <Textarea
+                value={assignNotes}
+                onChange={(e) => setAssignNotes(e.target.value)}
+                placeholder="Reason for reassignment..."
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => setIsReassignDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedJob && selectedDesigner) {
+                    reassignJobToDesigner(
+                      selectedJob.prepress_job_id,
+                      selectedDesigner,
+                      assignPriority,
+                      assignDueDate,
+                      assignNotes
+                    );
+                  }
+                }}
+              >
+                Reassign Job
               </Button>
             </div>
           </div>

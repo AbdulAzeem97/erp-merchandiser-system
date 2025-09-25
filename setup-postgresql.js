@@ -40,8 +40,8 @@ PORT=3002
 NODE_ENV=development
 
 # Frontend Configuration
-VITE_API_BASE_URL=http://192.168.2.56:3002/api
-VITE_API_URL=http://192.168.2.56:3002
+VITE_API_BASE_URL=http://localhost:3002/api
+VITE_API_URL=http://localhost:3002
 `);
 
 console.log('\n📋 STEP 4: Run Migration');

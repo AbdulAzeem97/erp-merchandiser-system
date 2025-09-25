@@ -45,7 +45,7 @@ npm run dev
 
 ## 🔑 **Login Credentials**
 
-- **Email**: admin@horizonsourcing.com
+- **Email**: admin@erp.local
 - **Password**: admin123
 
 ## 📋 **What's Working**

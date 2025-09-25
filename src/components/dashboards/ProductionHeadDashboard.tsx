@@ -187,7 +187,7 @@ export const ProductionHeadDashboard: React.FC<ProductionHeadDashboardProps> = (
       setIsLoading(true);
       console.log('🔄 Loading production head dashboard data...');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/complete-job-lifecycle/all`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/complete-job-lifecycle/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

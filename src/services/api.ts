@@ -1,4 +1,6 @@
 // API Service for ERP Merchandiser System
+import { ProcessSequence } from '../types/processSequence';
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
 
 // Helper function for API calls
@@ -35,7 +37,7 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       }
       
       // Create a custom error object that preserves the error details
-      const apiError = new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      const apiError = new Error(errorData.error || `HTTP error! status: ${response.status}`) as any;
       apiError.response = errorData;
       apiError.status = response.status;
       throw apiError;
@@ -318,6 +320,16 @@ export const jobsAPI = {
   // Get job statistics
   getStats: async () => {
     return await apiCall('/jobs/stats');
+  },
+
+  // Get job attachments
+  getAttachments: async (id: string) => {
+    return await apiCall(`/jobs/${id}/attachments`);
+  },
+
+  // Get jobs assigned to a specific designer
+  getAssignedToDesigner: async (designerId: string) => {
+    return await apiCall(`/jobs/assigned-to/${designerId}`);
   }
 };
 
@@ -423,12 +435,17 @@ export const usersAPI = {
 
   // Get users by role
   getByRole: async (role: string) => {
-    return await apiCall(`/users/role/${role}`);
+    return await apiCall(`/auth/users/role/${role}`);
   },
 
   // Get user statistics
   getStats: async () => {
     return await apiCall('/users/stats');
+  },
+
+  // Get designers (convenience method)
+  getDesigners: async () => {
+    return await apiCall('/auth/designers');
   }
 };
 
@@ -563,6 +580,19 @@ export const processSequencesAPI = {
   getAll: async (): Promise<ProcessSequence[]> => {
     const response = await apiCall('/process-sequences');
     return response.process_sequences;
+  },
+
+  // Get process sequence for a specific job
+  getForJob: async (jobId: string): Promise<ProcessSequence> => {
+    return apiCall(`/process-sequences/for-job/${encodeURIComponent(jobId)}`);
+  },
+
+  // Save process sequence for a specific job
+  saveForJob: async (jobId: string, steps: any[]): Promise<ProcessSequence> => {
+    return apiCall(`/process-sequences/for-job/${encodeURIComponent(jobId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ steps }),
+    });
   }
 };
 
@@ -680,6 +710,67 @@ export const inventoryAPI = {
   }
 };
 
+// Prepress Workflow API
+export const prepressWorkflowAPI = {
+  // Update prepress job status
+  async updateStatus(jobCardId: string, status: string, notes?: string, metadata?: any) {
+    return await apiCall(`/prepress-workflow/${jobCardId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status, notes, metadata })
+    });
+  },
+
+  // Get prepress job details with workflow info
+  async getJobDetails(jobCardId: string) {
+    return await apiCall(`/prepress-workflow/${jobCardId}`);
+  },
+
+  // Get all prepress jobs with workflow status
+  async getAllJobs(filters?: { status?: string; designerId?: string; priority?: string }) {
+    const queryParams = new URLSearchParams();
+    if (filters) {
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) queryParams.append(key, value);
+      });
+    }
+    
+    return await apiCall(`/prepress-workflow?${queryParams.toString()}`);
+  },
+
+  // Get prepress workflow statistics
+  async getStats() {
+    return await apiCall('/prepress-workflow/stats/overview');
+  }
+};
+
+// Job Assignment History API
+export const jobAssignmentHistoryAPI = {
+  // Get assignment history for a specific job
+  async getJobHistory(jobId: string) {
+    return await apiCall(`/job-assignment-history/job/${jobId}`);
+  },
+
+  // Get assignment history for a specific designer
+  async getDesignerHistory(designerId: string) {
+    return await apiCall(`/job-assignment-history/designer/${designerId}`);
+  },
+
+  // Create a new assignment history record
+  async createHistoryRecord(data: {
+    job_id: string;
+    assigned_to: string;
+    assigned_by: string;
+    previous_designer?: string;
+    action_type: 'ASSIGNED' | 'REASSIGNED' | 'UNASSIGNED';
+    notes?: string;
+  }) {
+    return await apiCall('/job-assignment-history', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+};
+
 export default {
   auth: authAPI,
   products: productsAPI,
@@ -690,4 +781,6 @@ export default {
   upload: uploadAPI,
   health: healthAPI,
   inventory: inventoryAPI,
+  prepressWorkflow: prepressWorkflowAPI,
+  jobAssignmentHistory: jobAssignmentHistoryAPI,
 };

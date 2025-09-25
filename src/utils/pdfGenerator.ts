@@ -170,7 +170,7 @@ export class AdvancedJobCardPDFGenerator {
     this.pdf.setFont('helvetica', 'normal');
     this.pdf.setFontSize(9); // Reduced from 10
     this.pdf.setTextColor(64, 64, 64);
-    this.pdf.text(this.options.jobCardId, this.margin + 5, tableStartY + 12);
+    this.pdf.text(String(this.options.jobCardId || 'N/A'), this.margin + 5, tableStartY + 12);
     
     // Middle column - Date
     this.pdf.setFont('helvetica', 'bold');

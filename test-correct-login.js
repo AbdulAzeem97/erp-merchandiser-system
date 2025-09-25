@@ -27,7 +27,7 @@ console.log('');
 // Test multiple user credentials
 const testUsers = [
   { email: 'emma.wilson@horizonsourcing.com', password: 'password123', name: 'Emma Wilson (Designer)' },
-  { email: 'admin@horizonsourcing.com', password: 'password123', name: 'System Administrator' },
+  { email: 'admin@erp.local', password: 'password123', name: 'System Administrator' },
   { email: 'inventory@horizonsourcing.com', password: 'password123', name: 'Inventory Manager' },
   { email: 'hodprepress@horizonsourcing.com', password: 'password123', name: 'Sarah Johnson (HOD Prepress)' }
 ];

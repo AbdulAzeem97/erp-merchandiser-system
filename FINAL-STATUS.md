@@ -54,7 +54,7 @@
 
 **Frontend**: http://localhost:8080
 **Backend API**: http://localhost:5000
-**Login**: admin@horizonsourcing.com / admin123
+**Login**: admin@erp.local / admin123
 **Database**: postgresql://postgres:db123@localhost:5432/erp_merchandiser
 
 ### 🎯 **What's Working Perfectly:**

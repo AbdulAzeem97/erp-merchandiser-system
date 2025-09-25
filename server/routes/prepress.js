@@ -28,8 +28,8 @@ const handleValidationErrors = (req, res, next) => {
 router.post('/jobs', 
   requirePermission('CREATE_PREPRESS_JOBS'),
   [
-    body('jobCardId').isUUID().withMessage('Valid job card ID is required'),
-    body('assignedDesignerId').optional().isUUID().withMessage('Valid designer ID is required'),
+    body('jobCardId').isInt().withMessage('Valid job card ID is required'),
+    body('assignedDesignerId').optional().isInt().withMessage('Valid designer ID is required'),
     body('priority').optional().isIn(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).withMessage('Invalid priority'),
     body('dueDate').optional().isISO8601().withMessage('Valid due date is required')
   ],

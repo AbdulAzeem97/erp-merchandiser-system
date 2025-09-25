@@ -13,34 +13,44 @@ class SocketHandler {
       try {
         const token = socket.handshake.auth.token || socket.handshake.headers.authorization?.split(' ')[1];
         
+        console.log('🔌 Socket.io auth - Token present:', !!token);
+        console.log('🔌 Socket.io auth - Token preview:', token ? token.substring(0, 20) + '...' : 'none');
+        
         if (!token) {
+          console.log('❌ Socket.io auth - No token provided');
           return next(new Error('Authentication token required'));
         }
 
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+        console.log('🔌 Socket.io auth - Token decoded successfully:', { id: decoded.id, username: decoded.username });
         
         // Get user data from database
         const userResult = await dbAdapter.query(
-          'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
+          'SELECT id, username, email, "firstName", "lastName", role, "isActive" FROM users WHERE id = $1',
           [decoded.id]
         );
 
         const user = userResult.rows[0];
-        if (!user || !user.is_active) {
+        console.log('🔌 Socket.io auth - User query result:', user ? { id: user.id, username: user.username, isActive: user.isActive } : 'no user found');
+        
+        if (!user || !user.isActive) {
+          console.log('❌ Socket.io auth - User not found or inactive');
           return next(new Error('User not found or inactive'));
         }
 
         socket.user = user;
+        console.log('✅ Socket.io auth - Authentication successful for user:', user.username);
 
         next();
       } catch (error) {
+        console.log('❌ Socket.io auth - Error:', error.message);
         next(new Error('Invalid token'));
       }
     });
 
     // Connection handler
     this.io.on('connection', (socket) => {
-      console.log(`🔌 User connected: ${socket.user.first_name} ${socket.user.last_name} (${socket.user.role})`);
+      console.log(`🔌 User connected: ${socket.user.firstName} ${socket.user.lastName} (${socket.user.role})`);
       
       // Join user-specific room
       socket.join(`user:${socket.user.id}`);
@@ -292,6 +302,156 @@ class SocketHandler {
     });
     
     return roleCounts;
+  }
+
+  // Emit job assignment notification
+  emitJobAssignment(jobData, assignedToId, assignedByName) {
+    // Notify the assigned designer
+    this.io.to(`user:${assignedToId}`).emit('job_assigned', {
+      type: 'job_assigned',
+      job: jobData,
+      assignedBy: assignedByName,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify HOD and admin
+    this.io.to('role:HOD_PREPRESS').emit('job_assignment_update', {
+      type: 'job_assigned',
+      job: jobData,
+      assignedTo: assignedToId,
+      assignedBy: assignedByName,
+      timestamp: new Date().toISOString()
+    });
+
+    this.io.to('role:ADMIN').emit('job_assignment_update', {
+      type: 'job_assigned',
+      job: jobData,
+      assignedTo: assignedToId,
+      assignedBy: assignedByName,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify merchandiser
+    this.io.to('role:HEAD_OF_MERCHANDISER').emit('job_assignment_update', {
+      type: 'job_assigned',
+      job: jobData,
+      assignedTo: assignedToId,
+      assignedBy: assignedByName,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Emit job status update notification
+  emitJobStatusUpdate(jobData, oldStatus, newStatus, updatedBy) {
+    // Notify all relevant parties
+    this.io.to('job_updates').emit('job_status_update', {
+      type: 'status_change',
+      job: jobData,
+      oldStatus,
+      newStatus,
+      updatedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify HOD
+    this.io.to('role:HOD_PREPRESS').emit('job_status_update', {
+      type: 'status_change',
+      job: jobData,
+      oldStatus,
+      newStatus,
+      updatedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify merchandiser
+    this.io.to('role:HEAD_OF_MERCHANDISER').emit('job_status_update', {
+      type: 'status_change',
+      job: jobData,
+      oldStatus,
+      newStatus,
+      updatedBy,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Emit job reassignment notification
+  emitJobReassignment(jobData, oldDesignerId, newDesignerId, reassignedBy) {
+    // Notify old designer (job removed)
+    if (oldDesignerId) {
+      this.io.to(`user:${oldDesignerId}`).emit('job_reassigned', {
+        type: 'job_removed',
+        job: jobData,
+        reassignedBy,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Notify new designer (job assigned)
+    this.io.to(`user:${newDesignerId}`).emit('job_reassigned', {
+      type: 'job_assigned',
+      job: jobData,
+      reassignedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify HOD and admin
+    this.io.to('role:HOD_PREPRESS').emit('job_reassignment_update', {
+      type: 'job_reassigned',
+      job: jobData,
+      oldDesignerId,
+      newDesignerId,
+      reassignedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    this.io.to('role:ADMIN').emit('job_reassignment_update', {
+      type: 'job_reassigned',
+      job: jobData,
+      oldDesignerId,
+      newDesignerId,
+      reassignedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify merchandiser
+    this.io.to('role:HEAD_OF_MERCHANDISER').emit('job_reassignment_update', {
+      type: 'job_reassigned',
+      job: jobData,
+      oldDesignerId,
+      newDesignerId,
+      reassignedBy,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Emit delay notification
+  emitJobDelay(jobData, delayReason, notifiedBy) {
+    // Notify HOD
+    this.io.to('role:HOD_PREPRESS').emit('job_delay_alert', {
+      type: 'job_delay',
+      job: jobData,
+      delayReason,
+      notifiedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify merchandiser
+    this.io.to('role:HEAD_OF_MERCHANDISER').emit('job_delay_alert', {
+      type: 'job_delay',
+      job: jobData,
+      delayReason,
+      notifiedBy,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify admin
+    this.io.to('role:ADMIN').emit('job_delay_alert', {
+      type: 'job_delay',
+      job: jobData,
+      delayReason,
+      notifiedBy,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

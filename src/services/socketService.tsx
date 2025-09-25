@@ -27,7 +27,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     console.log('🔌 Socket.io: Initializing connection...');
     console.log('🔌 Socket.io: Token present:', !!token);
     console.log('🔌 Socket.io: User present:', !!user);
-    console.log('🔌 Socket.io: API URL:', import.meta.env.VITE_API_URL || 'http://localhost:3002');
+    console.log('🔌 Socket.io: API URL:', import.meta.env.VITE_API_URL || 'http://localhost:5001');
     
     if (!token) {
       console.log('❌ Socket.io: No auth token found, skipping socket connection');
@@ -35,7 +35,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     // Initialize socket connection
-    const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:3002', {
+    const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:5001', {
       auth: {
         token: token
       },

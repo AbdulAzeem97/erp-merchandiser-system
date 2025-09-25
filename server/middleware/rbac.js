@@ -73,7 +73,7 @@ export const authenticateToken = async (req, res, next) => {
     
     // Get fresh user data from database
     const userResult = await dbAdapter.query(
-      'SELECT id, username, email, first_name, last_name, role, is_active FROM users WHERE id = $1',
+      'SELECT id, username, email, "firstName", "lastName", role, "isActive" FROM users WHERE id = $1',
       [decoded.id]
     );
     const user = userResult.rows?.[0] || null;
@@ -81,7 +81,7 @@ export const authenticateToken = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
     }
-    if (!user.is_active) {
+    if (!user.isActive) {
       return res.status(401).json({ error: 'User account is inactive' });
     }
 
@@ -89,10 +89,10 @@ export const authenticateToken = async (req, res, next) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.first_name,
-      lastName: user.last_name,
+      firstName: user.firstName,
+      lastName: user.lastName,
       role: user.role,
-      isActive: user.is_active
+      isActive: user.isActive
     };
 
     next();

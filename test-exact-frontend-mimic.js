@@ -5,14 +5,14 @@ console.log('='.repeat(50));
 
 // This mimics exactly what the frontend authAPI.login function does
 async function testExactFrontendMimic() {
-  const email = 'admin@horizonsourcing.com';
+  const email = 'admin@erp.local';
   const password = 'password123';
   
   console.log('🔐 Starting login process for:', email);
   
   try {
     // This is exactly what the frontend does
-    const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+    const response = await fetch('http://localhost:3001/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

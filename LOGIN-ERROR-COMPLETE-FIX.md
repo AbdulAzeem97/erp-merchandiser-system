@@ -64,7 +64,7 @@ if (error instanceof TypeError && error.message.includes('fetch')) {
 ### 🧪 **Testing Results:**
 
 #### ✅ **Backend API:**
-- **URL:** `http://192.168.2.56:3001/api/auth/login`
+- **URL:** `http://localhost:3001/api/auth/login`
 - **Status:** ✅ Working perfectly
 - **Response:** Valid JSON with `token` property
 
@@ -74,9 +74,9 @@ if (error instanceof TypeError && error.message.includes('fetch')) {
 - **Error Handling:** ✅ Comprehensive logging and user feedback
 
 #### ✅ **Network Access:**
-- **Frontend:** `http://192.168.2.56:8081` (auto-detected port)
-- **Backend:** `http://192.168.2.56:3001`
-- **API:** `http://192.168.2.56:3001/api`
+- **Frontend:** `http://localhost:8081` (auto-detected port)
+- **Backend:** `http://localhost:3001`
+- **API:** `http://localhost:3001/api`
 
 ### 🎯 **Current Status:**
 
@@ -91,9 +91,9 @@ if (error instanceof TypeError && error.message.includes('fetch')) {
 ### 🚀 **How to Access:**
 
 **Main Application:**
-- **URL:** `http://192.168.2.56:8081`
+- **URL:** `http://localhost:8081`
 - **Login Credentials:** 
-  - Admin: `admin@horizonsourcing.com` / `password123`
+  - Admin: `admin@erp.local` / `password123`
   - Designer: `emma.wilson@horizonsourcing.com` / `password123`
   - Inventory: `inventory@horizonsourcing.com` / `password123`
 

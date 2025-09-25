@@ -60,12 +60,15 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
-import { authAPI } from '@/services/api';
+import { authAPI, processSequencesAPI, jobsAPI } from '@/services/api';
 import { getProcessSequence } from '@/data/processSequences';
+import ProcessSequenceModal from './ProcessSequenceModal';
 
 interface DesignerJob {
+  id: string;
   prepress_job_id: string;
   job_card_number: string;
+  job_card_id: string;
   status: 'ASSIGNED' | 'IN_PROGRESS' | 'PAUSED' | 'HOD_REVIEW' | 'COMPLETED' | 'REJECTED';
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   due_date: string;
@@ -79,6 +82,48 @@ interface DesignerJob {
   customer_notes: string;
   special_instructions: string;
   notes: string;
+  // Complete product information
+  product_type: string;
+  product_brand: string;
+  product_material: string;
+  product_gsm: number;
+  product_fsc: string;
+  product_fsc_claim: string;
+  product_color: string;
+  product_remarks: string;
+  product_category: string;
+  // Additional complete information
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
+  customer_address: string;
+  po_number: string;
+  delivery_address: string;
+  assigned_designer_name: string;
+  // Process sequence information
+  process_sequence: {
+    id: string | null;
+    productType: string;
+    steps: Array<{
+      id: number;
+      name: string;
+      sequenceOrder: number;
+      isRequired: boolean;
+      estimatedHours: number;
+    }>;
+  };
+  // Prepress workflow information
+  prepress_status: string;
+  workflow_progress: {
+    stages: Array<{
+      key: string;
+      label: string;
+      status: 'pending' | 'current' | 'completed';
+    }>;
+    currentStage: string;
+    progress: number;
+  };
+  progress: number;
 }
 
 interface DesignerStats {
@@ -134,6 +179,17 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const [newStatus, setNewStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
+  const [isProcessSequenceModalOpen, setIsProcessSequenceModalOpen] = useState(false);
+  const [selectedJobForProcessEdit, setSelectedJobForProcessEdit] = useState<DesignerJob | null>(null);
+  const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  // Load user data on component mount
+  useEffect(() => {
+    const userData = JSON.parse(localStorage.getItem('user') || '{}');
+    setUser(userData);
+  }, []);
 
   // Handle logout function
   const handleLogout = () => {
@@ -160,6 +216,9 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     try {
       setJobDetailsData(job);
       setIsJobDetailsOpen(true);
+      
+      // Fetch process sequence for this job
+      await fetchJobProcessSequence(job.id);
     } catch (error) {
       console.error('Error loading job details:', error);
       toast.error('Failed to load job details');
@@ -182,41 +241,125 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
         return;
       }
 
-      const apiUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/designer/${user.id}?limit=100`;
-      console.log('🔄 API URL:', apiUrl);
-
-      const response = await fetch(apiUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      console.log('🔄 API Response Status:', response.status);
-      console.log('🔄 API Response OK:', response.ok);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('🔄 API Response Data:', data);
-        console.log('🔄 Jobs Count:', data.data?.jobs?.length || 0);
+      // Fetch jobs assigned to this designer using the new API endpoint
+      const response = await jobsAPI.getAssignedToDesigner(user.id.toString());
+      
+      console.log('🔄 API Response:', response);
+      
+      if (response.success) {
+        const assignedJobs = response.jobs || [];
+        console.log('🔄 Assigned Jobs Count:', assignedJobs.length);
         
-        setJobs(data.data.jobs || []);
-        setFilteredJobs(data.data.jobs || []);
+        // Fetch complete product information and process sequence for each assigned job
+        const designerJobsWithCompleteInfo = await Promise.all(assignedJobs.map(async (job: any) => {
+          let completeProductInfo = null;
+          let processSequence = null;
+          
+          try {
+            // Fetch complete product information
+            if (job.productId) {
+              const productResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/products/${job.productId}/complete-process-info`, {
+                headers: {
+                  'Authorization': `Bearer ${token}`
+                }
+              });
+              if (productResponse.ok) {
+                completeProductInfo = await productResponse.json();
+                console.log(`📦 Complete product info for job ${job.id}:`, completeProductInfo);
+              }
+            }
+
+            // Fetch process sequence for the product type
+            if (completeProductInfo?.product?.product_type) {
+              try {
+                const processResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/process-sequences/by-product-type?product_type=${encodeURIComponent(completeProductInfo.product.product_type)}&product_id=${job.productId}`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                if (processResponse.ok) {
+                  processSequence = await processResponse.json();
+                  console.log(`🔄 Process sequence for job ${job.id}:`, processSequence);
+                }
+              } catch (error) {
+                console.error(`Error fetching process sequence for job ${job.id}:`, error);
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching product info for job ${job.id}:`, error);
+          }
+
+          const product = completeProductInfo?.product || completeProductInfo || {};
+          
+          // Return job with complete product information and process sequence
+          return {
+            ...job,
+            // Job ID mapping (ensure we have the correct job ID)
+            id: job.id.toString(),
+            job_card_id: job.jobNumber || `JC-${job.id}`,
+            // Complete product information from API
+            product_name: product.name || job.productName || 'N/A',
+            product_item_code: product.product_item_code || job.productCode || job.sku || 'N/A',
+            product_type: product.product_type || job.productType || 'Offset',
+            product_brand: product.brand || job.brand || 'N/A',
+            product_material: product.material_name || job.materialName || 'N/A',
+            product_gsm: product.gsm || job.gsm || 0,
+            product_fsc: product.fsc || job.fsc || 'N/A',
+            product_fsc_claim: product.fsc_claim || job.fscClaim || 'N/A',
+            product_color: product.color_specifications || product.color || job.colorSpecifications || 'N/A',
+            product_remarks: product.remarks || job.remarks || '',
+            product_category: product.category_name || job.categoryName || 'N/A',
+            due_date: job.dueDate, // Add due date mapping
+            // Additional complete information
+            customer_name: job.customerName || job.companyName || 'N/A',
+            customer_email: job.customerEmail || 'N/A',
+            customer_phone: job.customerPhone || 'N/A',
+            customer_address: job.customerAddress || 'N/A',
+            po_number: job.poNumber || 'N/A',
+            delivery_address: job.delivery_address || 'N/A',
+            special_instructions: job.special_instructions || '',
+            assigned_designer_name: job.assigned_designer_name || 'N/A',
+            // Process sequence information
+            process_sequence: processSequence || {
+              id: null,
+              productType: product.product_type || 'Offset',
+              steps: [
+                { id: 1, name: 'Designing', sequenceOrder: 1, isRequired: true, estimatedHours: 4 },
+                { id: 2, name: 'Die Making', sequenceOrder: 2, isRequired: true, estimatedHours: 2 },
+                { id: 3, name: 'Plate Making', sequenceOrder: 3, isRequired: true, estimatedHours: 1 }
+              ]
+            },
+            // Prepress workflow information
+            prepress_status: job.prepress_status || 'PENDING',
+            workflow_progress: job.workflow_progress || {
+              stages: [
+                { key: 'designing', label: 'Designing', status: 'pending' as const },
+                { key: 'die_making', label: 'Die Making', status: 'pending' as const },
+                { key: 'plate_making', label: 'Plate Making', status: 'pending' as const }
+              ],
+              currentStage: 'designing',
+              progress: 0
+            }
+          };
+        }));
+        
+        setJobs(designerJobsWithCompleteInfo);
+        setFilteredJobs(designerJobsWithCompleteInfo);
         
         // Calculate stats
         const jobStats = {
-          total_jobs: data.data.jobs.length,
-          assigned_jobs: data.data.jobs.filter((job: DesignerJob) => job.status === 'ASSIGNED').length,
-          in_progress_jobs: data.data.jobs.filter((job: DesignerJob) => job.status === 'IN_PROGRESS').length,
-          completed_jobs: data.data.jobs.filter((job: DesignerJob) => job.status === 'COMPLETED').length,
-          paused_jobs: data.data.jobs.filter((job: DesignerJob) => job.status === 'PAUSED').length,
-          hod_review_jobs: data.data.jobs.filter((job: DesignerJob) => job.status === 'HOD_REVIEW').length
+          total_jobs: designerJobsWithCompleteInfo.length,
+          assigned_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'ASSIGNED').length,
+          in_progress_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'IN_PROGRESS').length,
+          completed_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'COMPLETED').length,
+          paused_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'PAUSED').length,
+          hod_review_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'HOD_REVIEW').length
         };
         setStats(jobStats);
         
-        console.log('✅ Jobs loaded successfully:', jobStats);
-        console.log('✅ Current jobs state:', data.data.jobs);
-        console.log('✅ Looking for JC-1757336985212:', data.data.jobs.find((job: any) => job.job_card_id === 'JC-1757336985212'));
+        console.log('✅ Jobs loaded successfully with complete information:', jobStats);
+        console.log('✅ Current jobs state:', designerJobsWithCompleteInfo);
+        console.log('✅ Looking for JC-1757336985212:', designerJobsWithCompleteInfo.find((job: any) => job.jobNumber === 'JC-1757336985212'));
       } else {
         const errorText = await response.text();
         console.error('❌ API Error Response:', errorText);
@@ -237,8 +380,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     if (searchTerm) {
       filtered = filtered.filter(job =>
         job.job_card_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.product_name.toLowerCase().includes(searchTerm.toLowerCase())
+        job.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.productName.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -257,7 +400,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const updateJobStatus = async (jobId: string, status: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/${jobId}/status`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -298,6 +441,13 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
       socket.on('job_assigned_to_me', (data) => {
         console.log('📨 Designer Dashboard: Received job_assigned_to_me event:', data);
         toast.success(`You have been assigned job: ${data.jobCardId}`);
+        loadJobs();
+      });
+
+      // Listen for process sequence updates
+      socket.on('process_sequence_updated', (data) => {
+        console.log('⚙️ Designer Dashboard: Received process_sequence_updated event:', data);
+        toast.success(`Process sequence updated for job: ${data.jobId}`);
         loadJobs();
       });
 
@@ -392,140 +542,278 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     }
   };
 
+  const handleEditProcessSequence = (job: DesignerJob) => {
+    console.log('Opening process sequence modal for job:', job);
+    console.log('Job ID:', job.id, 'Job Card ID:', job.job_card_id);
+    setSelectedJobForProcessEdit(job);
+    setIsProcessSequenceModalOpen(true);
+  };
+
+
+  const handleSaveProcessSequence = (steps: any[]) => {
+    console.log('Process sequence saved:', steps);
+    toast.success('Process sequence updated successfully');
+    
+    // Update the job process sequence in state
+    if (selectedJobForProcessEdit) {
+      setJobProcessSequences(prev => ({
+        ...prev,
+        [selectedJobForProcessEdit.id]: {
+          ...prev[selectedJobForProcessEdit.id],
+          steps: steps,
+          lastUpdated: new Date().toISOString()
+        }
+      }));
+    }
+    
+    // Reload jobs to get updated data
+    loadJobs();
+  };
+
+  const fetchJobProcessSequence = async (jobId: string) => {
+    try {
+      console.log('🔄 Fetching process sequence for job:', jobId);
+      const response = await processSequencesAPI.getForJob(jobId);
+      console.log('✅ Process sequence fetched:', response);
+      
+      const processSequence = (response as any).process_sequence || response;
+      
+      setJobProcessSequences(prev => ({
+        ...prev,
+        [jobId]: processSequence
+      }));
+      
+      return processSequence;
+    } catch (error) {
+      console.error('❌ Error fetching process sequence:', error);
+      return null;
+    }
+  };
+
+  const getDaysUntilDue = (dueDate: string) => {
+    const due = new Date(dueDate);
+    const today = new Date();
+    const diffTime = due.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
   return (
     <MainLayout
       currentPage="designer-dashboard"
       onNavigate={handleNavigate}
       onLogout={handleLogout}
       isLoading={isLoading}
-      pageTitle="Designer Dashboard"
-      pageDescription="Manage your design assignments and track progress"
     >
-      <div className="p-6 bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-full">
-        {/* Connection Status Badge */}
-        <div className="mb-6">
-          <Badge variant="outline" className={`${isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        {/* Beautiful Enhanced Header Section */}
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+          className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 p-8 shadow-2xl"
+        >
+          <div className="absolute inset-0 bg-black/10"></div>
+          <div className="relative z-10">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              <div className="space-y-3">
+                <h1 className="text-4xl font-bold text-white tracking-tight">Designer Dashboard</h1>
+                <p className="text-blue-100 text-lg">Manage your design assignments and track progress</p>
+                <div className="flex items-center gap-4 mt-4">
+                  <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
+                    <User className="h-4 w-4" />
+                    <span className="text-sm font-medium">{user?.firstName} {user?.lastName}</span>
+                  </div>
+                  <Badge className={`${isConnected ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white border-0`}>
             {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
           </Badge>
-          <Button variant="outline" size="sm" onClick={loadJobs} className="ml-4">
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button 
+                  onClick={loadJobs} 
+                  variant="secondary" 
+                  size="sm"
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                >
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh Jobs
           </Button>
-          <Button variant="outline" size="sm" onClick={() => {
-            console.log('🔄 Manual refresh triggered');
-            console.log('🔌 Socket status:', isConnected ? 'Connected' : 'Disconnected');
-            console.log('🔌 Socket instance:', socket ? 'Present' : 'Missing');
-            loadJobs();
-          }} className="ml-2">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Force Refresh
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => {
-            console.log('🧪 Testing API call...');
-            const user = JSON.parse(localStorage.getItem('user') || '{}');
-            const token = localStorage.getItem('authToken');
-            console.log('🧪 User:', user);
-            console.log('🧪 Token:', token ? 'Present' : 'Missing');
-            console.log('🧪 API URL:', `${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-assignment/designer/${user.id}?limit=100`);
-            loadJobs();
-          }} className="ml-2">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Test API
+                <Button 
+                  onClick={() => onNavigate('profile')} 
+                  variant="secondary" 
+                  size="sm"
+                  className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
+                >
+                  <User className="h-4 w-4 mr-2" />
+                  Profile
           </Button>
         </div>
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
-          <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-            <CardContent className="p-6">
+            </div>
+          </div>
+          {/* Decorative elements */}
+          <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-20 translate-x-20"></div>
+          <div className="absolute bottom-0 left-0 w-32 h-32 bg-white/10 rounded-full translate-y-16 -translate-x-16"></div>
+          <div className="absolute top-1/2 right-1/4 w-2 h-2 bg-white/30 rounded-full"></div>
+          <div className="absolute top-1/3 left-1/3 w-1 h-1 bg-white/40 rounded-full"></div>
+        </motion.div>
+
+        <div className="p-6 space-y-8">
+        {/* Enhanced Stats Cards */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"
+        >
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-blue-100 text-sm font-medium">Total Jobs</p>
                   <p className="text-3xl font-bold">{stats.total_jobs}</p>
                 </div>
                 <Package className="h-8 w-8 text-blue-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-            <CardContent className="p-6">
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-100 text-sm font-medium">In Progress</p>
+                      <p className="text-emerald-100 text-sm font-medium">In Progress</p>
                   <p className="text-3xl font-bold">{stats.in_progress_jobs}</p>
                 </div>
-                <Play className="h-8 w-8 text-green-200" />
+                    <Play className="h-8 w-8 text-emerald-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
-            <CardContent className="p-6">
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-yellow-100 text-sm font-medium">Assigned</p>
+                      <p className="text-amber-100 text-sm font-medium">Assigned</p>
                   <p className="text-3xl font-bold">{stats.assigned_jobs}</p>
                 </div>
-                <Clock className="h-8 w-8 text-yellow-200" />
+                    <Clock className="h-8 w-8 text-amber-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-            <CardContent className="p-6">
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-violet-500 via-violet-600 to-violet-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-purple-100 text-sm font-medium">HOD Review</p>
+                      <p className="text-violet-100 text-sm font-medium">HOD Review</p>
                   <p className="text-3xl font-bold">{stats.hod_review_jobs}</p>
                 </div>
-                <Eye className="h-8 w-8 text-purple-200" />
+                    <Eye className="h-8 w-8 text-violet-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <Card className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white">
-            <CardContent className="p-6">
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-green-500 via-green-600 to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-emerald-100 text-sm font-medium">Completed</p>
+                      <p className="text-green-100 text-sm font-medium">Completed</p>
                   <p className="text-3xl font-bold">{stats.completed_jobs}</p>
                 </div>
-                <CheckCircle className="h-8 w-8 text-emerald-200" />
+                    <CheckCircle className="h-8 w-8 text-green-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
+          </motion.div>
 
-          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-            <CardContent className="p-6">
+          <motion.div
+            whileHover={{ scale: 1.05, y: -5 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+              <CardContent className="p-6 relative">
+                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                <div className="relative z-10">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-orange-100 text-sm font-medium">Paused</p>
                   <p className="text-3xl font-bold">{stats.paused_jobs}</p>
                 </div>
                 <Pause className="h-8 w-8 text-orange-200" />
+                  </div>
               </div>
             </CardContent>
           </Card>
-        </div>
+          </motion.div>
+        </motion.div>
 
-        {/* Filters */}
-        <Card className="mb-6">
+        {/* Enhanced Filters */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.4 }}
+        >
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
           <CardContent className="p-6">
-            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex flex-col lg:flex-row gap-6">
               <div className="flex-1">
+                  <Label htmlFor="search" className="text-sm font-semibold text-gray-700 mb-2 block">Search Jobs</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder="Search jobs..."
+                      id="search"
+                      placeholder="Search by job number, product name, or customer..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                      className="pl-10 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
                   />
                 </div>
               </div>
+                <div className="flex-1">
+                  <Label htmlFor="status-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Status</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by status" />
+                    <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
+                      <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
@@ -536,9 +824,12 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                 </SelectContent>
               </Select>
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="priority-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Priority</Label>
               <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-full sm:w-48">
-                  <SelectValue placeholder="Filter by priority" />
+                    <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
+                      <SelectValue placeholder="All Priorities" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Priority</SelectItem>
@@ -548,19 +839,56 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   <SelectItem value="CRITICAL">Critical</SelectItem>
                 </SelectContent>
               </Select>
+                </div>
             </div>
           </CardContent>
         </Card>
+        </motion.div>
 
-        {/* Jobs List */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>My Jobs ({filteredJobs.length})</span>
-              <Badge variant="outline">
-                {filteredJobs.filter(job => job.status === 'IN_PROGRESS').length} Active
+        {/* Enhanced Jobs List */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.6 }}
+        >
+          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <div className="p-2 bg-blue-100 rounded-lg">
+                    <Package className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <span className="text-gray-900">My Jobs</span>
+                    <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-800">
+                      {filteredJobs.length}
               </Badge>
+                  </div>
             </CardTitle>
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                    {filteredJobs.filter(job => job.status === 'IN_PROGRESS').length} Active
+                  </Badge>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (expandedJobId) {
+                        setExpandedJobId(null);
+                      } else {
+                        // Expand first job if none are expanded
+                        if (filteredJobs.length > 0) {
+                          setExpandedJobId(filteredJobs[0].prepress_job_id);
+                        }
+                      }
+                    }}
+                    className="bg-white/50 hover:bg-white/80 border-gray-200"
+                  >
+                    <Eye className="w-4 h-4 mr-1" />
+                    {expandedJobId ? 'Collapse All' : 'Expand First'}
+                  </Button>
+                </div>
+              </div>
           </CardHeader>
           <CardContent>
             {filteredJobs.length === 0 ? (
@@ -571,71 +899,204 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredJobs.map((job) => (
+                {filteredJobs.map((job, index) => (
                   <motion.div
                     key={job.prepress_job_id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="border rounded-lg p-6 hover:shadow-md transition-shadow"
+                    transition={{ delay: index * 0.05 }}
+                    whileHover={{ scale: 1.02, y: -2 }}
+                    className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-xl p-6 hover:shadow-xl hover:bg-white/80 transition-all duration-300"
                   >
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-3">
-                          <h3 className="text-lg font-semibold text-gray-900">
-                            {job.job_card_number}
+                        {/* Enhanced Compact Header */}
+                        <div className="flex items-center gap-4 mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-blue-100 rounded-lg">
+                              <Package className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <h3 className="font-bold text-xl text-gray-900">
+                              {job.job_card_id || job.job_card_number}
                           </h3>
-                          <Badge className={statusColors[job.status]}>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${statusColors[job.status]} shadow-sm`}>
                             {getStatusIcon(job.status)}
-                            <span className="ml-1">{job.status.replace('_', ' ')}</span>
+                              <span className="ml-1 font-medium">{job.status.replace('_', ' ')}</span>
                           </Badge>
-                          <Badge className={priorityColors[job.priority]}>
+                            <Badge className={`${priorityColors[job.priority]} shadow-sm`}>
                             {getPriorityIcon(job.priority)}
-                            <span className="ml-1">{job.priority}</span>
+                              <span className="ml-1 font-medium">{job.priority}</span>
                           </Badge>
+                            {getDaysUntilDue(job.due_date) <= 2 && (
+                              <Badge className="bg-red-500 text-white border-0 shadow-sm animate-pulse">
+                                <Zap className="h-3 w-3 mr-1" />
+                                URGENT
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {/* Compact Summary View */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
                           <div>
-                            <p className="text-sm text-gray-500">Company</p>
-                            <p className="font-medium">{job.company_name}</p>
+                            <span className="font-medium">Product:</span> {job.product_item_code}
                           </div>
                           <div>
-                            <p className="text-sm text-gray-500">Product</p>
-                            <p className="font-medium">{job.product_name} ({job.product_item_code})</p>
+                            <span className="font-medium">Customer:</span> {job.customer_name || job.company_name}
                           </div>
                           <div>
-                            <p className="text-sm text-gray-500">Quantity</p>
-                            <p className="font-medium">{job.quantity.toLocaleString()}</p>
+                            <span className="font-medium">Quantity:</span> {job.quantity.toLocaleString()} units
+                          </div>
+                          <div>
+                            <span className="font-medium">Due Date:</span> 
+                            <span className={getDaysUntilDue(job.dueDate) <= 2 ? 'text-red-600 font-medium ml-1' : 'ml-1'}>
+                              {formatDate(job.dueDate)} ({getDaysUntilDue(job.dueDate)}d)
+                            </span>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <p className="text-sm text-gray-500">Due Date</p>
-                            <p className="font-medium">{formatDate(job.due_date)}</p>
+                        {/* Expandable Details */}
+                        {expandedJobId === job.prepress_job_id && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="space-y-3"
+                          >
+                            {/* Complete Product Details */}
+                            <div className="bg-gray-50 p-3 rounded-lg">
+                              <h4 className="font-medium text-gray-800 mb-2">Product Specifications</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                                <div><span className="font-medium">Name:</span> {job.product_name}</div>
+                                <div><span className="font-medium">Brand:</span> {job.product_brand}</div>
+                                <div><span className="font-medium">Type:</span> {job.product_type}</div>
+                                <div><span className="font-medium">Material:</span> {job.product_material}</div>
+                                <div><span className="font-medium">GSM:</span> {job.product_gsm} g/m²</div>
+                                <div><span className="font-medium">Category:</span> {job.product_category}</div>
+                                <div><span className="font-medium">FSC:</span> {job.product_fsc}</div>
+                                <div><span className="font-medium">FSC Claim:</span> {job.product_fsc_claim}</div>
+                                <div><span className="font-medium">Color:</span> {job.product_color}</div>
                           </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Delivery Date</p>
-                            <p className="font-medium">{formatDate(job.delivery_date)}</p>
+                              {job.product_remarks && job.product_remarks !== 'N/A' && (
+                                <div className="mt-2 text-sm">
+                                  <span className="font-medium">Remarks:</span> {job.product_remarks}
                           </div>
+                              )}
                         </div>
+
+                            {/* Customer Information */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                                <div><span className="font-medium">Name:</span> {job.customer_name || job.company_name}</div>
+                                {job.customer_email && job.customer_email !== 'N/A' && (
+                                  <div><span className="font-medium">Email:</span> {job.customer_email}</div>
+                                )}
+                                {job.customer_phone && job.customer_phone !== 'N/A' && (
+                                  <div><span className="font-medium">Phone:</span> {job.customer_phone}</div>
+                                )}
+                                {job.customer_address && job.customer_address !== 'N/A' && (
+                                  <div className="col-span-2">
+                                    <span className="font-medium">Address:</span> {job.customer_address}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Job Details */}
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                              <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                                <div><span className="font-medium">Quantity:</span> {job.quantity} units</div>
+                                <div><span className="font-medium">PO Number:</span> {job.po_number}</div>
+                                <div><span className="font-medium">Priority:</span> 
+                                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                                    job.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
+                                    job.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                                    {job.priority}
+                                  </span>
+                                </div>
+                                {job.delivery_address && job.delivery_address !== 'N/A' && (
+                                  <div className="col-span-2">
+                                    <span className="font-medium">Delivery Address:</span> {job.delivery_address}
+                                  </div>
+                                )}
+                                {job.special_instructions && job.special_instructions !== 'N/A' && (
+                                  <div className="col-span-2">
+                                    <span className="font-medium">Special Instructions:</span> {job.special_instructions}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Process Sequence Display */}
+                            {job.process_sequence && (
+                              <div className="p-2 bg-green-50 rounded-lg border border-green-200">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
+                                  <span className="text-xs text-green-600">Product Type: {job.product_type}</span>
+                                </div>
+                                <div className="text-xs text-green-600 mb-2">
+                                  Process steps configured for this product type. You can modify as needed.
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {job.process_sequence.steps.map((step, idx) => (
+                                    <Badge key={step.id} variant="outline" className="text-xs">
+                                      {step.name} ({step.estimatedHours}h)
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Prepress Workflow Status */}
+                            {job.prepress_status && (
+                              <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                                <h4 className="text-sm font-medium text-blue-800 mb-2">Prepress Workflow</h4>
+                                <div className="text-xs text-blue-600">
+                                  Current Status: {job.prepress_status} | Progress: {job.workflow_progress?.progress || 0}%
+                                </div>
+                              </div>
+                            )}
 
                         {job.customer_notes && (
-                          <div className="mb-4">
-                            <p className="text-sm text-gray-500">Customer Notes</p>
-                            <p className="text-sm bg-gray-50 p-3 rounded">{job.customer_notes}</p>
+                              <div className="mb-2">
+                                <span className="text-sm font-medium text-gray-700">Customer Notes:</span>
+                                <p className="text-sm text-gray-600">{job.customer_notes}</p>
                           </div>
+                            )}
+                          </motion.div>
                         )}
 
-                        {job.special_instructions && (
-                          <div className="mb-4">
-                            <p className="text-sm text-gray-500">Special Instructions</p>
-                            <p className="text-sm bg-blue-50 p-3 rounded">{job.special_instructions}</p>
+                        {job.progress > 0 && (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm text-gray-600">Progress</span>
+                              <span className="text-sm font-medium">{job.progress}%</span>
+                            </div>
+                            <Progress value={job.progress} className="h-2" />
                           </div>
                         )}
                       </div>
 
-                      <div className="flex flex-col space-y-2 ml-4">
+                      <div className="flex flex-col gap-3 ml-4 min-w-[140px]">
+                        {/* Enhanced Action Buttons */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setExpandedJobId(expandedJobId === job.prepress_job_id ? null : job.prepress_job_id);
+                          }}
+                          className="bg-white/50 hover:bg-white/80 border-gray-200 hover:border-blue-300 transition-all duration-200"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          {expandedJobId === job.prepress_job_id ? 'Collapse' : 'View Details'}
+                        </Button>
+                        
                         <Button
                           size="sm"
                           onClick={() => {
@@ -643,17 +1104,20 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                             setNewStatus(job.status);
                             setIsStatusDialogOpen(true);
                           }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
                         >
                           <Edit className="h-4 w-4 mr-2" />
                           Update Status
                         </Button>
+                        
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => handleViewJobDetails(job)}
+                          onClick={() => handleEditProcessSequence(job)}
+                          className="bg-white/50 hover:bg-white/80 border-gray-200 hover:border-purple-300 transition-all duration-200"
                         >
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
+                          <Settings className="h-4 w-4 mr-2" />
+                          Edit Process
                         </Button>
                       </div>
                     </div>
@@ -663,7 +1127,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             )}
           </CardContent>
         </Card>
-      </div>
+        </motion.div>
 
       {/* Status Update Dialog */}
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
@@ -780,7 +1244,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-500">Due Date</Label>
-                          <p className="font-medium">{formatDate(jobDetailsData.due_date)}</p>
+                          <p className="font-medium">{formatDate(jobDetailsData.dueDate)}</p>
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-500">Last Updated</Label>
@@ -900,7 +1364,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div>
-                        <Label className="text-sm font-medium text-gray-500">Company Name</Label>
+                        <Label className="text-sm font-medium text-gray-500">Customer Name</Label>
                         <p className="text-xl font-bold text-blue-600">{jobDetailsData.company_name}</p>
                       </div>
                       <Separator />
@@ -934,15 +1398,88 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     </CardHeader>
                     <CardContent>
                       {(() => {
-                        // Extract product type from product name or item code - this might need adjustment based on your data structure
-                        const productType = jobDetailsData.product_name?.includes('Offset') ? 'Offset' : 
-                                           jobDetailsData.product_name?.includes('Digital') ? 'Digital' :
-                                           jobDetailsData.product_name?.includes('Thermal') ? 'Thermal' :
-                                           jobDetailsData.product_name?.includes('Woven') ? 'Woven' :
-                                           jobDetailsData.product_name?.includes('PFL') ? 'PFL' :
-                                           jobDetailsData.product_name?.includes('Heat Transfer') ? 'Heat Transfer Label' :
-                                           jobDetailsData.product_name?.includes('Leather') ? 'Leather Patch' : 'Offset';
+                        const savedProcessSequence = jobProcessSequences[jobDetailsData.id];
                         
+                        if (savedProcessSequence && savedProcessSequence.steps) {
+                          // Show saved process sequence
+                          const selectedSteps = savedProcessSequence.steps.filter((step: any) => step.isSelected);
+                          const totalSteps = savedProcessSequence.steps.length;
+                          
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="text-sm text-gray-600">
+                                    Product Type: <span className="font-semibold text-blue-600">{savedProcessSequence.product_type}</span>
+                                  </p>
+                                  {savedProcessSequence.lastUpdated && (
+                                    <p className="text-xs text-green-600 mt-1">
+                                      Last Updated: {new Date(savedProcessSequence.lastUpdated).toLocaleString()}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <Badge variant="outline">
+                                    {selectedSteps.length} Selected
+                                  </Badge>
+                                  <Badge variant="secondary">
+                                    {totalSteps} Total Steps
+                                  </Badge>
+                                </div>
+                              </div>
+                              
+                              <div className="grid gap-2">
+                                {savedProcessSequence.steps.map((step: any, index: number) => (
+                                  <div 
+                                    key={step.id}
+                                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                                      step.isSelected
+                                        ? 'bg-green-50 border-green-200' 
+                                        : 'bg-gray-50 border-gray-200'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                                        step.isSelected
+                                          ? 'bg-green-600 text-white' 
+                                          : 'bg-gray-400 text-white'
+                                      }`}>
+                                        {step.order}
+                                      </div>
+                                      <span className={`font-medium ${step.isSelected ? 'text-green-800' : 'text-gray-500'}`}>
+                                        {step.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {step.isSelected && (
+                                        <Badge variant="default" className="text-xs bg-green-600">
+                                          Selected
+                                        </Badge>
+                                      )}
+                                      {step.isCompulsory && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          Required
+                                        </Badge>
+                                      )}
+                                      <Badge variant="outline" className="text-xs">
+                                        Step {step.order}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              
+                              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <p className="text-sm text-blue-800">
+                                  <strong>Note:</strong> This shows the current process sequence configuration for this job. 
+                                  You can edit it using the "Edit Process" button.
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          // Show default process sequence
+                          const productType = jobDetailsData.product_type || 'Offset';
                         const processSequence = getProcessSequence(productType);
                         
                         if (!processSequence) {
@@ -998,8 +1535,16 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                 </div>
                               ))}
                             </div>
+                              
+                              <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                <p className="text-sm text-yellow-800">
+                                  <strong>Note:</strong> This shows the default process sequence. 
+                                  No custom configuration has been saved for this job yet.
+                                </p>
+                            </div>
                           </div>
                         );
+                        }
                       })()}
                     </CardContent>
                   </Card>
@@ -1009,6 +1554,18 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Process Sequence Modal */}
+      <ProcessSequenceModal
+        isOpen={isProcessSequenceModalOpen}
+        onClose={() => setIsProcessSequenceModalOpen(false)}
+        jobId={selectedJobForProcessEdit?.id || ''}
+        jobCardId={selectedJobForProcessEdit?.job_card_id || selectedJobForProcessEdit?.job_card_number || ''}
+        productType={selectedJobForProcessEdit?.product_type || 'Offset'}
+        onSave={handleSaveProcessSequence}
+      />
+        </div>
+      </div>
     </MainLayout>
   );
 };

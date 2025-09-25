@@ -1,6 +1,13 @@
 export type PrepressStatus = 
   | 'PENDING' 
   | 'ASSIGNED' 
+  | 'DESIGNING' 
+  | 'DESIGNING_COMPLETED'
+  | 'DIE_MAKING' 
+  | 'DIE_MAKING_COMPLETED'
+  | 'PLATE_MAKING' 
+  | 'PLATE_MAKING_COMPLETED'
+  | 'PREPRESS_COMPLETED'
   | 'IN_PROGRESS' 
   | 'PAUSED' 
   | 'HOD_REVIEW' 

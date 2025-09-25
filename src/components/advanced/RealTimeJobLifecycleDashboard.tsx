@@ -120,7 +120,7 @@ export const RealTimeJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
       console.log('🔄 Loading job lifecycle data...');
       
       // Load all jobs with lifecycle data
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-lifecycle/all`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -148,7 +148,7 @@ export const RealTimeJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
   const loadStats = async () => {
     try {
       console.log('🔄 Loading dashboard stats...');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-lifecycle/stats/dashboard`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/stats/dashboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

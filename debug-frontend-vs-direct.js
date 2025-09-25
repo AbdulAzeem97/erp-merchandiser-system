@@ -4,7 +4,7 @@ console.log('🔍 Debugging Frontend vs Direct API Request');
 console.log('='.repeat(60));
 
 async function debugRequests() {
-  const email = 'admin@horizonsourcing.com';
+  const email = 'admin@erp.local';
   const password = 'password123';
   
   console.log('📤 Test Data:');
@@ -16,7 +16,7 @@ async function debugRequests() {
   // Test 1: Direct API call (like our working test)
   console.log('\n🧪 Test 1: Direct API Call (Working)');
   try {
-    const response1 = await fetch('http://192.168.2.56:3001/api/auth/login', {
+    const response1 = await fetch('http://localhost:3001/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -37,13 +37,13 @@ async function debugRequests() {
   // Test 2: Frontend-like request with additional headers
   console.log('\n🧪 Test 2: Frontend-like Request (With Headers)');
   try {
-    const response2 = await fetch('http://192.168.2.56:3001/api/auth/login', {
+    const response2 = await fetch('http://localhost:3001/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Origin': 'http://192.168.2.56:8080',
-        'Referer': 'http://192.168.2.56:8080/',
+        'Origin': 'http://localhost:8080',
+        'Referer': 'http://localhost:8080/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       },
       body: JSON.stringify({ email, password })
@@ -78,7 +78,7 @@ async function debugRequests() {
   
   for (const pwd of passwordVariations) {
     try {
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

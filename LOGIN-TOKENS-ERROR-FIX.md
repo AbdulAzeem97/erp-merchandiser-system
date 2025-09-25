@@ -59,7 +59,7 @@ Confirmed backend returns correct structure:
   "user": {
     "id": "96f0200a-ebc9-4946-8955-d67c30c88827",
     "username": "admin",
-    "email": "admin@horizonsourcing.com",
+    "email": "admin@erp.local",
     "first_name": "System",
     "last_name": "Administrator",
     "role": "ADMIN",
@@ -74,7 +74,7 @@ Confirmed backend returns correct structure:
 ### 🧪 **Testing Results:**
 
 #### ✅ **Backend API Test:**
-- **URL:** `http://192.168.2.56:3001/api/auth/login`
+- **URL:** `http://localhost:3001/api/auth/login`
 - **Status:** ✅ 200 OK
 - **Response:** Valid JSON with `token` property
 - **Structure:** Correct user and token data
@@ -100,7 +100,7 @@ Confirmed backend returns correct structure:
 
 #### **Option 3: Use Incognito/Private Mode**
 1. Open a new incognito/private browser window
-2. Navigate to `http://192.168.2.56:8080`
+2. Navigate to `http://localhost:8080`
 3. Try logging in
 
 ### 🔧 **Testing Tools Created:**
@@ -122,7 +122,7 @@ Confirmed backend returns correct structure:
 ### 🎯 **Login Credentials:**
 
 **Test with these credentials:**
-- **Email:** `admin@horizonsourcing.com`
+- **Email:** `admin@erp.local`
 - **Password:** `password123`
 
 **Or any other user with password:** `password123`

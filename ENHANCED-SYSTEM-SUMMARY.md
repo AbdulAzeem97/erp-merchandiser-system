@@ -324,7 +324,7 @@ npm run dev:full
 - **Startup Script**: `start-enhanced-system.ps1`
 
 ### **Login Credentials**
-- **Admin**: admin@horizonsourcing.com / admin123
+- **Admin**: admin@erp.local / admin123
 - **HoM**: sarah.chen@horizonsourcing.com / hom123
 - **HoP**: mike.rodriguez@horizonsourcing.com / hop123
 - **HOD Prepress**: alex.kumar@horizonsourcing.com / hod123

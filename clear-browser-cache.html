@@ -1,97 +1,79 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clear Browser Cache</title>
+    <title>Clear Browser Cache - ERP System</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        button {
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-        }
-        button:hover {
-            background-color: #c82333;
-        }
-        .info {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
-        }
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .success { color: #28a745; font-weight: bold; }
+        .info { color: #17a2b8; }
+        .warning { color: #ffc107; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 10px 5px; }
+        button:hover { background: #0056b3; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🧹 Clear Browser Cache</h1>
+        <h1>🌐 ERP System Network Access</h1>
+        
+        <div class="success">
+            <h2>✅ Network Configuration Complete!</h2>
+            <p>Your ERP system is now configured for network access.</p>
+        </div>
         
         <div class="info">
-            <strong>💡 Instructions:</strong><br>
-            1. Click the button below to clear localStorage<br>
-            2. Then press <strong>Ctrl+Shift+R</strong> (or <strong>Cmd+Shift+R</strong> on Mac) to hard refresh<br>
-            3. This will clear any cached JavaScript that might be causing the "tokens" error
+            <h3>📱 Access URLs:</h3>
+            <ul>
+                <li><strong>Frontend:</strong> <a href="http://localhost:8080" target="_blank">http://localhost:8080</a></li>
+                <li><strong>Backend:</strong> <a href="http://localhost:5001/health" target="_blank">http://localhost:5001/health</a></li>
+            </ul>
         </div>
-
-        <button onclick="clearCache()">🗑️ Clear Local Storage & Cache</button>
         
-        <div id="result"></div>
+        <div class="warning">
+            <h3>⚠️ If Login Still Doesn't Work:</h3>
+            <p>Your browser might be caching the old configuration. Try these steps:</p>
+            <ol>
+                <li><strong>Hard Refresh:</strong> Press <kbd>Ctrl + F5</kbd> (Windows) or <kbd>Cmd + Shift + R</kbd> (Mac)</li>
+                <li><strong>Clear Cache:</strong> Press <kbd>Ctrl + Shift + Delete</kbd> and clear browser cache</li>
+                <li><strong>Incognito Mode:</strong> Try opening in a private/incognito window</li>
+                <li><strong>Different Browser:</strong> Try Chrome, Firefox, or Edge</li>
+            </ol>
+        </div>
+        
+        <div>
+            <h3>🔧 Quick Actions:</h3>
+            <button onclick="window.open('http://localhost:8080', '_blank')">Open ERP System</button>
+            <button onclick="window.open('http://localhost:5001/health', '_blank')">Check Backend Health</button>
+            <button onclick="location.reload(true)">Hard Refresh This Page</button>
+        </div>
+        
+        <div class="info">
+            <h3>📋 Troubleshooting:</h3>
+            <ul>
+                <li>Make sure both servers are running (check terminal)</li>
+                <li>Ensure devices are on the same WiFi network (192.168.2.x)</li>
+                <li>Check Windows Firewall settings if needed</li>
+                <li>Try accessing from your phone or another computer</li>
+            </ul>
+        </div>
     </div>
-
+    
     <script>
-        function clearCache() {
-            try {
-                // Clear localStorage
-                localStorage.clear();
-                console.log('✅ localStorage cleared');
-                
-                // Clear sessionStorage
-                sessionStorage.clear();
-                console.log('✅ sessionStorage cleared');
-                
-                // Show result
-                document.getElementById('result').innerHTML = `
-                    <div style="background-color: #d4edda; color: #155724; padding: 10px; border-radius: 4px; margin-top: 10px;">
-                        ✅ Cache cleared successfully!<br>
-                        Now press <strong>Ctrl+Shift+R</strong> to hard refresh the page.
-                    </div>
-                `;
-                
-                // Try to clear service worker cache if available
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                        for(let registration of registrations) {
-                            registration.unregister();
-                        }
-                    });
-                }
-                
-            } catch (error) {
-                document.getElementById('result').innerHTML = `
-                    <div style="background-color: #f8d7da; color: #721c24; padding: 10px; border-radius: 4px; margin-top: 10px;">
-                        ❌ Error clearing cache: ${error.message}
-                    </div>
-                `;
-            }
-        }
+        console.log('🌐 ERP Network Access Helper');
+        console.log('Frontend: http://localhost:8080');
+        console.log('Backend: http://localhost:5001');
+        
+        // Test backend connection
+        fetch('http://localhost:5001/health')
+            .then(response => response.json())
+            .then(data => {
+                console.log('✅ Backend is accessible:', data);
+                document.querySelector('.success').innerHTML += '<p>✅ Backend connection confirmed!</p>';
+            })
+            .catch(error => {
+                console.error('❌ Backend connection failed:', error);
+                document.querySelector('.warning').innerHTML += '<p>❌ Backend connection failed. Check if servers are running.</p>';
+            });
     </script>
 </body>
 </html>

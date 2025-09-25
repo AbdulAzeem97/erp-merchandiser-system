@@ -19,7 +19,7 @@ async function seedUsers() {
     {
       id: uuidv4(),
       username: 'admin',
-      email: 'admin@horizonsourcing.com',
+      email: 'admin@erp.local',
       password: 'admin123',
       first_name: 'System',
       last_name: 'Administrator',

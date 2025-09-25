@@ -55,7 +55,7 @@ Write-Host ""
 Write-Host "👥 Test Users:" -ForegroundColor Cyan
 Write-Host "   • HOD Prepress: hod.prepress@horizonsourcing.com / password123" -ForegroundColor White
 Write-Host "   • Designer: designer@horizonsourcing.com / password123" -ForegroundColor White
-Write-Host "   • Admin: admin@horizonsourcing.com / password123" -ForegroundColor White
+Write-Host "   • Admin: admin@erp.local / password123" -ForegroundColor White
 Write-Host ""
 Write-Host "🎨 UI Features:" -ForegroundColor Cyan
 Write-Host "   • Glass morphism effects with backdrop blur" -ForegroundColor White

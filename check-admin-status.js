@@ -17,7 +17,7 @@ try {
   console.log('📊 Database connected successfully');
   
   // Get admin user with all details
-  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get('admin@horizonsourcing.com');
+  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get('admin@erp.local');
   
   if (admin) {
     console.log('\n👑 Admin user details:');
@@ -29,7 +29,7 @@ try {
     console.log(`\n🔍 Is Active: ${admin.is_active === 1 ? '✅ YES' : '❌ NO'}`);
     
     // Test the exact query used in the backend
-    const backendQuery = db.prepare('SELECT * FROM users WHERE email = ? AND is_active = true').get('admin@horizonsourcing.com');
+    const backendQuery = db.prepare('SELECT * FROM users WHERE email = ? AND is_active = true').get('admin@erp.local');
     console.log(`\n🔍 Backend Query Result: ${backendQuery ? '✅ FOUND' : '❌ NOT FOUND'}`);
     
     if (!backendQuery) {

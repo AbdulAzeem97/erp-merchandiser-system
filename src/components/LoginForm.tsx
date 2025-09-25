@@ -13,7 +13,7 @@ interface LoginFormProps {
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
-  const [email, setEmail] = useState('admin@horizonsourcing.com');
+  const [email, setEmail] = useState('admin@erp.local');
   const [password, setPassword] = useState('admin123');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -121,7 +121,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLoginSuccess }) => {
             <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm text-blue-800 font-medium mb-2">Demo Credentials:</p>
               <p className="text-xs text-blue-700">
-                Email: admin@horizonsourcing.com<br />
+                Email: admin@erp.local<br />
                 Password: admin123
               </p>
             </div>

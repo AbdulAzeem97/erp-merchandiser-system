@@ -33,8 +33,26 @@ interface JobCardData {
 
 export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduct, onBack }) => {
   const [product, setProduct] = useState<ProductMaster | null>(initialProduct || null);
+  
+  // Fetch complete product info when initial product is provided
+  useEffect(() => {
+    if (initialProduct && initialProduct.id) {
+      const fetchCompleteInfo = async () => {
+        try {
+          const completeProductInfo = await productsAPI.getCompleteProductInfo(initialProduct.id);
+          const productToUse = completeProductInfo.product || completeProductInfo || initialProduct;
+          setProduct(productToUse);
+          console.log('Loaded complete product info for initial product:', productToUse);
+        } catch (error) {
+          console.warn('Could not fetch complete product info for initial product:', error);
+          // Keep the initial product as is
+        }
+      };
+      fetchCompleteInfo();
+    }
+  }, [initialProduct]);
   const [jobCardData, setJobCardData] = useState<JobCardData>({
-    productCode: initialProduct?.productItemCode || '',
+    productCode: initialProduct?.product_item_code || '',
     poNumber: '',
     quantity: 0,
     deliveryDate: '',
@@ -60,7 +78,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
     } catch (error) {
       console.error('Failed to fetch process sequence:', error);
       // Fallback to static data
-      const fallbackSequence = PROCESS_SEQUENCES.find(seq => seq.productType === product?.productType);
+      const fallbackSequence = PROCESS_SEQUENCES.find(seq => seq.product_type === product?.product_type);
       console.log('Using fallback sequence:', fallbackSequence);
       setProcessSequence(fallbackSequence);
     } finally {
@@ -76,15 +94,29 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
 
     setIsSearching(true);
     try {
-      // Use the actual API to search for products
+      // First, search for the product by code
       const products = await productsAPI.getAll();
       const foundProduct = products.find(p => p.product_item_code === jobCardData.productCode);
       
       if (foundProduct) {
-        setProduct(foundProduct);
-        // Fetch the process sequence with selected steps
-        await fetchProcessSequence(foundProduct.id);
-        toast.success('Product found and loaded');
+        // Get complete product information including material_name, category_name, etc.
+        try {
+          const completeProductInfo = await productsAPI.getCompleteProductInfo(foundProduct.id);
+          console.log('Complete product info:', completeProductInfo);
+          
+          // Use the complete product info if available, otherwise fall back to basic product
+          const productToUse = completeProductInfo.product || completeProductInfo || foundProduct;
+          setProduct(productToUse);
+          
+          // Fetch the process sequence with selected steps
+          await fetchProcessSequence(foundProduct.id);
+          toast.success('Product found and loaded');
+        } catch (completeInfoError) {
+          console.warn('Could not fetch complete product info, using basic product:', completeInfoError);
+          setProduct(foundProduct);
+          await fetchProcessSequence(foundProduct.id);
+          toast.success('Product found and loaded (basic info)');
+        }
       } else {
         toast.error('Product not found');
       }
@@ -316,7 +348,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                 <div className="grid grid-cols-1 gap-3">
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Product Code</p>
-                    <p className="font-mono text-lg font-semibold text-gray-900">{product?.productItemCode}</p>
+                    <p className="font-mono text-lg font-semibold text-gray-900">{product?.product_item_code}</p>
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">PO Number</p>
@@ -366,7 +398,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                   </div>
                   <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
                     <span className="text-sm font-medium text-gray-600">Material</span>
-                    <Badge variant="secondary" className="bg-green-100 text-green-800">{product?.material}</Badge>
+                    <Badge variant="secondary" className="bg-green-100 text-green-800">{product?.material_name || 'N/A'}</Badge>
                   </div>
                   <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
                     <span className="text-sm font-medium text-gray-600">GSM</span>
@@ -374,13 +406,17 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                   </div>
                   <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
                     <span className="text-sm font-medium text-gray-600">Product Type</span>
-                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">{product?.productType}</Badge>
+                    <Badge variant="secondary" className="bg-purple-100 text-purple-800">{product?.product_type}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <span className="text-sm font-medium text-gray-600">Category</span>
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-800">{product?.category_name || 'N/A'}</Badge>
                   </div>
                 </div>
                 
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-xs font-medium text-blue-700 uppercase tracking-wide mb-2">Color Specification</p>
-                  <p className="text-sm text-blue-800">{product?.color}</p>
+                  <p className="text-sm text-blue-800">{product?.color_specifications || product?.color || 'As per Approved Sample/Artwork'}</p>
                 </div>
                 
                 {product?.remarks && (
@@ -394,8 +430,8 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                   <Badge variant={product?.fsc === 'Yes' ? 'default' : 'secondary'} className="px-3 py-1">
                     FSC: {product?.fsc}
                   </Badge>
-                  {product?.fsc === 'Yes' && product?.fscClaim && (
-                    <Badge variant="outline" className="px-3 py-1">{product?.fscClaim}</Badge>
+                  {product?.fsc === 'Yes' && product?.fsc_claim && (
+                    <Badge variant="outline" className="px-3 py-1">{product?.fsc_claim}</Badge>
                   )}
                 </div>
               </CardContent>
@@ -406,7 +442,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
               <CardHeader className="bg-purple-50">
                 <CardTitle className="flex items-center gap-2 text-purple-800">
                   <User className="w-5 h-5" />
-                  Process Flow - {product?.productType}
+                  Process Flow - {product?.product_type}
                 </CardTitle>
               </CardHeader>
               <CardContent className="pt-4">
@@ -581,7 +617,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                       <span className="font-medium text-green-800">Product Found</span>
                     </div>
                     <p className="text-sm text-green-700">
-                      {product.productItemCode} - {product.brand} ({product.productType})
+                      {product.product_item_code} - {product.brand} ({product.product_type})
                     </p>
                   </div>
                 )}
@@ -732,7 +768,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                 <CardContent className="space-y-3">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Product Code</p>
-                    <p className="font-mono text-sm">{product.productItemCode}</p>
+                    <p className="font-mono text-sm">{product.product_item_code}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Brand</p>
@@ -760,8 +796,8 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                     <Badge variant={product.fsc === 'Yes' ? 'default' : 'secondary'}>
                       FSC: {product.fsc}
                     </Badge>
-                    {product.fsc === 'Yes' && product.fscClaim && (
-                      <Badge variant="outline">{product.fscClaim}</Badge>
+                    {product.fsc === 'Yes' && product.fsc_claim && (
+                      <Badge variant="outline">{product.fsc_claim}</Badge>
                     )}
                   </div>
                 </CardContent>
@@ -771,7 +807,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <User className="w-5 h-5" />
-                    Process Flow - {product.productType}
+                    Process Flow - {product.product_type}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

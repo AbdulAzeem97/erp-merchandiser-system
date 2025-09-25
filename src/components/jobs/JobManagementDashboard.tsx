@@ -134,7 +134,7 @@ const JobManagementDashboard: React.FC<JobManagementDashboardProps> = ({ onLogou
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/jobs`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

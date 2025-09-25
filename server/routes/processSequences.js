@@ -234,4 +234,158 @@ router.get('/', asyncHandler(async (req, res) => {
   });
 }));
 
+// Get process sequence for a specific job
+router.get('/for-job/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+
+  // First get the job to find its product
+  const jobResult = await dbAdapter.query(
+    'SELECT "productId" FROM job_cards WHERE id = $1',
+    [jobId]
+  );
+
+  if (jobResult.rows.length === 0) {
+    return res.status(404).json({
+      error: 'Job not found',
+      message: 'The requested job does not exist'
+    });
+  }
+
+  const productId = jobResult.rows[0].productId;
+
+  // Since product_type is not stored in the database, we'll use 'Offset' as default
+  // In a real implementation, you might want to add a product_type column to the products table
+  const productType = 'Offset';
+
+  // Get process steps with job-specific selections
+  const stepsQuery = `
+    SELECT
+      ps.id as sequence_id,
+      ps.name as product_type,
+      ps.description,
+      pst.id as step_id,
+      pst.name as step_name,
+      pst."isQualityCheck" as is_compulsory,
+      pst."stepNumber" as step_order,
+      COALESCE(jps.is_selected, pst."isQualityCheck") as is_selected
+    FROM process_sequences ps
+    JOIN process_steps pst ON ps.id = pst."sequenceId"
+    LEFT JOIN job_process_selections jps ON pst.id = jps."processStepId" AND jps."jobId" = $1
+    WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
+    ORDER BY pst."stepNumber" ASC
+  `;
+
+  const result = await dbAdapter.query(stepsQuery, [jobId, productType]);
+
+  // Group the results
+  const sequence = {
+    job_id: jobId,
+    product_id: productId,
+    product_type: productType,
+    description: result.rows[0]?.description || '',
+    steps: result.rows.map(row => ({
+      id: row.step_id,
+      name: row.step_name,
+      isCompulsory: row.is_compulsory,
+      order: row.step_order,
+      isSelected: row.is_selected !== null ? row.is_selected : row.is_compulsory
+    }))
+  };
+
+  res.json({
+    process_sequence: sequence
+  });
+}));
+
+// Save process sequence for a specific job
+router.post('/for-job/:jobId', asyncHandler(async (req, res) => {
+  const { jobId } = req.params;
+  const { steps } = req.body;
+
+  if (!steps || !Array.isArray(steps)) {
+    return res.status(400).json({
+      error: 'Invalid request',
+      message: 'Steps array is required'
+    });
+  }
+
+  // Start a transaction
+  await dbAdapter.query('BEGIN');
+
+  try {
+    // First, clear existing job process selections
+    await dbAdapter.query(
+      'DELETE FROM job_process_selections WHERE "jobId" = $1',
+      [jobId]
+    );
+
+    // Insert new selections
+    for (const step of steps) {
+      if (step.isSelected) {
+        await dbAdapter.query(
+          'INSERT INTO job_process_selections ("jobId", "processStepId", is_selected, "createdAt", "updatedAt") VALUES ($1, $2, $3, NOW(), NOW())',
+          [jobId, step.id, true]
+        );
+      }
+    }
+
+    // Commit the transaction
+    await dbAdapter.query('COMMIT');
+
+    // Get the updated process sequence
+    const updatedSequence = await dbAdapter.query(`
+      SELECT
+        ps.id as sequence_id,
+        ps.name as product_type,
+        ps.description,
+        pst.id as step_id,
+        pst.name as step_name,
+        pst."isQualityCheck" as is_compulsory,
+        pst."stepNumber" as step_order,
+        COALESCE(jps.is_selected, pst."isQualityCheck") as is_selected
+      FROM process_sequences ps
+      JOIN process_steps pst ON ps.id = pst."sequenceId"
+      LEFT JOIN job_process_selections jps ON pst.id = jps."processStepId" AND jps."jobId" = $1
+      WHERE ps."isActive" = true AND pst."isActive" = true
+      ORDER BY pst."stepNumber" ASC
+    `, [jobId]);
+
+    const sequence = {
+      job_id: jobId,
+      product_type: updatedSequence.rows[0]?.product_type || '',
+      description: updatedSequence.rows[0]?.description || '',
+      steps: updatedSequence.rows.map(row => ({
+        id: row.step_id,
+        name: row.step_name,
+        isCompulsory: row.is_compulsory,
+        order: row.step_order,
+        isSelected: row.is_selected !== null ? row.is_selected : row.is_compulsory
+      }))
+    };
+
+    // Emit real-time update via Socket.IO
+    const io = req.app.get('io');
+    if (io) {
+      io.to('job_updates').emit('process_sequence_updated', {
+        jobId: parseInt(jobId),
+        processSequence: sequence,
+        updatedBy: req.user?.id,
+        updatedAt: new Date().toISOString()
+      });
+      console.log(`📡 Emitted process_sequence_updated event for job ${jobId}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Process sequence updated successfully',
+      process_sequence: sequence
+    });
+
+  } catch (error) {
+    // Rollback the transaction
+    await dbAdapter.query('ROLLBACK');
+    throw error;
+  }
+}));
+
 export default router;

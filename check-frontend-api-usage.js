@@ -7,7 +7,7 @@ async function checkFrontendAPIUsage() {
   try {
     // Get the frontend HTML
     console.log('📄 Fetching frontend HTML...');
-    const response = await fetch('http://192.168.2.56:8080');
+    const response = await fetch('http://localhost:8080');
     const html = await response.text();
     
     console.log('✅ Frontend HTML fetched successfully');
@@ -16,8 +16,8 @@ async function checkFrontendAPIUsage() {
     // Check for API URL references
     console.log('\n🔍 Checking for API URL references...');
     
-    if (html.includes('192.168.2.56')) {
-      console.log('✅ Found network IP (192.168.2.56) in HTML');
+    if (html.includes('localhost')) {
+      console.log('✅ Found network IP (localhost) in HTML');
     } else {
       console.log('❌ No network IP found in HTML');
     }
@@ -36,7 +36,7 @@ async function checkFrontendAPIUsage() {
     
     // Check for specific API calls in the HTML
     const apiPatterns = [
-      'http://192.168.2.56:3001',
+      'http://localhost:3001',
       'http://localhost:3001',
       'import.meta.env.VITE_API',
       'API_BASE_URL'
@@ -57,7 +57,7 @@ async function checkFrontendAPIUsage() {
       console.log(`\n📜 Found ${scriptMatches.length} script tags`);
       
       scriptMatches.forEach((script, index) => {
-        if (script.includes('API') || script.includes('192.168.2.56') || script.includes('localhost:3001')) {
+        if (script.includes('API') || script.includes('localhost') || script.includes('localhost:3001')) {
           console.log(`\n🔍 Script ${index + 1} contains API references:`);
           console.log(script.substring(0, 200) + '...');
         }

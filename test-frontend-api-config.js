@@ -61,7 +61,7 @@ async function testConfiguration() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: 'admin@horizonsourcing.com',
+        email: 'admin@erp.local',
         password: 'password123'
       })
     });
@@ -89,7 +89,7 @@ async function testConfiguration() {
     console.log('');
     console.log('💡 Make sure both servers are running:');
     console.log('   Backend: $env:JWT_SECRET="..."; $env:PORT=3001; node server/index.js');
-    console.log('   Frontend: $env:VITE_API_BASE_URL="http://192.168.2.56:3001/api"; npm run dev');
+    console.log('   Frontend: $env:VITE_API_BASE_URL="http://localhost:3001/api"; npm run dev');
   }
 }
 

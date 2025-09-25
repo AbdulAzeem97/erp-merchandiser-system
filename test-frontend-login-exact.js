@@ -5,17 +5,17 @@ console.log('='.repeat(50));
 
 async function testFrontendLogin() {
   const credentials = [
-    { email: 'admin@horizonsourcing.com', password: 'password123' },
+    { email: 'admin@erp.local', password: 'password123' },
     { email: 'inventory@horizonsourcing.com', password: 'password123' }
   ];
 
   for (const cred of credentials) {
     try {
       console.log(`\n🧪 Testing: ${cred.email}`);
-      console.log(`📤 Sending request to: http://192.168.2.56:3001/api/auth/login`);
+      console.log(`📤 Sending request to: http://localhost:3001/api/auth/login`);
       console.log(`📤 Request body:`, JSON.stringify(cred));
       
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

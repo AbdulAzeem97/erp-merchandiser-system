@@ -49,7 +49,7 @@ node test-product-creation-fixed.js
 node test-network-product-api.js
 ```
 - **Result:** Product creation via API successful
-- **Network:** Working over `http://192.168.2.56:3001/api`
+- **Network:** Working over `http://localhost:3001/api`
 - **Authentication:** Login and token validation working
 
 ### 📊 **Database Status After Fix:**
@@ -73,8 +73,8 @@ node test-network-product-api.js
 
 **Your ERP System is now fully functional over the network:**
 
-- **Frontend:** `http://192.168.2.56:8080`
-- **Backend API:** `http://192.168.2.56:3001/api`
+- **Frontend:** `http://localhost:8080`
+- **Backend API:** `http://localhost:3001/api`
 - **Product Creation:** ✅ Working
 - **Authentication:** ✅ Working
 - **Foreign Keys:** ✅ Working

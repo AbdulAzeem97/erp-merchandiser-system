@@ -18,12 +18,14 @@ import uploadRoutes from './routes/upload.js';
 import processSequenceRoutes from './routes/processSequences.js';
 import prepressRoutes from './routes/prepress.js';
 import enhancedPrepressRoutes, { initializePrepressService } from './routes/enhancedPrepress.js';
+import prepressWorkflowRoutes from './routes/prepressWorkflow.js';
 import reportsRoutes from './routes/reports.js';
 import jobLifecycleRoutes, { setLifecycleSocketHandler } from './routes/jobLifecycle.js';
 import completeJobLifecycleRoutes from './routes/completeJobLifecycle.js';
 import inventoryRoutes from './routes/inventory.js';
 // import productionRoutes from './routes/production.js';
 import jobAssignmentRoutes from './routes/jobAssignment.js';
+import jobAssignmentHistoryRoutes from './routes/jobAssignmentHistory.js';
 import prismaApiRoutes from './routes/prisma-api.js';
 import prismaAuthRoutes from './routes/prisma-auth.js';
 
@@ -70,6 +72,10 @@ const PORT = process.env.PORT || 5001;
 // Initialize socket handlers
 const socketHandler = new SocketHandler(io);
 const enhancedSocketHandler = new EnhancedSocketHandler(io);
+
+// Make socket handler available to routes
+app.set('io', io);
+app.set('socketHandler', socketHandler);
 
 // Initialize enhanced job lifecycle service with socket handler
 const jobLifecycleService = new EnhancedJobLifecycleService(enhancedSocketHandler);
@@ -147,12 +153,14 @@ app.use('/api/upload', authenticateToken, uploadRoutes); // Re-enabled for job l
 app.use('/api/process-sequences', processSequenceRoutes); // Re-enabled for job lifecycle
 app.use('/api/prepress', prepressRoutes);
 app.use('/api/enhanced-prepress', enhancedPrepressRoutes);
+app.use('/api/prepress-workflow', authenticateToken, prepressWorkflowRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/job-lifecycle', authenticateToken, jobLifecycleRoutes);
 app.use('/api/complete-job-lifecycle', authenticateToken, completeJobLifecycleRoutes);
 app.use('/api/inventory', authenticateToken, inventoryRoutes);
 // app.use('/api/production', authenticateToken, productionRoutes);
 app.use('/api/job-assignment', jobAssignmentRoutes);
+app.use('/api/job-assignment-history', authenticateToken, jobAssignmentHistoryRoutes);
 
 // NEW: Prisma-based API routes (working with correct column names)
 app.use('/api/v2', prismaApiRoutes);

@@ -110,7 +110,7 @@ export const AdminMonitoringDashboard: React.FC<AdminDashboardProps> = ({ onLogo
       setIsLoading(true);
       
       // Load stats
-      const statsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-lifecycle/stats/dashboard`, {
+      const statsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/stats/dashboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -122,7 +122,7 @@ export const AdminMonitoringDashboard: React.FC<AdminDashboardProps> = ({ onLogo
       }
 
       // Load all jobs for system metrics
-      const jobsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/job-lifecycle`, {
+      const jobsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

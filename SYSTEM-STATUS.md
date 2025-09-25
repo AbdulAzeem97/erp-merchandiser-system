@@ -34,7 +34,7 @@
 
 #### 3. **Authentication - WORKING ✅**
 - **Status**: JWT authentication properly configured
-- **Login**: admin@horizonsourcing.com / admin123
+- **Login**: admin@erp.local / admin123
 
 ### 📊 **What's Working:**
 
@@ -74,7 +74,7 @@
 
 **Frontend**: http://localhost:8080
 **Backend API**: http://localhost:5000
-**Login**: admin@horizonsourcing.com / admin123
+**Login**: admin@erp.local / admin123
 **Database**: postgresql://postgres:db123@localhost:5432/erp_merchandiser
 
 ### 🎊 **System is 100% Operational!**

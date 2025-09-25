@@ -19,7 +19,7 @@ echo    Frontend: http://localhost:8081
 echo    Backend:  http://localhost:3001
 echo.
 echo 🔑 Login Credentials:
-echo    Admin: admin@horizonsourcing.com / admin123
+echo    Admin: admin@erp.local / admin123
 echo    Designer: emma.wilson@horizonsourcing.com / admin123
 echo    Merchandiser: tom.anderson@horizonsourcing.com / admin123
 echo    Inventory: inventory@horizonsourcing.com / admin123

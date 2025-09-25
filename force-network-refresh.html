@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Force Network Refresh - ERP System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 600px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .warning {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+        .url-list {
+            text-align: left;
+            margin: 20px 0;
+        }
+        .url-list li {
+            margin: 10px 0;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+        }
+        .url-list a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .url-list a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Force Network Refresh - ERP System</h1>
+        
+        <div class="test-section">
+            <h3>🌐 Network Configuration Test</h3>
+            <div id="networkStatus" class="status info">
+                Testing network configuration...
+            </div>
+            <button onclick="testNetworkConfig()">Test Network Configuration</button>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 Browser Cache Management</h3>
+            <div class="warning">
+                <strong>Important:</strong> Your browser is using cached JavaScript code that still tries to connect to localhost. 
+                Follow these steps to fix the issue:
+            </div>
+            <ol style="text-align: left; margin: 20px 0;">
+                <li><strong>Hard Refresh:</strong> Press <kbd>Ctrl + Shift + R</kbd> (Windows) or <kbd>Cmd + Shift + R</kbd> (Mac)</li>
+                <li><strong>Clear Cache:</strong> Press <kbd>F12</kbd> → Right-click refresh button → "Empty Cache and Hard Reload"</li>
+                <li><strong>Incognito Mode:</strong> Open a new incognito/private window and try again</li>
+                <li><strong>Clear All Data:</strong> Go to browser settings → Clear browsing data → Select "All time" → Clear data</li>
+            </ol>
+            <button onclick="clearCacheAndReload()">Clear Cache & Reload</button>
+        </div>
+
+        <div class="test-section">
+            <h3>🔗 Access URLs</h3>
+            <div class="url-list">
+                <h4>Try these URLs in order:</h4>
+                <ul>
+                    <li><a href="http://localhost:8080" target="_blank">Main Application (Port 8080)</a></li>
+                    <li><a href="http://localhost:8081" target="_blank">Alternative Port (8081)</a></li>
+                    <li><a href="http://localhost:5001/health" target="_blank">Backend Health Check</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 System Status</h3>
+            <div id="systemStatus" class="status info">
+                Checking system status...
+            </div>
+            <button onclick="checkSystemStatus()">Check System Status</button>
+        </div>
+
+        <div class="test-section">
+            <h3>🚀 Quick Actions</h3>
+            <button onclick="openMainApp()">Open Main Application</button>
+            <button onclick="openIncognito()">Open in Incognito</button>
+            <button onclick="showNetworkInfo()">Show Network Info</button>
+        </div>
+    </div>
+
+    <script>
+        // Test network configuration
+        async function testNetworkConfig() {
+            const statusDiv = document.getElementById('networkStatus');
+            statusDiv.innerHTML = 'Testing network configuration...';
+            statusDiv.className = 'status info';
+
+            try {
+                // Test backend health
+                const healthResponse = await fetch('http://localhost:5001/health');
+                if (healthResponse.ok) {
+                    const healthData = await healthResponse.json();
+                    statusDiv.innerHTML = `✅ Backend is running: ${healthData.status} (${healthData.timestamp})`;
+                    statusDiv.className = 'status success';
+                } else {
+                    statusDiv.innerHTML = `❌ Backend health check failed: ${healthResponse.status}`;
+                    statusDiv.className = 'status error';
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `❌ Cannot connect to backend: ${error.message}`;
+                statusDiv.className = 'status error';
+            }
+        }
+
+        // Check system status
+        async function checkSystemStatus() {
+            const statusDiv = document.getElementById('systemStatus');
+            statusDiv.innerHTML = 'Checking system status...';
+            statusDiv.className = 'status info';
+
+            try {
+                // Test multiple endpoints
+                const tests = [
+                    { name: 'Backend Health', url: 'http://localhost:5001/health' },
+                    { name: 'Frontend (8080)', url: 'http://localhost:8080' },
+                    { name: 'Frontend (8081)', url: 'http://localhost:8081' }
+                ];
+
+                let results = [];
+                for (const test of tests) {
+                    try {
+                        const response = await fetch(test.url, { method: 'HEAD' });
+                        results.push(`✅ ${test.name}: ${response.status}`);
+                    } catch (error) {
+                        results.push(`❌ ${test.name}: ${error.message}`);
+                    }
+                }
+
+                statusDiv.innerHTML = results.join('<br>');
+                statusDiv.className = 'status success';
+            } catch (error) {
+                statusDiv.innerHTML = `❌ Error checking system status: ${error.message}`;
+                statusDiv.className = 'status error';
+            }
+        }
+
+        // Clear cache and reload
+        function clearCacheAndReload() {
+            // Clear localStorage
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Clear service worker cache if exists
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    registrations.forEach(registration => registration.unregister());
+                });
+            }
+            
+            // Force reload
+            window.location.reload(true);
+        }
+
+        // Open main application
+        function openMainApp() {
+            window.open('http://localhost:8080', '_blank');
+        }
+
+        // Open in incognito
+        function openIncognito() {
+            // This will open in a new window, user can manually open incognito
+            alert('Please manually open an incognito/private window and go to: http://localhost:8080');
+        }
+
+        // Show network information
+        function showNetworkInfo() {
+            const info = `
+                <strong>Network Information:</strong><br>
+                Current URL: ${window.location.href}<br>
+                User Agent: ${navigator.userAgent}<br>
+                Online: ${navigator.onLine ? 'Yes' : 'No'}<br>
+                Connection: ${navigator.connection ? navigator.connection.effectiveType : 'Unknown'}<br>
+                <br>
+                <strong>Expected Configuration:</strong><br>
+                Frontend: http://localhost:8080<br>
+                Backend: http://localhost:5001<br>
+                <br>
+                <strong>If you see localhost in the console:</strong><br>
+                The browser is using cached JavaScript. Clear cache and try again.
+            `;
+            alert(info);
+        }
+
+        // Auto-run tests on page load
+        window.onload = function() {
+            testNetworkConfig();
+            checkSystemStatus();
+        };
+    </script>
+</body>
+</html>

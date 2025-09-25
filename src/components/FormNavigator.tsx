@@ -25,7 +25,9 @@ export const FormNavigator: React.FC<FormNavigatorProps> = ({
 }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto"
+      
+      >
         {/* Header */}
         <div className="text-center mb-12">
           <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">

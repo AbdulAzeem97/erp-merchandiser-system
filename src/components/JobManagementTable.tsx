@@ -99,6 +99,9 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         job.jobNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.product_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.customer_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.customer_phone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.company_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -144,6 +147,36 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
     setJobToEdit(null);
   };
 
+  // Helper function to convert attachment to File object
+  const convertAttachmentToFile = async (attachment: any): Promise<File> => {
+    try {
+      // Fetch the file from the server
+      const response = await fetch(`http://localhost:5001/api/upload/file/${attachment.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch file');
+      }
+      
+      const blob = await response.blob();
+      
+      // Create a File object from the blob
+      const file = new File([blob], attachment.fileName, {
+        type: attachment.fileType,
+        lastModified: new Date(attachment.uploadedAt).getTime()
+      });
+      
+      return file;
+    } catch (error) {
+      console.error('Error converting attachment to file:', error);
+      // Return a placeholder file if conversion fails
+      return new File([''], attachment.fileName, { type: attachment.fileType });
+    }
+  };
+
   // Handle PDF download
   const handleDownloadPDF = async (job: Job) => {
     setGeneratingPDF(job.id);
@@ -153,6 +186,28 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
       const product = productResponse.product;
       const processSequence = productResponse.process_sequence;
 
+      // Fetch job attachments (uploaded images)
+      let uploadedImages: File[] = [];
+      try {
+        const attachmentsResponse = await jobsAPI.getAttachments(job.id.toString());
+        const attachments = attachmentsResponse.attachments || [];
+        
+        // Filter for image files only
+        const imageAttachments = attachments.filter((att: any) => 
+          att.fileType && att.fileType.startsWith('image/')
+        );
+        
+        // Convert attachments to File objects
+        uploadedImages = await Promise.all(
+          imageAttachments.map((att: any) => convertAttachmentToFile(att))
+        );
+        
+        console.log(`Found ${uploadedImages.length} uploaded images for job ${job.jobNumber}`);
+      } catch (error) {
+        console.error('Error fetching job attachments:', error);
+        // Continue without images if fetching fails
+      }
+
       // Create complete job card data from the job information
       const jobCardData = {
         productCode: job.product_code || product?.product_item_code || '',
@@ -160,7 +215,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         quantity: job.quantity,
         deliveryDate: job.dueDate,
         customerNotes: job.notes || '',
-        uploadedImages: [],
+        uploadedImages: uploadedImages, // Use actual uploaded images
         merchandiser: 'System Generated',
         customerName: job.customer_name || job.company_name || 'Customer',
         salesman: 'System',
@@ -273,7 +328,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search jobs, products, brands..."
+                placeholder="Search jobs, products, customers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -332,7 +387,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                     Product
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Company
+                    Customer
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Quantity
@@ -375,7 +430,13 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {job.company_name || 'N/A'}
+                        {job.customer_name || job.company_name || 'N/A'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {job.customer_email || 'No email'}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {job.customer_phone || 'No phone'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

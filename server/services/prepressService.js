@@ -1,5 +1,4 @@
 import dbAdapter from '../database/adapter.js';
-import { logPrepressActivity, validatePrepressStatusTransition } from '../database/migrations/001_add_prepress_and_roles.js';
 
 // Prepress status state machine
 const STATUS_TRANSITIONS = {
@@ -26,8 +25,8 @@ class PrepressService {
   async createPrepressJob(jobCardId, assignedDesignerId = null, priority = 'MEDIUM', dueDate = null, createdBy) {
     try {
       // Verify job card exists
-      const jobCardResult = await pool.query(
-        'SELECT id, job_card_id, status FROM job_cards WHERE id = ?',
+      const jobCardResult = await dbAdapter.query(
+        'SELECT id, "jobNumber", status FROM job_cards WHERE id = $1',
         [jobCardId]
       );
 
@@ -36,8 +35,8 @@ class PrepressService {
       }
 
       // Check if prepress job already exists for this job card
-      const existingResult = await pool.query(
-        'SELECT id FROM prepress_jobs WHERE job_card_id = ?',
+      const existingResult = await dbAdapter.query(
+        'SELECT id FROM prepress_jobs WHERE job_card_id = $1',
         [jobCardId]
       );
 
@@ -46,9 +45,10 @@ class PrepressService {
       }
 
       // Create prepress job
-      const result = await pool.query(`
+      const result = await dbAdapter.query(`
         INSERT INTO prepress_jobs (job_card_id, assigned_designer_id, status, priority, due_date, created_by, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *
       `, [
         jobCardId,
         assignedDesignerId,
@@ -59,29 +59,22 @@ class PrepressService {
         createdBy
       ]);
 
-      const prepressJobId = result.insertId || result.rows[0]?.id;
-      if (!prepressJobId) {
+      const prepressJob = result.rows[0];
+      if (!prepressJob) {
         throw new Error('Failed to create prepress job');
       }
 
-      // Get the created job
-      const prepressJobResult = await pool.query(
-        'SELECT * FROM prepress_jobs WHERE id = ?',
-        [prepressJobId]
-      );
-      const prepressJob = prepressJobResult.rows[0];
-
       // Log initial activity
-      await pool.query(`
+      await dbAdapter.query(`
         INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
-        VALUES (?, ?, 'CREATED', NULL, ?, 'Prepress job created')
+        VALUES ($1, $2, 'STATUS_CHANGED', NULL, $3, 'Prepress job created')
       `, [prepressJob.id, createdBy, prepressJob.status]);
 
       // If assigned, log assignment
       if (assignedDesignerId) {
-        await pool.query(`
+        await dbAdapter.query(`
           INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
-          VALUES (?, ?, 'ASSIGNED', 'PENDING', 'ASSIGNED', 'Initial assignment')
+          VALUES ($1, $2, 'ASSIGNED', 'PENDING', 'ASSIGNED', 'Initial assignment')
         `, [prepressJob.id, createdBy]);
 
         // Update job lifecycle status

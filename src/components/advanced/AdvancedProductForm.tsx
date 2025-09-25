@@ -56,28 +56,28 @@ const FORM_STEPS: FormStep[] = [
     id: 'basic',
     title: 'Basic Information',
     description: 'Product identification and core details',
-    fields: ['productItemCode', 'brand'],
+    fields: ['product_item_code', 'brand'],
     icon: Info
   },
   {
     id: 'specifications',
     title: 'Specifications',
     description: 'Technical specifications and materials',
-    fields: ['material', 'gsm', 'color'],
+    fields: ['material_id', 'gsm', 'color'],
     icon: Settings
   },
   {
     id: 'compliance',
     title: 'Compliance & Quality',
     description: 'Certifications and quality standards',
-    fields: ['fsc', 'fscClaim'],
+    fields: ['fsc', 'fsc_claim'],
     icon: CheckCircle
   },
   {
     id: 'process',
     title: 'Process Configuration',
     description: 'Production workflow and sequence',
-    fields: ['productType'],
+    fields: ['product_type'],
     icon: Factory
   },
   {
@@ -95,15 +95,19 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<ProductMaster>({
-    productItemCode: '',
+    id: '',
+    product_item_code: '',
     brand: '',
-    material: '',
-    gsm: '',
+    material_id: '',
+    gsm: 0,
     color: '',
     remarks: '',
     fsc: 'No',
-    fscClaim: '',
-    productType: 'Offset'
+    fsc_claim: '',
+    product_type: 'Offset',
+    is_active: true,
+    created_at: '',
+    updated_at: ''
   });
   
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
@@ -139,30 +143,30 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
   // Smart validation
   const validateField = (field: keyof ProductMaster, value: any): string | null => {
     switch (field) {
-      case 'productItemCode':
-        if (!value.trim()) return 'Product Item Code is required';
-        if (!/^[A-Z]{2}-\d{2}-\d{3}-[A-Z]$/.test(value)) {
+      case 'product_item_code':
+        if (!value || !value.toString().trim()) return 'Product Item Code is required';
+        if (!/^[A-Z]{2}-\d{2}-\d{3}-[A-Z]$/.test(value.toString())) {
           return 'Invalid format. Use: XX-XX-XXX-X (e.g., BR-00-139-A)';
         }
         return null;
       case 'brand':
         if (!value) return 'Brand selection is required';
         return null;
-      case 'material':
+      case 'material_id':
         if (!value) return 'Material selection is required';
         return null;
       case 'gsm':
-        if (!value.trim()) return 'GSM is required';
-        const gsmNum = parseInt(value);
+        if (!value || !value.toString().trim()) return 'GSM is required';
+        const gsmNum = parseInt(value.toString());
         if (isNaN(gsmNum) || gsmNum < 25 || gsmNum > 1500) {
           return 'GSM must be between 25 and 1500';
         }
         return null;
       case 'color':
-        if (!value.trim()) return 'Color specification is required';
-        if (value.length < 3) return 'Color description too short';
+        if (!value || !value.toString().trim()) return 'Color specification is required';
+        if (value.toString().length < 3) return 'Color description too short';
         return null;
-      case 'fscClaim':
+      case 'fsc_claim':
         if (formData.fsc === 'Yes' && !value) {
           return 'FSC Claim is required when FSC is Yes';
         }
@@ -172,34 +176,42 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
     }
   };
 
-  // Real-time validation
+  // Real-time validation - only validate current step fields
   useEffect(() => {
     const errors: ValidationError[] = [];
-    Object.entries(formData).forEach(([field, value]) => {
+    const currentStepData = FORM_STEPS[currentStep];
+    
+    // Only validate fields for the current step
+    currentStepData.fields.forEach(field => {
+      const value = formData[field as keyof ProductMaster];
       const error = validateField(field as keyof ProductMaster, value);
       if (error) {
-        errors.push({ field, message: error });
+        errors.push({ field: field as keyof ProductMaster, message: error });
       }
     });
+    
     setValidationErrors(errors);
 
-    // Update progress
-    const totalFields = Object.keys(formData).length;
-    const completedFields = Object.values(formData).filter(value => 
-      value && value.toString().trim()
-    ).length;
+    // Update progress based on all steps
+    const totalFields = FORM_STEPS.reduce((total, step) => total + step.fields.length, 0);
+    const completedFields = FORM_STEPS.reduce((completed, step) => {
+      return completed + step.fields.filter(field => {
+        const value = formData[field as keyof ProductMaster];
+        return value && value.toString().trim();
+      }).length;
+    }, 0);
     setFormProgress((completedFields / totalFields) * 100);
-  }, [formData]);
+  }, [formData, currentStep]);
 
   // Smart suggestions based on input
   useEffect(() => {
     const suggestions: string[] = [];
     
-    if (formData.brand === 'JCP' && formData.material === 'C1S') {
+    if (formData.brand === 'JCP' && formData.material_id === 'C1S') {
       suggestions.push('Consider GSM 350-400 for optimal printing quality');
     }
     
-    if (formData.gsm && parseInt(formData.gsm) > 300) {
+    if (formData.gsm && formData.gsm > 300) {
       suggestions.push('High GSM detected - ensure proper die cutting configuration');
     }
     
@@ -217,7 +229,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
     }));
 
     // Auto-complete suggestions
-    if (field === 'productItemCode' && value.length === 2) {
+    if (field === 'product_item_code' && value.toString().length === 2) {
       // Auto suggest format - defer to avoid state update during render
       setTimeout(() => {
         toast.info('Format: XX-XX-XXX-X (e.g., BR-00-139-A)');
@@ -226,11 +238,8 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
   };
 
   const validateCurrentStep = (): boolean => {
-    const currentStepData = FORM_STEPS[currentStep];
-    const stepErrors = validationErrors.filter(error => 
-      currentStepData.fields.includes(error.field)
-    );
-    return stepErrors.length === 0;
+    // Since validationErrors now only contains current step errors, we can directly check
+    return validationErrors.length === 0;
   };
 
   const nextStep = () => {
@@ -251,33 +260,45 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
   };
 
   const handleSave = async () => {
-    if (validationErrors.length > 0) {
-      toast.error('Please fix all validation errors');
+    // Validate all steps before saving
+    const allErrors: ValidationError[] = [];
+    FORM_STEPS.forEach(step => {
+      step.fields.forEach(field => {
+        const value = formData[field as keyof ProductMaster];
+        const error = validateField(field as keyof ProductMaster, value);
+        if (error) {
+          allErrors.push({ field: field as keyof ProductMaster, message: error });
+        }
+      });
+    });
+    
+    if (allErrors.length > 0) {
+      toast.error(`Please fix ${allErrors.length} validation errors before saving`);
       return;
     }
 
     setIsSaving(true);
     try {
       // Find the selected material from the fetched materials
-      const selectedMaterial = materials.find(m => m.name === formData.material);
+      const selectedMaterial = materials.find(m => m.id === formData.material_id);
       
-      console.log('🔍 Debug - formData.material:', formData.material);
+      console.log('🔍 Debug - formData.material_id:', formData.material_id);
       console.log('🔍 Debug - materials array:', materials);
       console.log('🔍 Debug - selectedMaterial:', selectedMaterial);
 
       // Updated field names to match backend schema
-      const productData = {
-        sku: formData.productItemCode,
+      const productData: any = {
+        sku: formData.product_item_code,
         brand: formData.brand,
-        gsm: parseInt(formData.gsm) || null,
-        description: formData.description || '',
+        gsm: parseInt(formData.gsm.toString()) || null,
+        description: formData.remarks || '',
         category_id: 1 // Default category for now
       };
 
       console.log('✅ Sending updated product data with correct field names');
       
-      if (formData.color) {
-        productData.color_specifications = formData.color;
+      if (formData.color_specifications || formData.color) {
+        productData.color_specifications = formData.color_specifications || formData.color;
       }
       
       if (formData.remarks) {
@@ -288,8 +309,8 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
         productData.fsc = formData.fsc;
       }
       
-      if (formData.fscClaim) {
-        productData.fsc_claim = formData.fscClaim;
+      if (formData.fsc_claim) {
+        productData.fsc_claim = formData.fsc_claim;
       }
 
       // Re-enable category_id for complete product information
@@ -350,7 +371,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
         // Focus the first field that has an error
         if (validationErrors[0] && validationErrors[0].field) {
           const fieldName = validationErrors[0].field;
-          const fieldInput = document.querySelector(`input[name="${fieldName}"], select[name="${fieldName}"], textarea[name="${fieldName}"]`);
+          const fieldInput = document.querySelector(`input[name="${fieldName}"], select[name="${fieldName}"], textarea[name="${fieldName}"]`) as HTMLElement;
           if (fieldInput) {
             setTimeout(() => fieldInput.focus(), 0);
           }
@@ -358,7 +379,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       } else if (errorMessage.includes('Product code already exists')) {
         toast.error('Product code already exists. Please use a different code.');
         // Focus the product code field to help user fix the issue
-        const productCodeField = document.querySelector('input[id*="productItemCode"]');
+        const productCodeField = document.querySelector('input[id*="productItemCode"]') as HTMLElement;
         if (productCodeField) {
           setTimeout(() => productCodeField.focus(), 0);
         }
@@ -603,19 +624,19 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                             </Label>
                             <Input
                               id="productItemCode"
-                              value={formData.productItemCode}
-                              onChange={(e) => handleInputChange('productItemCode', e.target.value.toUpperCase())}
+                              value={formData.product_item_code}
+                              onChange={(e) => handleInputChange('product_item_code', e.target.value.toUpperCase())}
                               placeholder="BR-00-139-A"
-                              className={`font-mono ${getFieldError('productItemCode') ? 'border-red-300 bg-red-50' : ''}`}
+                              className={`font-mono ${getFieldError('product_item_code') ? 'border-red-300 bg-red-50' : ''}`}
                             />
-                            {getFieldError('productItemCode') && (
+                            {getFieldError('product_item_code') && (
                               <motion.p 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 className="text-sm text-red-600 flex items-center gap-1"
                               >
                                 <AlertCircle className="w-3 h-3" />
-                                {getFieldError('productItemCode')}
+                                {getFieldError('product_item_code')}
                               </motion.p>
                             )}
                           </div>
@@ -652,13 +673,13 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <Label htmlFor="material">Material *</Label>
-                            <Select value={formData.material} onValueChange={(value) => handleInputChange('material', value)}>
-                              <SelectTrigger className={getFieldError('material') ? 'border-red-300 bg-red-50' : ''}>
+                            <Select value={formData.material_id} onValueChange={(value) => handleInputChange('material_id', value)}>
+                              <SelectTrigger className={getFieldError('material_id') ? 'border-red-300 bg-red-50' : ''}>
                                 <SelectValue placeholder="Select material" />
                               </SelectTrigger>
                               <SelectContent>
                                 {isLoadingMaterials ? (
-                                  <SelectItem value="" disabled>Loading materials...</SelectItem>
+                                  <SelectItem value="loading-materials" disabled>Loading materials...</SelectItem>
                                 ) : (
                                   materials.map(material => (
                                     <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>
@@ -666,14 +687,14 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                                 )}
                               </SelectContent>
                             </Select>
-                            {getFieldError('material') && (
+                            {getFieldError('material_id') && (
                               <motion.p 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 className="text-sm text-red-600 flex items-center gap-1"
                               >
                                 <AlertCircle className="w-3 h-3" />
-                                {getFieldError('material')}
+                                {getFieldError('material_id')}
                               </motion.p>
                             )}
                           </div>
@@ -683,7 +704,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                             <Input
                               id="gsm"
                               value={formData.gsm}
-                              onChange={(e) => handleInputChange('gsm', e.target.value)}
+                              onChange={(e) => handleInputChange('gsm', parseInt(e.target.value) || 0)}
                               placeholder="350"
                               type="number"
                               min="50"
@@ -746,13 +767,13 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="fscClaim">FSC Claim</Label>
+                            <Label htmlFor="fsc_claim">FSC Claim</Label>
                             <Select 
-                              value={formData.fscClaim} 
-                              onValueChange={(value: 'Recycled' | 'Mixed') => handleInputChange('fscClaim', value)}
+                              value={formData.fsc_claim} 
+                              onValueChange={(value: 'Recycled' | 'Mixed') => handleInputChange('fsc_claim', value)}
                               disabled={formData.fsc === 'No'}
                             >
-                              <SelectTrigger className={getFieldError('fscClaim') ? 'border-red-300 bg-red-50' : ''}>
+                              <SelectTrigger className={getFieldError('fsc_claim') ? 'border-red-300 bg-red-50' : ''}>
                                 <SelectValue placeholder="Select FSC claim" />
                               </SelectTrigger>
                               <SelectContent>
@@ -760,14 +781,14 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                                 <SelectItem value="Mixed">Mixed</SelectItem>
                               </SelectContent>
                             </Select>
-                            {getFieldError('fscClaim') && (
+                            {getFieldError('fsc_claim') && (
                               <motion.p 
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 className="text-sm text-red-600 flex items-center gap-1"
                               >
                                 <AlertCircle className="w-3 h-3" />
-                                {getFieldError('fscClaim')}
+                                {getFieldError('fsc_claim')}
                               </motion.p>
                             )}
                           </div>
@@ -778,14 +799,14 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                     {currentStep === 3 && (
                       <div className="space-y-6">
                         <ProcessSequenceSection 
-                          selectedProductType={formData.productType}
-                          onProductTypeChange={(productType) => handleInputChange('productType', productType)}
+                          selectedProductType={formData.product_type}
+                          onProductTypeChange={(productType) => handleInputChange('product_type', productType)}
                           onProcessStepsChange={setSelectedProcessSteps}
                         />
                         
-                        {formData.productType && selectedProcessSteps.length > 0 && (
+                        {formData.product_type && selectedProcessSteps.length > 0 && (
                           <ProcessPreview 
-                            selectedProductType={formData.productType}
+                            selectedProductType={formData.product_type}
                             selectedProcessSteps={selectedProcessSteps}
                           />
                         )}
@@ -816,20 +837,20 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                             Product Summary
                           </h3>
                           <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div><strong>Product Code:</strong> {formData.productItemCode}</div>
+                            <div><strong>Product Code:</strong> {formData.product_item_code}</div>
                             <div><strong>Brand:</strong> {formData.brand}</div>
-                            <div><strong>Material:</strong> {formData.material}</div>
+                            <div><strong>Material:</strong> {materials.find(m => m.id === formData.material_id)?.name || 'Not selected'}</div>
                             <div><strong>GSM:</strong> {formData.gsm}</div>
                             <div><strong>Color:</strong> {formData.color}</div>
                             <div><strong>FSC:</strong> {formData.fsc}</div>
-                            <div><strong>Product Type:</strong> {formData.productType}</div>
+                            <div><strong>Product Type:</strong> {formData.product_type}</div>
                           </div>
                         </div>
 
                         {/* Process Preview */}
-                        {formData.productType && selectedProcessSteps.length > 0 && (
+                        {formData.product_type && selectedProcessSteps.length > 0 && (
                           <ProcessPreview 
-                            selectedProductType={formData.productType}
+                            selectedProductType={formData.product_type}
                             selectedProcessSteps={selectedProcessSteps}
                           />
                         )}

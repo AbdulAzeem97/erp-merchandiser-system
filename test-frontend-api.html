@@ -81,7 +81,7 @@
         function getCurrentConfig() {
             const config = {
                 apiBaseUrl: window.location.origin.includes('192.168') ? 
-                    `http://192.168.2.56:3001/api` : 
+                    `http://localhost:3001/api` : 
                     'http://localhost:3001/api',
                 currentUrl: window.location.origin,
                 isNetwork: window.location.origin.includes('192.168')
@@ -139,7 +139,7 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        email: 'admin@horizonsourcing.com',
+                        email: 'admin@erp.local',
                         password: 'password123'
                     })
                 });

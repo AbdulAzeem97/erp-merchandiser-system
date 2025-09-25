@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Configuration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .info { color: #17a2b8; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 10px 5px; }
+        button:hover { background: #0056b3; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 API Configuration Test</h1>
+        
+        <div class="info">
+            <h3>Current Configuration:</h3>
+            <p><strong>Expected API URL:</strong> <code>http://localhost:5001/api</code></p>
+            <p><strong>Expected Frontend URL:</strong> <code>http://localhost:8080</code></p>
+        </div>
+        
+        <div>
+            <h3>🧪 Test API Connection:</h3>
+            <button onclick="testBackendConnection()">Test Backend Health</button>
+            <button onclick="testLoginAPI()">Test Login API</button>
+            <button onclick="clearBrowserCache()">Clear Browser Cache</button>
+        </div>
+        
+        <div id="test-results"></div>
+        
+        <div class="info">
+            <h3>📋 Troubleshooting Steps:</h3>
+            <ol>
+                <li><strong>Hard Refresh:</strong> Press <kbd>Ctrl + F5</kbd> to clear cache</li>
+                <li><strong>Incognito Mode:</strong> Try opening in private/incognito window</li>
+                <li><strong>Different Browser:</strong> Try Chrome, Firefox, or Edge</li>
+                <li><strong>Check Console:</strong> Open Developer Tools (F12) and check for errors</li>
+            </ol>
+        </div>
+        
+        <div>
+            <h3>🌐 Access URLs:</h3>
+            <button onclick="window.open('http://localhost:8080', '_blank')">Open ERP System</button>
+            <button onclick="window.open('http://localhost:5001/health', '_blank')">Backend Health</button>
+        </div>
+    </div>
+    
+    <script>
+        function addTestResult(message, type = 'info') {
+            const resultsDiv = document.getElementById('test-results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            resultsDiv.appendChild(resultDiv);
+        }
+        
+        async function testBackendConnection() {
+            addTestResult('Testing backend connection...', 'info');
+            try {
+                const response = await fetch('http://localhost:5001/health');
+                if (response.ok) {
+                    const data = await response.json();
+                    addTestResult(`✅ Backend is accessible: ${JSON.stringify(data)}`, 'success');
+                } else {
+                    addTestResult(`❌ Backend returned status: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                addTestResult(`❌ Backend connection failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testLoginAPI() {
+            addTestResult('Testing login API endpoint...', 'info');
+            try {
+                const response = await fetch('http://localhost:5001/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@erp.local',
+                        password: 'test'
+                    })
+                });
+                
+                if (response.status === 401) {
+                    addTestResult('✅ Login API is accessible (401 = invalid credentials, which is expected)', 'success');
+                } else if (response.status === 400) {
+                    addTestResult('✅ Login API is accessible (400 = bad request, which is expected)', 'success');
+                } else {
+                    addTestResult(`✅ Login API is accessible (Status: ${response.status})`, 'success');
+                }
+            } catch (error) {
+                addTestResult(`❌ Login API connection failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function clearBrowserCache() {
+            addTestResult('Clearing browser cache...', 'info');
+            if ('caches' in window) {
+                caches.keys().then(function(names) {
+                    for (let name of names) {
+                        caches.delete(name);
+                    }
+                    addTestResult('✅ Browser cache cleared. Please refresh the page.', 'success');
+                });
+            } else {
+                addTestResult('⚠️ Cache API not available. Please manually clear cache (Ctrl+Shift+Delete)', 'error');
+            }
+        }
+        
+        // Auto-test on page load
+        window.onload = function() {
+            addTestResult('Page loaded. Ready for testing.', 'info');
+            setTimeout(testBackendConnection, 1000);
+        };
+    </script>
+</body>
+</html>

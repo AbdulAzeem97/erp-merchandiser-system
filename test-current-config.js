@@ -7,7 +7,7 @@ async function testCurrentConfig() {
   try {
     // Test backend health
     console.log('🏥 Testing backend health...');
-    const healthResponse = await fetch('http://192.168.2.56:3001/health');
+    const healthResponse = await fetch('http://localhost:3001/health');
     if (healthResponse.ok) {
       const healthData = await healthResponse.json();
       console.log('✅ Backend health: PASSED');
@@ -20,7 +20,7 @@ async function testCurrentConfig() {
 
     // Test frontend access
     console.log('🎨 Testing frontend access...');
-    const frontendResponse = await fetch('http://192.168.2.56:8080');
+    const frontendResponse = await fetch('http://localhost:8080');
     if (frontendResponse.ok) {
       console.log('✅ Frontend access: PASSED');
       console.log(`   Status: ${frontendResponse.status}`);
@@ -32,13 +32,13 @@ async function testCurrentConfig() {
 
     // Test login API directly
     console.log('🔐 Testing login API...');
-    const loginResponse = await fetch('http://192.168.2.56:3001/api/auth/login', {
+    const loginResponse = await fetch('http://localhost:3001/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: 'admin@horizonsourcing.com',
+        email: 'admin@erp.local',
         password: 'password123'
       })
     });
@@ -60,10 +60,10 @@ async function testCurrentConfig() {
     // Test if frontend is actually using the network API
     console.log('🌐 Testing if frontend uses network API...');
     try {
-      const frontendHtml = await fetch('http://192.168.2.56:8080');
+      const frontendHtml = await fetch('http://localhost:8080');
       const htmlText = await frontendHtml.text();
       
-      if (htmlText.includes('192.168.2.56')) {
+      if (htmlText.includes('localhost')) {
         console.log('✅ Frontend is using network API URL');
       } else if (htmlText.includes('localhost')) {
         console.log('❌ Frontend is still using localhost');

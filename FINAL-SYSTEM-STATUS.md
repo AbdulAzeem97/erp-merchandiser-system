@@ -15,18 +15,18 @@
 ### 🌐 **Access Information:**
 
 **Main Application:**
-- **URL:** `http://192.168.2.56:8080`
+- **URL:** `http://localhost:8080`
 - **Local Access:** `http://localhost:8080`
 
 **Backend API:**
-- **URL:** `http://192.168.2.56:3001/api`
-- **Health Check:** `http://192.168.2.56:3001/health`
+- **URL:** `http://localhost:3001/api`
+- **Health Check:** `http://localhost:3001/health`
 
 ### 🔐 **Login Credentials:**
 
 **All users use password:** `password123`
 
-- **Admin:** `admin@horizonsourcing.com`
+- **Admin:** `admin@erp.local`
 - **Designer:** `emma.wilson@horizonsourcing.com`
 - **Inventory Manager:** `inventory@horizonsourcing.com`
 - **HOD Prepress:** `sarah.johnson@horizonsourcing.com`
@@ -83,7 +83,7 @@
 
 ### 🚀 **How to Use:**
 
-1. **Access the system:** Go to `http://192.168.2.56:8080`
+1. **Access the system:** Go to `http://localhost:8080`
 2. **Login:** Use any of the provided credentials
 3. **Navigate:** Use the sidebar to access different modules
 4. **Collaborate:** Team members can access from their devices using the same URL
@@ -103,7 +103,7 @@ $env:JWT_SECRET='your-super-secret-jwt-key-change-this-in-production'; $env:PORT
 
 **Frontend:**
 ```powershell
-$env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'; $env:VITE_API_URL='http://192.168.2.56:3001'; npm run dev -- --port 8080 --host
+$env:VITE_API_BASE_URL='http://localhost:3001/api'; $env:VITE_API_URL='http://localhost:3001'; npm run dev -- --port 8080 --host
 ```
 
 ### 🎉 **Final Result:**

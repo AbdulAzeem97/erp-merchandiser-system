@@ -106,19 +106,19 @@ app.post('/test-login', loginValidation, async (req, res) => {
 const PORT = 3002;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🧪 Test server running on port ${PORT}`);
-  console.log(`🌐 Test URL: http://192.168.2.56:${PORT}/test-login`);
+  console.log(`🌐 Test URL: http://localhost:${PORT}/test-login`);
   
   // Test the endpoint
   setTimeout(async () => {
     console.log('\n🧪 Testing the endpoint...');
     try {
-      const response = await fetch(`http://192.168.2.56:${PORT}/test-login`, {
+      const response = await fetch(`http://localhost:${PORT}/test-login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          email: 'admin@horizonsourcing.com', 
+          email: 'admin@erp.local', 
           password: 'password123' 
         })
       });

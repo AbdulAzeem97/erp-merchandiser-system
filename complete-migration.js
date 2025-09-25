@@ -220,7 +220,7 @@ class CompleteMigrator {
       `, [
         adminId,
         'admin',
-        'admin@horizonsourcing.com',
+        'admin@erp.local',
         hashedPassword,
         'System',
         'Administrator',
@@ -278,7 +278,7 @@ class CompleteMigrator {
       // Test admin login
       const admin = await this.pgPool.query(
         'SELECT id, email, role FROM users WHERE email = $1',
-        ['admin@horizonsourcing.com']
+        ['admin@erp.local']
       );
       
       if (admin.rows.length > 0) {
@@ -316,7 +316,7 @@ class CompleteMigrator {
     console.log('       Password: admin123');
     console.log('');
     console.log('🔑 Default Credentials:');
-    console.log('   👤 Admin: admin@horizonsourcing.com / admin123');
+    console.log('   👤 Admin: admin@erp.local / admin123');
     console.log('');
     console.log('💡 Next Steps:');
     console.log('1. Update your .env file:');

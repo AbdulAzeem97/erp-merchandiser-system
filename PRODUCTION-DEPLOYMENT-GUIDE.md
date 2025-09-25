@@ -204,7 +204,7 @@ node complete-migration.js
 ## **🔐 Default Credentials**
 
 ### **System Administrator**
-- **Email**: `admin@horizonsourcing.com`
+- **Email**: `admin@erp.local`
 - **Password**: `admin123`
 - **Role**: ADMIN
 
@@ -468,7 +468,7 @@ After deployment, verify these endpoints:
    ```bash
    curl -X POST http://localhost:5000/api/auth/login \
      -H "Content-Type: application/json" \
-     -d '{"email":"admin@horizonsourcing.com","password":"admin123"}'
+     -d '{"email":"admin@erp.local","password":"admin123"}'
    ```
 
 3. **Database Connection**: Check PgAdmin at http://localhost:5050

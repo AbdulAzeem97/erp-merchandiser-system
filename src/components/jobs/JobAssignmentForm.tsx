@@ -83,13 +83,13 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
       const token = localStorage.getItem('authToken');
       
       const [companiesRes, productsRes, designersRes] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/companies`, {
+        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/companies`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch('http://localhost:3002/api/products', {
+        fetch('http://localhost:5001/api/products', {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch('http://localhost:3002/api/job-assignment/designers', {
+        fetch('http://localhost:5001/api/job-assignment/designers', {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       ]);
@@ -147,7 +147,7 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
         status: 'PENDING'
       };
 
-      const jobResponse = await fetch('http://localhost:3002/api/jobs', {
+      const jobResponse = await fetch('http://localhost:5001/api/jobs', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -174,7 +174,7 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
           notes: formData.assignNotes
         };
 
-        const assignmentResponse = await fetch('http://localhost:3002/api/job-assignment/assign', {
+        const assignmentResponse = await fetch('http://localhost:5001/api/job-assignment/assign', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

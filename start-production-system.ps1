@@ -237,7 +237,7 @@ if ($Development) {
 
 Write-Host ""
 Write-Host "🔑 Login Credentials:" -ForegroundColor Yellow
-Write-Host "   👤 Admin: admin@horizonsourcing.com / admin123" -ForegroundColor White
+Write-Host "   👤 Admin: admin@erp.local / admin123" -ForegroundColor White
 Write-Host "   🎨 Designer: emma.wilson@horizonsourcing.com / password123" -ForegroundColor White
 Write-Host "   👔 Merchandiser: tom.anderson@horizonsourcing.com / password123" -ForegroundColor White
 

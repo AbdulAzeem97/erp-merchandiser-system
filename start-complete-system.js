@@ -71,7 +71,7 @@ function startFrontend() {
         console.log('   Frontend: ' + match[1]);
         console.log('   Database: SQLite (erp_merchandiser.db)');
         console.log('\n🔑 Login Credentials:');
-        console.log('   Admin: admin@horizonsourcing.com / admin123');
+        console.log('   Admin: admin@erp.local / admin123');
         console.log('   Designer: emma.wilson@horizonsourcing.com / admin123');
         console.log('   Merchandiser: tom.anderson@horizonsourcing.com / admin123');
         console.log('   Inventory: inventory@horizonsourcing.com / admin123');

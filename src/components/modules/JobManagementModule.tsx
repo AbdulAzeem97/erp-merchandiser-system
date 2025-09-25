@@ -51,7 +51,8 @@ import {
   Plus,
   RefreshCw,
   Home,
-  ArrowLeft
+  ArrowLeft,
+  History
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -65,14 +66,16 @@ import JobDashboard from '../advanced/JobDashboard';
 import JobLifecycleTracker from '../advanced/JobLifecycleTracker';
 import JobWorkflowVisualizer from '../advanced/JobWorkflowVisualizer';
 import JobStageCard from '../advanced/JobStageCard';
+import JobAssignmentHistory from '../jobs/JobAssignmentHistory';
 
 interface JobManagementModuleProps {
   onBack?: () => void;
 }
 
 const JobManagementModule: React.FC<JobManagementModuleProps> = ({ onBack }) => {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'lifecycle' | 'workflow' | 'stages'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'lifecycle' | 'workflow' | 'stages' | 'history'>('dashboard');
   const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [showAssignmentHistory, setShowAssignmentHistory] = useState(false);
 
   // Mock workflow stages data
   const mockWorkflowStages = [
@@ -293,6 +296,18 @@ const JobManagementModule: React.FC<JobManagementModuleProps> = ({ onBack }) => 
             </div>
           </div>
         );
+      case 'history':
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-6">
+              <JobAssignmentHistory 
+                jobId={selectedJob?.id || '1'} 
+                jobCardId={selectedJob?.jobNumber}
+                onClose={() => setShowAssignmentHistory(false)}
+              />
+            </div>
+          </div>
+        );
       default:
         return <JobDashboard />;
     }
@@ -346,7 +361,7 @@ const JobManagementModule: React.FC<JobManagementModuleProps> = ({ onBack }) => 
           <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
             <CardContent className="p-6">
               <Tabs value={currentView} onValueChange={(value) => setCurrentView(value as any)}>
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="dashboard" className="flex items-center space-x-2">
                     <BarChart3 className="w-4 h-4" />
                     <span className="hidden sm:inline">Dashboard</span>
@@ -362,6 +377,10 @@ const JobManagementModule: React.FC<JobManagementModuleProps> = ({ onBack }) => 
                   <TabsTrigger value="stages" className="flex items-center space-x-2">
                     <Settings className="w-4 h-4" />
                     <span className="hidden sm:inline">Stages</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="history" className="flex items-center space-x-2">
+                    <History className="w-4 h-4" />
+                    <span className="hidden sm:inline">History</span>
                   </TabsTrigger>
                 </TabsList>
               </Tabs>

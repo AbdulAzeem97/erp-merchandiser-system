@@ -8,14 +8,14 @@ async function testLogin() {
     { email: 'inventory@horizonsourcing.com', password: 'password123' },
     { email: 'emma.wilson@horizonsourcing.com', password: 'password123' },
     { email: 'sarah.johnson@horizonsourcing.com', password: 'password123' },
-    { email: 'admin@horizonsourcing.com', password: 'password123' }
+    { email: 'admin@erp.local', password: 'password123' }
   ];
 
   for (const cred of testCredentials) {
     try {
       console.log(`\n🧪 Testing: ${cred.email}`);
       
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

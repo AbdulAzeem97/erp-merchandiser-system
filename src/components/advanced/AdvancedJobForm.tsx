@@ -39,7 +39,7 @@ import { toast } from 'sonner';
 import { ProductMaster } from '../../types/erp';
 import { PROCESS_SEQUENCES } from '../../data/processSequences';
 import { generateJobCardPDF } from '../../utils/pdfGenerator';
-import { productsAPI, jobsAPI, companiesAPI } from '@/services/api';
+import { productsAPI, jobsAPI, companiesAPI, usersAPI } from '@/services/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fetchProcessSequence } from '../../utils/processSequenceUtils';
 import { ProcessPreview } from '../ProcessPreview';
@@ -48,9 +48,9 @@ const MERCHANDISER_OPTIONS = ['Abdullah', 'Jaseem', 'Ali', 'Ahmed'];
 
 // Designer options - will be fetched from API
 const DESIGNER_OPTIONS = [
-  { id: '62081101-7c55-4a1e-bdfb-980e64999a74', name: 'Emma Wilson', email: 'emma.wilson@horizonsourcing.com' },
-  { id: '57c715e5-b409-4a3d-98f1-a37ab8b36215', name: 'James Brown', email: 'james.brown@horizonsourcing.com' },
-  { id: 'c77488cf-fec8-4b5e-804a-23edcc644bb7', name: 'Lisa Garcia', email: 'lisa.garcia@horizonsourcing.com' }
+  { id: '8', name: 'Emma Wilson', email: 'emma.wilson@horizonsourcing.com' },
+  { id: '9', name: 'Alex Kumar', email: 'alex.kumar@horizonsourcing.com' },
+  { id: '10', name: 'Sarah Johnson', email: 'sarah.johnson@horizonsourcing.com' }
 ];
 
 interface AdvancedJobFormProps {
@@ -87,6 +87,38 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
   const [product, setProduct] = useState<ProductMaster | null>(initialProduct || null);
   const [savedProducts, setSavedProducts] = useState<SavedProduct[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
+  
+  // Fetch complete product info when initial product is provided
+  useEffect(() => {
+    if (initialProduct && initialProduct.id) {
+      const fetchCompleteInfo = async () => {
+        try {
+          const completeProductInfo = await productsAPI.getCompleteProductInfo(initialProduct.id);
+          const completeProduct = completeProductInfo.product || completeProductInfo || initialProduct;
+          
+          // Map API response fields to expected frontend field names
+          const mappedProduct = {
+            ...completeProduct,
+            fsc: completeProduct.fscCertified ? 'Yes' : 'No',
+            fsc_claim: completeProduct.fscLicense || '',
+            product_item_code: completeProduct.sku || completeProduct.product_item_code,
+            product_type: completeProduct.product_type || 'Offset',
+            material_name: completeProduct.material_name || 'N/A',
+            category_name: completeProduct.category_name || 'N/A',
+            color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
+            remarks: completeProduct.remarks || 'Print on Uncoated Side'
+          };
+          
+          setProduct(mappedProduct);
+          console.log('Loaded complete product info for initial product:', mappedProduct);
+        } catch (error) {
+          console.warn('Could not fetch complete product info for initial product:', error);
+          // Keep the initial product as is
+        }
+      };
+      fetchCompleteInfo();
+    }
+  }, [initialProduct]);
   const [jobCardData, setJobCardData] = useState<JobCardData>({
     productCode: initialProduct?.product_item_code || '',
     poNumber: '',
@@ -116,9 +148,31 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [formProgress, setFormProgress] = useState(0);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [designers, setDesigners] = useState<any[]>([]);
+  const [isLoadingDesigners, setIsLoadingDesigners] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [processSequence, setProcessSequence] = useState<any>(null);
   const [isLoadingProcessSequence, setIsLoadingProcessSequence] = useState(false);
+
+  // Load designers from API on component mount
+  useEffect(() => {
+    const fetchDesigners = async () => {
+      setIsLoadingDesigners(true);
+      try {
+        const response = await usersAPI.getDesigners();
+        if (response.success) {
+          setDesigners(response.designers);
+        }
+      } catch (error) {
+        console.error('Error fetching designers:', error);
+        toast.error('Failed to load designers');
+      } finally {
+        setIsLoadingDesigners(false);
+      }
+    };
+
+    fetchDesigners();
+  }, []);
 
   // Load products from API on component mount
   useEffect(() => {
@@ -144,7 +198,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     if (!jobCardData.deliveryDate) errors.push('Delivery date required');
     if (!jobCardData.customerInfo.name.trim()) errors.push('Customer name required');
     if (!jobCardData.merchandiser.trim()) errors.push('Merchandiser required');
-    if (!jobCardData.assignedDesigner.trim()) errors.push('Designer assignment required');
+    if (!jobCardData.assignedDesigner.trim() || jobCardData.assignedDesigner === 'loading' || jobCardData.assignedDesigner === 'no-designers') errors.push('Designer assignment required');
 
     setValidationErrors(errors);
 
@@ -158,7 +212,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       jobCardData.customerInfo.name.trim(),
       jobCardData.customerInfo.email.trim(),
       jobCardData.merchandiser.trim(),
-      jobCardData.assignedDesigner.trim(),
+      jobCardData.assignedDesigner.trim() && jobCardData.assignedDesigner !== 'loading' && jobCardData.assignedDesigner !== 'no-designers',
       jobCardData.customerInfo.phone.trim(),
       jobCardData.customerInfo.address.trim()
     ].filter(Boolean).length;
@@ -192,6 +246,30 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       try {
         setIsLoadingProcessSequence(true);
         const completeInfo = await productsAPI.getCompleteProductInfo(selectedProduct.id);
+        console.log('Complete product info for selected product:', completeInfo);
+        
+        // Update product with complete information if available
+        if (completeInfo.product || completeInfo) {
+          const completeProduct = completeInfo.product || completeInfo;
+          console.log('Updating selected product with complete info:', completeProduct);
+          
+          // Map API response fields to expected frontend field names
+          const mappedProduct = {
+            ...completeProduct,
+            fsc: completeProduct.fscCertified ? 'Yes' : 'No',
+            fsc_claim: completeProduct.fscLicense || '',
+            product_item_code: completeProduct.sku || completeProduct.product_item_code,
+            product_type: completeProduct.product_type || 'Offset',
+            material_name: completeProduct.material_name || 'N/A',
+            category_name: completeProduct.category_name || 'N/A',
+            color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
+            remarks: completeProduct.remarks || 'Print on Uncoated Side'
+          };
+          
+          console.log('Mapped selected product for display:', mappedProduct);
+          setProduct(mappedProduct);
+        }
+        
         setProcessSequence(completeInfo.process_sequence);
       } catch (error) {
         console.error('Error loading complete product info:', error);
@@ -259,6 +337,28 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
           const completeInfo = await productsAPI.getCompleteProductInfo(foundProduct.id);
           console.log('Complete product info:', completeInfo);
           console.log('Complete info keys:', Object.keys(completeInfo));
+          
+          // Update product with complete information if available
+          if (completeInfo.product || completeInfo) {
+            const completeProduct = completeInfo.product || completeInfo;
+            console.log('Updating product with complete info:', completeProduct);
+            
+            // Map API response fields to expected frontend field names
+            const mappedProduct = {
+              ...completeProduct,
+              fsc: completeProduct.fscCertified ? 'Yes' : 'No',
+              fsc_claim: completeProduct.fscLicense || '',
+              product_item_code: completeProduct.sku || completeProduct.product_item_code,
+              product_type: completeProduct.product_type || 'Offset',
+              material_name: completeProduct.material_name || 'N/A',
+              category_name: completeProduct.category_name || 'N/A',
+              color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
+              remarks: completeProduct.remarks || 'Print on Uncoated Side'
+            };
+            
+            console.log('Mapped product for display:', mappedProduct);
+            setProduct(mappedProduct);
+          }
           
           if (completeInfo.process_sequence) {
             setProcessSequence(completeInfo.process_sequence);
@@ -355,7 +455,9 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
 
     setIsGeneratingPDF(true);
     try {
-      const jobCardId = `JC-${Date.now().toString().slice(-6)}`;
+      // Generate a consistent job ID that will be used for both PDF and job creation
+      const timestamp = Date.now();
+      const jobCardId = `JC-${timestamp}`;
       
       // Use the fetched process sequence
       let completeProduct = product;
@@ -432,7 +534,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         customer_name: jobCardData.customerInfo.name,
         customer_email: jobCardData.customerInfo.email,
         customer_phone: jobCardData.customerInfo.phone,
-        customer_address: jobCardData.customerInfo.address
+        customer_address: jobCardData.customerInfo.address,
+        assigned_designer_id: jobCardData.assignedDesigner || null
       };
 
       // Only include company_id if it has a valid value
@@ -449,32 +552,44 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       // Create prepress job automatically
       if (jobCardData.assignedDesigner) {
         try {
-          const prepressJobData = {
-            jobCardId: savedJob.job.id, // Use the actual job ID from the saved job
-            assignedDesignerId: jobCardData.assignedDesigner,
-            priority: jobCardData.priority.toUpperCase() === 'URGENT' ? 'CRITICAL' : jobCardData.priority.toUpperCase(),
-            dueDate: deliveryDate.toISOString()
-          };
-          
-          console.log('Creating prepress job:', prepressJobData);
-          
-          // Create prepress job via API
-          const prepressJob = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3002'}/api/prepress/jobs`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-            },
-            body: JSON.stringify(prepressJobData)
-          });
-          
-          if (prepressJob.ok) {
-            const createdPrepressJob = await prepressJob.json();
-            console.log('Prepress job created:', createdPrepressJob);
-            toast.success(`Job assigned to designer successfully! 🎨`);
+          const authToken = localStorage.getItem('authToken');
+          if (!authToken) {
+            console.warn('No auth token found, skipping prepress job creation');
+            toast.warning('Job created but designer assignment failed - authentication required');
           } else {
-            console.error('Failed to create prepress job:', await prepressJob.text());
-            toast.warning('Job created but designer assignment failed');
+            const prepressJobData = {
+              jobCardId: savedJob.job.id, // Use the actual job ID from the saved job
+              assignedDesignerId: jobCardData.assignedDesigner,
+              priority: jobCardData.priority.toUpperCase() === 'URGENT' ? 'CRITICAL' : jobCardData.priority.toUpperCase(),
+              dueDate: deliveryDate.toISOString()
+            };
+
+            console.log('Creating prepress job:', prepressJobData);
+
+            // Create prepress job via API service
+            try {
+              const prepressJobResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/prepress/jobs`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify(prepressJobData)
+              });
+            
+              if (prepressJobResponse.ok) {
+                const createdPrepressJob = await prepressJobResponse.json();
+                console.log('Prepress job created:', createdPrepressJob);
+                toast.success(`Job assigned to designer successfully! 🎨`);
+              } else {
+                const errorText = await prepressJobResponse.text();
+                console.error('Failed to create prepress job:', errorText);
+                toast.warning('Job created but designer assignment failed');
+              }
+            } catch (prepressApiError) {
+              console.error('Error calling prepress API:', prepressApiError);
+              toast.warning('Job created but designer assignment failed');
+            }
           }
         } catch (prepressError) {
           console.error('Error creating prepress job:', prepressError);
@@ -482,10 +597,30 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         }
       }
       
-      // Generate PDF
-      await handleGeneratePDF();
+      // Generate PDF with the actual job ID from the saved job
+      const jobCardId = savedJob.job.jobNumber || savedJob.job.job_card_id || jobCardData.jobCardId;
       
-      toast.success(`Job Card ${savedJob.job_card_id} created successfully! 🎉`);
+      // Use the fetched process sequence
+      let completeProduct = product;
+      if (product && processSequence) {
+        completeProduct = {
+          ...product,
+          processSequence: processSequence
+        };
+      }
+      
+      await generateJobCardPDF({
+        product: completeProduct,
+        jobCardData: {
+          ...jobCardData,
+          customerName: jobCardData.customerInfo.name,
+          salesman: jobCardData.merchandiser,
+          jobCode: jobCardId
+        },
+        jobCardId
+      });
+      
+      toast.success(`Job Card ${jobCardId} created successfully! 🎉`);
       console.log('Job saved:', savedJob);
       onBack();
     } catch (error) {
@@ -1047,15 +1182,21 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                     <div className="space-y-2">
                       <Label htmlFor="assignedDesigner">Assign to Designer *</Label>
                       <Select value={jobCardData.assignedDesigner} onValueChange={(value) => handleInputChange('assignedDesigner', value)}>
-                        <SelectTrigger className={!jobCardData.assignedDesigner.trim() && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}>
+                        <SelectTrigger className={(!jobCardData.assignedDesigner.trim() || jobCardData.assignedDesigner === 'loading' || jobCardData.assignedDesigner === 'no-designers') && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}>
                           <SelectValue placeholder="Select designer for this job" />
                         </SelectTrigger>
                         <SelectContent>
-                          {DESIGNER_OPTIONS.map((designer) => (
-                            <SelectItem key={designer.id} value={designer.id}>
-                              {designer.name} ({designer.email})
-                            </SelectItem>
-                          ))}
+                          {isLoadingDesigners ? (
+                            <SelectItem value="loading" disabled>Loading designers...</SelectItem>
+                          ) : designers.length > 0 ? (
+                            designers.map((designer) => (
+                              <SelectItem key={designer.id} value={designer.id.toString()}>
+                                {designer.fullName} ({designer.email})
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="no-designers" disabled>No designers available</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-gray-500">

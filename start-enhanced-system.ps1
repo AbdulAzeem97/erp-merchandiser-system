@@ -79,7 +79,7 @@ Write-Host "  ✅ Enhanced RBAC with 6 user roles" -ForegroundColor White
 Write-Host ""
 
 Write-Host "🔑 Login Credentials:" -ForegroundColor Cyan
-Write-Host "  👑 Admin: admin@horizonsourcing.com / admin123" -ForegroundColor White
+Write-Host "  👑 Admin: admin@erp.local / admin123" -ForegroundColor White
 Write-Host "  📊 Head of Merchandiser: sarah.chen@horizonsourcing.com / hom123" -ForegroundColor White
 Write-Host "  🏭 Head of Production: mike.rodriguez@horizonsourcing.com / hop123" -ForegroundColor White
 Write-Host "  🎨 HOD Prepress: alex.kumar@horizonsourcing.com / hod123" -ForegroundColor White

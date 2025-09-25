@@ -54,7 +54,7 @@ async function fixPasswords() {
     
     const testUsers = [
       { email: 'emma.wilson@horizonsourcing.com', name: 'Emma Wilson' },
-      { email: 'admin@horizonsourcing.com', name: 'System Administrator' },
+      { email: 'admin@erp.local', name: 'System Administrator' },
       { email: 'inventory@horizonsourcing.com', name: 'Inventory Manager' }
     ];
     

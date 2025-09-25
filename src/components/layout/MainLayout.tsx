@@ -28,6 +28,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
   showTopBar = true
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [pageTransition, setPageTransition] = useState(false);
 
@@ -59,6 +60,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
         onLogout={onLogout}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+        isMobileOpen={mobileSidebarOpen}
+        onMobileToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
       />
 
       {/* Main Content Area */}
@@ -71,6 +74,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
             user={user}
             onNavigate={handleNavigate}
             sidebarCollapsed={sidebarCollapsed}
+            onMobileMenuToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
           />
         )}
 

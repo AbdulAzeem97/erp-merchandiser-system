@@ -6,12 +6,12 @@ Your ERP Merchandiser System is now fully configured for network access. Team me
 
 ## 📱 Network Access URLs
 
-**Your Local IP:** `192.168.2.56`
+**Your Local IP:** `localhost`
 
 ### For Team Members:
-- **Main Application:** `http://192.168.2.56:8080`
-- **Backend API:** `http://192.168.2.56:3001/api`
-- **Health Check:** `http://192.168.2.56:3001/health`
+- **Main Application:** `http://localhost:8080`
+- **Backend API:** `http://localhost:3001/api`
+- **Health Check:** `http://localhost:3001/health`
 
 ## 🔐 Login Credentials
 
@@ -33,7 +33,7 @@ All users have the password: **`password123`**
 | **Head of Merchandiser** | `sarah.chen@horizonsourcing.com` | Sarah Chen |
 | **Head of Production** | `mike.rodriguez@horizonsourcing.com` | Mike Rodriguez |
 | **Inventory Head** | `inventory@horizonsourcing.com` | Inventory Manager |
-| **System Administrator** | `admin@horizonsourcing.com` | System Administrator |
+| **System Administrator** | `admin@erp.local` | System Administrator |
 
 ## 🚀 Starting the Network Server
 
@@ -63,7 +63,7 @@ $env:JWT_SECRET='your-super-secret-jwt-key-change-this-in-production'; $env:PORT
 
 ### Frontend Server:
 ```powershell
-$env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'; $env:VITE_API_URL='http://192.168.2.56:3001'; npm run dev
+$env:VITE_API_BASE_URL='http://localhost:3001/api'; $env:VITE_API_URL='http://localhost:3001'; npm run dev
 ```
 
 ## 🛡️ Security Notes
@@ -102,8 +102,8 @@ node get-network-info.js
    - Update the URLs if your IP has changed
 
 3. **Check if servers are running:**
-   - Backend: `http://192.168.2.56:3001/health`
-   - Frontend: `http://192.168.2.56:8080`
+   - Backend: `http://localhost:3001/health`
+   - Frontend: `http://localhost:8080`
 
 4. **Restart servers:**
    ```powershell

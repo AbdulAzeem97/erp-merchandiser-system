@@ -14,7 +14,8 @@ import {
   Wifi,
   WifiOff,
   ChevronRight,
-  Home
+  Home,
+  Menu
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +38,7 @@ interface TopBarProps {
   sidebarCollapsed: boolean;
   showSearch?: boolean;
   showNotifications?: boolean;
+  onMobileMenuToggle?: () => void;
 }
 
 interface Notification {
@@ -51,53 +53,62 @@ interface Notification {
 const mockNotifications: Notification[] = [
   {
     id: '1',
-    type: 'success',
-    title: 'Job Completed',
-    message: 'Job JC-001234 has been completed successfully',
-    timestamp: '2 min ago',
+    type: 'info',
+    title: 'New Job Created',
+    message: 'Job JC-1758001698991 has been created successfully',
+    timestamp: '2 minutes ago',
     read: false
   },
   {
     id: '2',
-    type: 'info',
-    title: 'New Assignment',
-    message: 'You have been assigned a new prepress job',
-    timestamp: '5 min ago',
+    type: 'success',
+    title: 'Product Updated',
+    message: 'Product "HANGTAG" has been updated with new specifications',
+    timestamp: '15 minutes ago',
     read: false
   },
   {
     id: '3',
     type: 'warning',
-    title: 'Due Date Alert',
-    message: 'Job JC-001235 is due tomorrow',
-    timestamp: '10 min ago',
+    title: 'Low Stock Alert',
+    message: 'Material "C1S" is running low on stock',
+    timestamp: '1 hour ago',
+    read: true
+  },
+  {
+    id: '4',
+    type: 'error',
+    title: 'System Error',
+    message: 'Failed to process job JC-1758001698990',
+    timestamp: '2 hours ago',
     read: true
   }
 ];
 
-const getBreadcrumbs = (currentPage: string) => {
-  const breadcrumbs: Array<{ label: string; page?: string }> = [
+const getBreadcrumbs = (pageTitle: string) => {
+  const breadcrumbs = [
     { label: 'Dashboard', page: 'dashboard' }
   ];
 
-  const pageMap: Record<string, string[]> = {
-    'productForm': ['Products', 'Create Product'],
-    'jobForm': ['Jobs', 'Create Job Order'],
-    'prepressHOD': ['Prepress', 'HOD Dashboard'],
-    'prepressDesigner': ['Prepress', 'Designer Portal'],
-    'jobMonitoring': ['Monitoring', 'Job Lifecycle'],
-    'reports': ['Analytics', 'Reports'],
-    'settings': ['System', 'Settings'],
-    'users': ['Management', 'Users']
-  };
+  if (pageTitle) {
+    const pageMap: { [key: string]: { label: string; page?: string } } = {
+      'product form': { label: 'Create Product', page: 'productForm' },
+      'job form': { label: 'Create Job', page: 'jobForm' },
+      'job monitoring': { label: 'Job Monitoring', page: 'jobMonitoring' },
+      'my jobs': { label: 'My Jobs', page: 'myJobs' },
+      'products': { label: 'Products', page: 'products' },
+      'companies': { label: 'Companies', page: 'companies' },
+      'users': { label: 'Users', page: 'users' },
+      'settings': { label: 'Settings', page: 'settings' }
+    };
 
-  if (pageMap[currentPage]) {
-    pageMap[currentPage].forEach((label, index) => {
-      breadcrumbs.push({ 
-        label,
-        page: index === pageMap[currentPage].length - 1 ? undefined : currentPage
+    const currentPage = pageMap[pageTitle.toLowerCase()];
+    if (currentPage) {
+      breadcrumbs.push({
+        label: currentPage.label,
+        page: currentPage.page ? currentPage.page : undefined
       });
-    });
+    }
   }
 
   return breadcrumbs;
@@ -110,7 +121,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onNavigate,
   sidebarCollapsed,
   showSearch = true,
-  showNotifications = true
+  showNotifications = true,
+  onMobileMenuToggle
 }) => {
   const { isConnected } = useSocket();
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,47 +138,62 @@ export const TopBar: React.FC<TopBarProps> = ({
       animate={{ y: 0, opacity: 1 }}
       className="bg-white border-b border-gray-200 shadow-sm z-40"
     >
-      <div className="px-6 py-4">
+      <div className="px-4 lg:px-6 py-4">
         <div className="flex items-center justify-between">
-          {/* Left Section - Breadcrumbs & Title */}
-          <div className="flex-1">
-            {/* Breadcrumbs */}
-            <nav className="flex items-center text-sm text-gray-500 mb-1">
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={index}>
-                  {index === 0 && <Home className="w-4 h-4 mr-2" />}
-                  <button
-                    onClick={() => crumb.page && onNavigate(crumb.page)}
-                    className={`hover:text-gray-700 transition-colors ${
-                      !crumb.page ? 'text-gray-900 font-medium' : 'hover:underline'
-                    }`}
-                  >
-                    {crumb.label}
-                  </button>
-                  {index < breadcrumbs.length - 1 && (
-                    <ChevronRight className="w-4 h-4 mx-2" />
+          {/* Left Section - Mobile Menu & Breadcrumbs & Title */}
+          <div className="flex items-center gap-4 flex-1">
+            {/* Mobile Menu Button */}
+            {onMobileMenuToggle && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onMobileMenuToggle}
+                className="lg:hidden p-2"
+                title="Toggle sidebar"
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+            )}
+            
+            <div className="flex-1">
+              {/* Breadcrumbs */}
+              <nav className="flex items-center text-sm text-gray-500 mb-1">
+                {breadcrumbs.map((crumb, index) => (
+                  <React.Fragment key={index}>
+                    {index === 0 && <Home className="w-4 h-4 mr-2" />}
+                    <button
+                      onClick={() => crumb.page && onNavigate(crumb.page)}
+                      className={`hover:text-gray-700 transition-colors ${
+                        !crumb.page ? 'text-gray-900 font-medium' : 'hover:underline'
+                      }`}
+                    >
+                      {crumb.label}
+                    </button>
+                    {index < breadcrumbs.length - 1 && (
+                      <ChevronRight className="w-4 h-4 mx-2" />
+                    )}
+                  </React.Fragment>
+                ))}
+              </nav>
+
+              {/* Page Title */}
+              <div className="flex items-center gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    {pageTitle || 'Dashboard'}
+                  </h1>
+                  {pageDescription && (
+                    <p className="text-gray-600 mt-1">{pageDescription}</p>
                   )}
-                </React.Fragment>
-              ))}
-            </nav>
+                </div>
 
-            {/* Page Title */}
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {pageTitle || 'Dashboard'}
-                </h1>
-                {pageDescription && (
-                  <p className="text-gray-600 mt-1">{pageDescription}</p>
-                )}
-              </div>
-
-              {/* Live Status Indicator */}
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
-                <span className={`text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-                  {isConnected ? 'Live' : 'Offline'}
-                </span>
+                {/* Live Status Indicator */}
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                  <span className={`text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                    {isConnected ? 'Live' : 'Offline'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -230,19 +257,19 @@ export const TopBar: React.FC<TopBarProps> = ({
                       >
                         <div className="flex items-start gap-3">
                           <div className={`w-2 h-2 rounded-full mt-2 ${
-                            notification.type === 'success' ? 'bg-green-500' :
                             notification.type === 'error' ? 'bg-red-500' :
                             notification.type === 'warning' ? 'bg-yellow-500' :
+                            notification.type === 'success' ? 'bg-green-500' :
                             'bg-blue-500'
                           }`} />
                           <div className="flex-1">
-                            <h4 className="font-medium text-gray-900 text-sm">
+                            <p className="font-medium text-gray-900 text-sm">
                               {notification.title}
-                            </h4>
+                            </p>
                             <p className="text-gray-600 text-sm mt-1">
                               {notification.message}
                             </p>
-                            <p className="text-gray-500 text-xs mt-1">
+                            <p className="text-gray-400 text-xs mt-1">
                               {notification.timestamp}
                             </p>
                           </div>
@@ -250,56 +277,37 @@ export const TopBar: React.FC<TopBarProps> = ({
                       </div>
                     ))}
                   </div>
-                  <div className="p-3 border-t border-gray-200">
-                    <Button variant="ghost" className="w-full text-sm">
-                      View all notifications
+                  <div className="p-2 border-t border-gray-200">
+                    <Button variant="ghost" size="sm" className="w-full">
+                      View All Notifications
                     </Button>
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
 
-            {/* Theme Toggle */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-2"
-              onClick={() => setDarkMode(!darkMode)}
-            >
-              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </Button>
-
-            {/* Help */}
-            <Button variant="ghost" size="sm" className="p-2">
-              <HelpCircle className="w-4 h-4" />
-            </Button>
-
             {/* User Menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-3 px-3 py-2">
+                <Button variant="ghost" className="flex items-center gap-2 p-2">
                   <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
                     <User className="w-4 h-4 text-white" />
                   </div>
-                  {!sidebarCollapsed && (
-                    <div className="text-left">
-                      <p className="font-medium text-gray-900 text-sm">
-                        {user.first_name} {user.last_name}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {user.role?.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase())}
-                      </p>
-                    </div>
-                  )}
-                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                  <div className="hidden lg:block text-left">
+                    <p className="text-sm font-medium text-gray-900">
+                      {user?.firstName} {user?.lastName}
+                    </p>
+                    <p className="text-xs text-gray-500">{user?.role}</p>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-gray-500" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <div className="p-3 border-b border-gray-200">
                   <p className="font-medium text-gray-900">
-                    {user.first_name} {user.last_name}
+                    {user?.firstName} {user?.lastName}
                   </p>
-                  <p className="text-sm text-gray-600">{user.email}</p>
+                  <p className="text-sm text-gray-500">{user?.email}</p>
                 </div>
                 <DropdownMenuItem className="gap-2">
                   <User className="w-4 h-4" />

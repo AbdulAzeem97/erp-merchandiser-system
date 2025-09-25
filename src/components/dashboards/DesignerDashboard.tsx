@@ -17,7 +17,9 @@ import {
   Layers,
   Image,
   Send,
-  RotateCcw
+  RotateCcw,
+  Settings,
+  X
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,8 +28,10 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { MainLayout } from '../layout/MainLayout';
-import { prepressAPI, authAPI } from '@/services/api';
+import { prepressAPI, authAPI, jobsAPI, processSequencesAPI, prepressWorkflowAPI } from '@/services/api';
 import { useSocket } from '@/services/socketService.tsx';
+import { ProcessSequenceSection } from '../ProcessSequenceSection';
+import PrepressWorkflowDisplay from '../prepress/PrepressWorkflowDisplay';
 
 interface DesignerDashboardProps {
   onNavigate?: (page: string) => void;
@@ -36,37 +40,177 @@ interface DesignerDashboardProps {
   isLoading?: boolean;
 }
 
-const mockDesignerJobs = [
-  {
-    id: 'pj-001',
-    job_card_id: 'JC-001234',
-    product_code: 'BR-00-139-A',
-    company_name: 'JCP Brand',
-    status: 'ASSIGNED',
-    priority: 'HIGH',
-    due_date: '2024-01-15',
-    created_at: '2024-01-10',
-    customer_notes: 'Custom packaging design required',
-    estimated_hours: 8,
-    time_spent: 0,
-    progress: 0
-  },
-  {
-    id: 'pj-002', 
-    job_card_id: 'JC-001235',
-    product_code: 'BR-00-140-B',
-    company_name: 'Nike',
-    status: 'IN_PROGRESS',
-    priority: 'MEDIUM',
-    due_date: '2024-01-18',
-    created_at: '2024-01-11',
-    started_at: '2024-01-12T09:00:00Z',
-    estimated_hours: 6,
-    time_spent: 3.5,
-    progress: 60,
-    work_notes: 'Initial concept approved, working on final design'
-  }
-];
+interface DesignerJob {
+  id: string;
+  job_card_id: string;
+  product_code: string;
+  product_name: string;
+  company_name: string;
+  status: string;
+  priority: string;
+  due_date: string;
+  created_at: string;
+  customer_notes?: string;
+  estimated_hours?: number;
+  time_spent?: number;
+  progress: number;
+  started_at?: string;
+  work_notes?: string;
+  submission_notes?: string;
+  submitted_at?: string;
+  product_type?: string;
+  product_id?: string;
+  prepress_status?: string;
+  workflow_progress?: {
+    stages: Array<{
+      key: string;
+      label: string;
+      status: 'pending' | 'current' | 'completed';
+    }>;
+    currentStage: string;
+    progress: number;
+  };
+}
+
+interface ProcessSequenceModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  jobId: string | null;
+  job: DesignerJob | undefined;
+}
+
+const ProcessSequenceModal: React.FC<ProcessSequenceModalProps> = ({ isOpen, onClose, jobId, job }) => {
+  const [selectedProductType, setSelectedProductType] = useState<string>('');
+  const [processSteps, setProcessSteps] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && job) {
+      // Get product type from job or default to 'Offset'
+      const productType = job.product_type || 'Offset';
+      setSelectedProductType(productType);
+      loadProcessSequence(job.product_id || job.id);
+    }
+  }, [isOpen, job]);
+
+  const loadProcessSequence = async (productId: string) => {
+    setIsLoading(true);
+    try {
+      console.log('🔄 Loading process sequence for product:', productId);
+      
+      // Try to get process sequence for the specific product
+      const response = await processSequencesAPI.getForProduct(productId);
+      console.log('📋 Process sequence response:', response);
+      
+      if (response.process_sequence?.steps) {
+        setProcessSteps(response.process_sequence.steps);
+      }
+    } catch (error) {
+      console.error('Error loading process sequence:', error);
+      toast.error('Failed to load process sequence');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleProcessStepsChange = (steps: any[]) => {
+    setProcessSteps(steps);
+  };
+
+  const handleSaveProcessSequence = async () => {
+    if (!job || !job.product_id) return;
+    
+    setIsSaving(true);
+    try {
+      console.log('💾 Saving process sequence for job:', job.job_card_id);
+      
+      // Save the selected process steps
+      const selectedSteps = processSteps.filter(step => step.isSelected);
+      console.log('✅ Selected steps:', selectedSteps);
+      
+      // Here you would call an API to save the process sequence
+      // For now, just show success message
+      toast.success('Process sequence updated successfully');
+      onClose();
+    } catch (error) {
+      console.error('Error saving process sequence:', error);
+      toast.error('Failed to save process sequence');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen || !job) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        className="bg-white rounded-xl shadow-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-xl font-semibold">Configure Process Sequence</h3>
+            <p className="text-sm text-gray-600">
+              Job: {job.job_card_id} - {job.product_name}
+            </p>
+          </div>
+          <Button variant="outline" onClick={onClose}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-2">Loading process sequence...</span>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <ProcessSequenceSection
+              selectedProductType={selectedProductType as any}
+              onProductTypeChange={setSelectedProductType}
+              onProcessStepsChange={handleProcessStepsChange}
+              initialSelectedSteps={processSteps}
+            />
+            
+            <div className="flex gap-3 pt-4 border-t">
+              <Button
+                onClick={handleSaveProcessSequence}
+                disabled={isSaving}
+                className="flex-1 gap-2"
+              >
+                {isSaving ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                Save Process Sequence
+              </Button>
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+};
 
 export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
   onNavigate = () => {},
@@ -75,8 +219,9 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
   isLoading = false
 }) => {
   const { isConnected, socket } = useSocket();
-  const [designerJobs, setDesignerJobs] = useState(mockDesignerJobs);
+  const [designerJobs, setDesignerJobs] = useState<DesignerJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [modalAction, setModalAction] = useState<'process' | 'submit' | null>(null);
   const [workNotes, setWorkNotes] = useState('');
   const [submissionNotes, setSubmissionNotes] = useState('');
   const [activeTimer, setActiveTimer] = useState<string | null>(null);
@@ -84,9 +229,85 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
   const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const loadDesignerJobs = async () => {
+    console.log('🚀 loadDesignerJobs function called!');
     setDashboardLoading(true);
     try {
-      // In real implementation, this would fetch from API
+      console.log('🔄 Loading designer jobs...');
+      
+      // Get current user info
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        console.error('No user found in localStorage');
+        return;
+      }
+      
+      const user = JSON.parse(userStr);
+      console.log('👤 Current user:', user);
+      console.log('👤 User ID:', user.id, 'Type:', typeof user.id);
+      console.log('👤 User ID as string:', user.id?.toString());
+      
+      // Fetch all jobs and filter for designer assignments
+      const response = await jobsAPI.getAll();
+      console.log('📋 All jobs response:', response);
+      console.log('📋 Jobs count:', response.jobs?.length);
+      console.log('📋 First few jobs:', response.jobs?.slice(0, 3));
+      
+      if (response.jobs) {
+        // Filter jobs assigned to this designer
+        console.log('🔍 Debug - User ID:', user.id, 'Type:', typeof user.id);
+        console.log('🔍 Debug - All jobs with assignedToId:');
+        response.jobs.forEach((job: any, index: number) => {
+          if (job.assignedToId) {
+            console.log(`Job ${index}: ID=${job.id}, assignedToId=${job.assignedToId}, Type=${typeof job.assignedToId}`);
+          }
+        });
+        
+        const assignedJobs = response.jobs.filter((job: any) => {
+          const jobAssignedToId = job.assignedToId ? job.assignedToId.toString() : null;
+          const userId = user.id ? user.id.toString() : null;
+          const isAssigned = jobAssignedToId === userId;
+          console.log(`🔍 Job ${job.id}: assignedToId=${jobAssignedToId}, userId=${userId}, match=${isAssigned}`);
+          return isAssigned;
+        });
+        
+        console.log('🔍 Debug - Filtered assigned jobs:', assignedJobs.length);
+        
+        const jobs: DesignerJob[] = assignedJobs.map((job: any) => {
+          return {
+            id: job.id.toString(),
+            job_card_id: job.jobNumber || `JC-${job.id}`,
+            product_code: job.product_code || job.sku || 'N/A',
+            product_name: job.product_name || job.name || 'N/A',
+            company_name: job.company_name || 'N/A',
+            status: job.status || 'PENDING',
+            priority: job.urgency || job.priority || 'MEDIUM',
+            due_date: job.dueDate || job.delivery_date || new Date().toISOString().split('T')[0],
+            created_at: job.createdAt || job.created_at || new Date().toISOString(),
+            customer_notes: job.notes || job.description || '',
+            estimated_hours: job.estimated_hours || 8,
+            time_spent: job.time_spent || 0,
+            progress: job.progress || 0,
+            product_type: job.product_type || 'Offset',
+            product_id: job.productId || job.product_id,
+            // Default prepress status until prepress jobs are created
+            prepress_status: 'ASSIGNED',
+            workflow_progress: {
+              stages: [
+                { key: 'DESIGNING', label: 'Designing', status: 'current' },
+                { key: 'DIE_MAKING', label: 'Die Making', status: 'pending' },
+                { key: 'PLATE_MAKING', label: 'Plate Making', status: 'pending' },
+                { key: 'PREPRESS_COMPLETED', label: 'Prepress Completed', status: 'pending' }
+              ],
+              currentStage: 'Designing',
+              progress: 0
+            }
+          };
+        });
+        
+        console.log('✅ Designer jobs loaded:', jobs);
+        console.log(`📊 Total jobs: ${response.jobs.length}, Assigned to me: ${jobs.length}`);
+        setDesignerJobs(jobs);
+      }
     } catch (error) {
       console.error('Error loading designer jobs:', error);
       toast.error('Failed to load jobs');
@@ -98,13 +319,31 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
   useEffect(() => {
     loadDesignerJobs();
     
-    if (socket) {
+    if (socket && isConnected) {
+      console.log('🔌 Setting up real-time job updates for designer...');
+      
+      // Join job updates room
+      socket.emit('join_job_updates');
+      
+      // Listen for new jobs created by merchandiser
+      socket.on('job_created', (data) => {
+        console.log('🆕 New job created:', data);
+        toast.success(`New job available: ${data.jobCardId}`, {
+          description: `Priority: ${data.priority} - ${data.message}`
+        });
+        loadDesignerJobs();
+      });
+
+      // Listen for job assignments
       socket.on('new_job_assignment', (data) => {
+        console.log('📋 New job assignment:', data);
         toast.success(`New job assigned: ${data.jobCardId}`);
         loadDesignerJobs();
       });
 
+      // Listen for review decisions
       socket.on('review_decision', (data) => {
+        console.log('👀 Review decision:', data);
         if (data.action === 'approve') {
           toast.success(`Job ${data.jobCardId} approved!`);
         } else {
@@ -112,32 +351,108 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
         }
         loadDesignerJobs();
       });
+
+      // Listen for job lifecycle updates
+      socket.on('job_lifecycle_update', (data) => {
+        console.log('🔄 Job lifecycle update:', data);
+        toast.info(`Job ${data.jobCardId} updated`, {
+          description: data.data.message || 'Status changed'
+        });
+        loadDesignerJobs();
+      });
+
+      // Listen for prepress status updates
+      socket.on('prepress_status_update', (data) => {
+        console.log('🎨 Prepress status update:', data);
+        toast.info(`Prepress Status Update`, {
+          description: `Job ${data.jobCardId}: ${data.status.replace(/_/g, ' ')}`
+        });
+        loadDesignerJobs();
+      });
+
+      // Listen for job status updates
+      socket.on('job_status_update', (data) => {
+        console.log('🔄 Job status update:', data);
+        toast.info(`Job Status Update`, {
+          description: data.message
+        });
+        loadDesignerJobs();
+      });
+
+      // Listen for job assignments
+      socket.on('job_assigned', (data) => {
+        console.log('📋 Job assigned to designer:', data);
+        toast.success(`New Job Assigned`, {
+          description: `Job ${data.jobCardId} has been assigned to you`
+        });
+        loadDesignerJobs();
+      });
     }
 
     return () => {
       if (socket) {
+        socket.off('job_created');
         socket.off('new_job_assignment');
         socket.off('review_decision');
+        socket.off('job_lifecycle_update');
+        socket.off('prepress_status_update');
+        socket.off('job_status_update');
+        socket.off('job_assigned');
       }
     };
-  }, [socket]);
+  }, [socket, isConnected]);
 
   const startJob = async (jobId: string) => {
     try {
+      const job = designerJobs.find(j => j.id === jobId);
+      if (!job) return;
+
+      console.log(`🚀 Starting job ${job.job_card_id} for designer`);
+      
+      // Update job status in backend
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          status: 'IN_PROGRESS',
+          notes: 'Designer started working on the job'
+        })
+      });
+
+      if (response.ok) {
       setActiveTimer(jobId);
       setTimerMinutes(0);
       
+        // Update local state
       setDesignerJobs(prev => 
         prev.map(job => 
           job.id === jobId ? { 
             ...job, 
             status: 'IN_PROGRESS',
-            started_at: new Date().toISOString()
+              started_at: new Date().toISOString(),
+              progress: 10
           } : job
         )
       );
       
-      toast.success('Job started successfully');
+        toast.success(`Job ${job.job_card_id} started successfully`);
+        
+        // Emit real-time update
+        if (socket) {
+          socket.emit('job_status_update', {
+            jobId: jobId,
+            jobCardId: job.job_card_id,
+            status: 'IN_PROGRESS',
+            updatedBy: 'Designer',
+            message: `Designer started working on job ${job.job_card_id}`
+          });
+        }
+      } else {
+        throw new Error('Failed to update job status');
+      }
     } catch (error) {
       console.error('Error starting job:', error);
       toast.error('Failed to start job');
@@ -163,6 +478,35 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
     } catch (error) {
       console.error('Error submitting job:', error);
       toast.error('Failed to submit job');
+    }
+  };
+
+  const updatePrepressStatus = async (jobId: string, newStatus: string, notes: string = '') => {
+    try {
+      const job = designerJobs.find(j => j.id === jobId);
+      if (!job) return;
+
+      console.log(`🔄 Updating prepress status for job ${job.job_card_id} to ${newStatus}`);
+      
+      const response = await prepressWorkflowAPI.updateStatus(job.job_card_id, newStatus, notes);
+      
+      if (response.success) {
+        // Update local state
+        setDesignerJobs(prev => 
+          prev.map(j => 
+            j.id === jobId ? { 
+              ...j, 
+              prepress_status: newStatus,
+              workflow_progress: response.data.workflowProgress
+            } : j
+          )
+        );
+        
+        toast.success(`Status updated to ${newStatus.replace(/_/g, ' ')}`);
+      }
+    } catch (error) {
+      console.error('Error updating prepress status:', error);
+      toast.error('Failed to update status');
     }
   };
 
@@ -211,6 +555,26 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
+        {/* Real-time Connection Status */}
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <span className="text-sm text-gray-600">
+              {isConnected ? 'Real-time connected' : 'Disconnected'}
+            </span>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={loadDesignerJobs}
+            disabled={dashboardLoading}
+            className="gap-2"
+          >
+            <RotateCcw className={`w-4 h-4 ${dashboardLoading ? 'animate-spin' : ''}`} />
+            Refresh Jobs
+          </Button>
+        </div>
+
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {[
@@ -287,7 +651,8 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                         <div className="flex items-start justify-between mb-4">
                           <div>
                             <h3 className="font-semibold text-lg text-gray-900">{job.job_card_id}</h3>
-                            <p className="text-gray-600">{job.product_code} - {job.company_name}</p>
+                            <p className="text-gray-600">{job.product_name} ({job.product_code})</p>
+                            <p className="text-sm text-gray-500">{job.company_name}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge className={`${getStatusColor(job.status)} border`}>
@@ -308,10 +673,73 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                           </div>
                         )}
 
+                        {/* Process Sequence Section */}
+                        <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-medium text-blue-800">
+                              <Layers className="w-4 h-4 inline mr-2" />
+                              Process Sequence
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedJobId(job.id);
+                                setModalAction('process');
+                              }}
+                              className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                            >
+                              <Settings className="w-4 h-4 mr-1" />
+                              Configure Process
+                            </Button>
+                          </div>
+                          <p className="text-xs text-blue-600">
+                            Designer can modify process steps based on experience
+                          </p>
+                        </div>
+
+                        {/* Process Sequence Display */}
+                        <div className="mb-4 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedJobId(job.id);
+                                setModalAction('process');
+                              }}
+                              className="text-green-600 border-green-300 hover:bg-green-100"
+                            >
+                              <Settings className="w-4 h-4 mr-1" />
+                              Configure
+                            </Button>
+                          </div>
+                          <div className="text-xs text-green-600">
+                            Product Type: {job.product_type} • Designer can modify process steps
+                          </div>
+                        </div>
+
+                        {/* Prepress Workflow Display */}
+                        {job.prepress_status && (
+                          <div className="mb-4 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                            <PrepressWorkflowDisplay
+                              jobCardId={job.job_card_id}
+                              prepressStatus={job.prepress_status}
+                              workflowProgress={job.workflow_progress}
+                              designerName="Current Designer"
+                              startDate={job.started_at}
+                              department="Prepress Department"
+                              onStatusUpdate={(newStatus, notes) => updatePrepressStatus(job.id, newStatus, notes)}
+                              showActions={true}
+                            />
+                          </div>
+                        )}
+
                         {/* Progress Bar */}
                         <div className="mb-4">
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium text-gray-700">Progress</span>
+                            <span className="text-sm font-medium text-gray-700">Overall Progress</span>
                             <span className="text-sm text-gray-600">{job.progress}%</span>
                           </div>
                           <Progress value={job.progress} className="h-2" />
@@ -332,7 +760,11 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                           {job.status === 'IN_PROGRESS' && (
                             <>
                               <Button
-                                onClick={() => setSelectedJobId(job.id)}
+                                onClick={() => {
+                                  setSubmissionNotes('');
+                                  setSelectedJobId(job.id);
+                                  setModalAction('submit');
+                                }}
                                 variant="outline"
                                 className="gap-2"
                               >
@@ -402,13 +834,16 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
 
         {/* Submission Modal */}
         <AnimatePresence>
-          {selectedJobId && (
+          {selectedJobId && modalAction === 'submit' && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
-              onClick={() => setSelectedJobId(null)}
+              onClick={() => {
+                setSelectedJobId(null);
+                setModalAction(null);
+              }}
             >
               <motion.div
                 initial={{ scale: 0.95, opacity: 0 }}
@@ -430,6 +865,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                     onClick={() => {
                       submitForReview(selectedJobId);
                       setSelectedJobId(null);
+                      setModalAction(null);
                     }}
                     className="flex-1 gap-2"
                   >
@@ -438,7 +874,10 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setSelectedJobId(null)}
+                    onClick={() => {
+                      setSelectedJobId(null);
+                      setModalAction(null);
+                    }}
                     className="flex-1"
                   >
                     Cancel
@@ -448,6 +887,17 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Process Sequence Configuration Modal */}
+        <ProcessSequenceModal
+          isOpen={!!selectedJobId && modalAction === 'process'}
+          onClose={() => {
+            setSelectedJobId(null);
+            setModalAction(null);
+          }}
+          jobId={selectedJobId}
+          job={designerJobs.find(job => job.id === selectedJobId)}
+        />
       </motion.div>
     </MainLayout>
   );

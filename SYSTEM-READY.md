@@ -43,7 +43,7 @@
 1. **Open your browser** and go to: **http://localhost:8080**
 
 2. **Log in with these credentials:**
-   - **Email**: `admin@horizonsourcing.com`
+   - **Email**: `admin@erp.local`
    - **Password**: `admin123`
 
 3. **You'll see the ERP Dashboard** with:
@@ -97,7 +97,7 @@
 ### 🚀 **Next Steps:**
 
 1. **Go to http://localhost:8080**
-2. **Log in with admin@horizonsourcing.com / admin123**
+2. **Log in with admin@erp.local / admin123**
 3. **Start managing your merchandising operations!**
 
 ---

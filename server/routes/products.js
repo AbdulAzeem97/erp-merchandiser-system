@@ -268,7 +268,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
       p."createdAt" as created_at,
       p."updatedAt" as updated_at,
       c.name as category_name,
-      u."firstName" || ' ' || u."lastName" as created_by_name,
+      'System User' as created_by_name,
       'Offset' as product_type,
       m.name as material_name,
       'As per Approved Sample/Artwork' as color_specifications,
@@ -276,7 +276,6 @@ router.get('/:id', asyncHandler(async (req, res) => {
     FROM products p
     LEFT JOIN categories c ON p."categoryId" = c.id
     LEFT JOIN materials m ON p.material_id = m.id
-    LEFT JOIN users u ON p."createdBy" = u.id
     WHERE p.id = $1 AND p."isActive" = true
   `;
 
@@ -658,11 +657,19 @@ router.get('/:id/process-selections', asyncHandler(async (req, res) => {
 router.get('/:id/complete-process-info', asyncHandler(async (req, res) => {
   const { id: productId } = req.params;
 
-  // First get the product info
-  const productResult = await dbAdapter.query(
-    'SELECT * FROM products WHERE id = $1',
-    [productId]
-  );
+  // First get the product info with related data
+  const productQuery = `
+    SELECT 
+      p.*,
+      c.name as category_name,
+      m.name as material_name
+    FROM products p
+    LEFT JOIN categories c ON p."categoryId" = c.id
+    LEFT JOIN materials m ON p.material_id = m.id
+    WHERE p.id = $1
+  `;
+  
+  const productResult = await dbAdapter.query(productQuery, [productId]);
 
   if (productResult.rows.length === 0) {
     return res.status(404).json({

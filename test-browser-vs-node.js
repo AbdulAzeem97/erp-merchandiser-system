@@ -4,7 +4,7 @@ console.log('🔍 Testing Browser vs Node.js Differences');
 console.log('='.repeat(60));
 
 async function testBrowserVsNode() {
-  const email = 'admin@horizonsourcing.com';
+  const email = 'admin@erp.local';
   const password = 'password123';
   
   // Test 1: Multiple rapid requests (like a browser might do)
@@ -12,7 +12,7 @@ async function testBrowserVsNode() {
   const promises = [];
   for (let i = 0; i < 5; i++) {
     promises.push(
-      fetch('http://192.168.2.56:3001/api/auth/login', {
+      fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -43,7 +43,7 @@ async function testBrowserVsNode() {
   
   for (const userAgent of userAgents) {
     try {
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -69,7 +69,7 @@ async function testBrowserVsNode() {
   
   for (const contentType of contentTypes) {
     try {
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': contentType,
@@ -93,7 +93,7 @@ async function testBrowserVsNode() {
     
     try {
       const startTime = Date.now();
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

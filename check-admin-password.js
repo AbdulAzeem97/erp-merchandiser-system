@@ -18,7 +18,7 @@ try {
   console.log('📊 Database connected successfully');
   
   // Get admin user
-  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get('admin@horizonsourcing.com');
+  const admin = db.prepare('SELECT * FROM users WHERE email = ?').get('admin@erp.local');
   
   if (admin) {
     console.log('\n👑 Admin user found:');

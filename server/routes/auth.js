@@ -189,6 +189,78 @@ router.post('/change-password', [
   });
 }));
 
+// Get users by role (for designer assignment)
+router.get('/users/role/:role', asyncHandler(async (req, res) => {
+  const { role } = req.params;
+  
+  try {
+    const query = `
+      SELECT id, username, email, "firstName", "lastName", role, "isActive"
+      FROM users 
+      WHERE role = $1 AND "isActive" = true
+      ORDER BY "firstName", "lastName"
+    `;
+    
+    const result = await dbAdapter.query(query, [role.toUpperCase()]);
+    const users = result.rows;
+    
+    res.json({
+      success: true,
+      users: users.map(user => ({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        role: user.role,
+        isActive: user.isActive
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching users by role:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch users'
+    });
+  }
+}));
+
+// Get all designers (convenience endpoint)
+router.get('/designers', asyncHandler(async (req, res) => {
+  try {
+    const query = `
+      SELECT id, username, email, "firstName", "lastName", role, "isActive"
+      FROM users 
+      WHERE role = 'DESIGNER' AND "isActive" = true
+      ORDER BY "firstName", "lastName"
+    `;
+    
+    const result = await dbAdapter.query(query);
+    const designers = result.rows;
+    
+    res.json({
+      success: true,
+      designers: designers.map(designer => ({
+        id: designer.id,
+        username: designer.username,
+        email: designer.email,
+        firstName: designer.firstName,
+        lastName: designer.lastName,
+        fullName: `${designer.firstName || ''} ${designer.lastName || ''}`.trim(),
+        role: designer.role,
+        isActive: designer.isActive
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching designers:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch designers'
+    });
+  }
+}));
+
 // Logout (client-side token removal)
 router.post('/logout', (req, res) => {
   res.json({

@@ -66,7 +66,7 @@ Once started, your ERP system will be available at:
 ## 🔑 Default Login
 
 ```
-Email: admin@horizonsourcing.com
+Email: admin@erp.local
 Password: admin123
 ```
 

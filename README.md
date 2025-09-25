@@ -85,7 +85,7 @@ npm run db:seed
 ```
 
 This creates:
-- Admin user (email: admin@horizonsourcing.com, password: admin123)
+- Admin user (email: admin@erp.local, password: admin123)
 - Sample companies (Nike, Adidas, Puma, Under Armour)
 - Product categories and materials
 - Departments and process types
@@ -134,7 +134,7 @@ npm run server
 ## 🔐 Authentication
 
 ### Default Admin Account
-- **Email**: admin@horizonsourcing.com
+- **Email**: admin@erp.local
 - **Password**: admin123
 
 ### User Roles
@@ -249,7 +249,7 @@ curl http://localhost:5000/health
 # Test authentication
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@horizonsourcing.com","password":"admin123"}'
+  -d '{"email":"admin@erp.local","password":"admin123"}'
 ```
 
 ## 📝 Development

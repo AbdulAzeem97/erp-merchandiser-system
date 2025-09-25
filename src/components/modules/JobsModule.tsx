@@ -18,7 +18,9 @@ import {
   AlertCircle,
   Play,
   Pause,
-  Square
+  Square,
+  FileText,
+  Download
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +56,17 @@ interface Job {
   created_by: string;
   created_at: string;
   updated_at: string;
+  attachments?: JobAttachment[];
+}
+
+interface JobAttachment {
+  id: string;
+  fileName: string;
+  filePath: string;
+  fileSize: number;
+  fileType: string;
+  uploadedBy: string;
+  uploadedAt: string;
 }
 
 interface Product {
@@ -237,7 +250,7 @@ const JobsModule: React.FC = () => {
     }
   };
 
-  const handleEdit = (job: Job) => {
+  const handleEdit = async (job: Job) => {
     setSelectedJob(job);
     setFormData({
       product_id: job.product_id,
@@ -250,6 +263,36 @@ const JobsModule: React.FC = () => {
       delivery_date: job.delivery_date.split('T')[0],
       description: job.description
     });
+
+    // Load full product details for the job
+    if (job.product_id) {
+      try {
+        const productResponse = await productsAPI.getById(job.product_id);
+        if (productResponse.product) {
+          setSelectedProduct(productResponse.product);
+          setProductSearchTerm(productResponse.product.product_item_code || '');
+        }
+      } catch (error) {
+        console.error('Error loading product details:', error);
+        toast.error('Failed to load product details');
+      }
+    }
+
+    // Load existing attachments
+    try {
+      const attachmentsResponse = await fetch(`/api/jobs/${job.id}/attachments`);
+      if (attachmentsResponse.ok) {
+        const attachmentsData = await attachmentsResponse.json();
+        // Store attachments for display in the edit modal
+        setSelectedJob(prev => ({
+          ...prev,
+          attachments: attachmentsData.attachments || []
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading job attachments:', error);
+    }
+
     setIsEditModalOpen(true);
   };
 
@@ -361,9 +404,15 @@ const JobsModule: React.FC = () => {
           )}
         </div>
         {selectedProduct && (
-          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+          <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-md">
             <div className="text-sm font-medium text-green-800">Selected: {selectedProduct.product_item_code}</div>
             <div className="text-xs text-green-600">{selectedProduct.brand} - {selectedProduct.type}</div>
+            {selectedProduct.material_name && (
+              <div className="text-xs text-green-600">Material: {selectedProduct.material_name}</div>
+            )}
+            {selectedProduct.gsm && (
+              <div className="text-xs text-green-600">GSM: {selectedProduct.gsm} g/m²</div>
+            )}
           </div>
         )}
       </div>
@@ -391,7 +440,7 @@ const JobsModule: React.FC = () => {
               <SelectValue placeholder="Select designer (optional)" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">No designer assigned</SelectItem>
+              <SelectItem value="no-designer">No designer assigned</SelectItem>
               {designers.map((designer) => (
                 <SelectItem key={designer.id} value={designer.id}>
                   {designer.first_name} {designer.last_name}
@@ -478,6 +527,37 @@ const JobsModule: React.FC = () => {
           rows={3}
         />
       </div>
+
+      {/* Existing Attachments */}
+      {isEdit && selectedJob?.attachments && selectedJob.attachments.length > 0 && (
+        <div>
+          <Label className="text-sm font-medium text-gray-700">Existing Attachments</Label>
+          <div className="mt-2 space-y-2">
+            {selectedJob.attachments.map((attachment) => (
+              <div key={attachment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <FileText className="w-4 h-4 text-gray-500" />
+                  <div>
+                    <p className="text-sm font-medium">{attachment.fileName}</p>
+                    <p className="text-xs text-gray-500">
+                      {(attachment.fileSize / 1024).toFixed(1)} KB • {attachment.fileType}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`/api/upload/file/${attachment.id}`, '_blank')}
+                  >
+                    <Download className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-end space-x-2 pt-4">
         <Button variant="outline" onClick={() => {

@@ -14,7 +14,7 @@ async function seedDatabase() {
       INSERT INTO users (id, username, email, password_hash, first_name, last_name, role)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       ON CONFLICT (email) DO NOTHING
-    `, [adminId, 'admin', 'admin@horizonsourcing.com', adminPassword, 'Admin', 'User', 'admin']);
+    `, [adminId, 'admin', 'admin@erp.local', adminPassword, 'Admin', 'User', 'admin']);
 
     // Create sample companies
     const companies = [

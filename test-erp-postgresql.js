@@ -12,7 +12,7 @@ async function testERPSystem() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                email: 'admin@horizonsourcing.com',
+                email: 'admin@erp.local',
                 password: 'password123'
             })
         });

@@ -18,7 +18,7 @@
     <div class="container">
         <h2>Test Frontend Request Body</h2>
         <form id="loginForm">
-            <input type="email" id="email" placeholder="Email" value="admin@horizonsourcing.com" required>
+            <input type="email" id="email" placeholder="Email" value="admin@erp.local" required>
             <input type="password" id="password" placeholder="Password" value="password123" required>
             <button type="submit">Test Login with Detailed Logging</button>
         </form>
@@ -51,9 +51,9 @@
             console.log('Request body bytes:', Array.from(new TextEncoder().encode(requestBodyString)));
             
             try {
-                console.log('🌐 Making request to: http://192.168.2.56:3001/api/auth/login');
+                console.log('🌐 Making request to: http://localhost:3001/api/auth/login');
                 
-                const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+                const response = await fetch('http://localhost:3001/api/auth/login', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

@@ -147,7 +147,7 @@
         <form id="loginForm">
             <div class="form-group">
                 <label for="email">Email Address</label>
-                <input type="email" id="email" value="admin@horizonsourcing.com" required>
+                <input type="email" id="email" value="admin@erp.local" required>
             </div>
 
             <div class="form-group">
@@ -169,14 +169,14 @@
 
         <div class="demo-credentials">
             <h4>📋 Demo Credentials</h4>
-            <p><strong>Admin:</strong> admin@horizonsourcing.com / password123</p>
+            <p><strong>Admin:</strong> admin@erp.local / password123</p>
             <p><strong>Designer:</strong> emma.wilson@horizonsourcing.com / password123</p>
             <p><strong>Inventory:</strong> inventory@horizonsourcing.com / password123</p>
         </div>
     </div>
 
     <script>
-        const API_BASE_URL = 'http://192.168.2.56:3001/api';
+        const API_BASE_URL = 'http://localhost:3001/api';
         
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
@@ -233,7 +233,7 @@
                     <strong>🎯 Next Steps:</strong><br>
                     • Token stored successfully<br>
                     • You can now access the main ERP system<br>
-                    • Go to: <a href="http://192.168.2.56:8080" target="_blank">http://192.168.2.56:8080</a>
+                    • Go to: <a href="http://localhost:8080" target="_blank">http://localhost:8080</a>
                 `;
                 result.style.display = 'block';
                 
@@ -274,7 +274,7 @@
                         Welcome back, ${userData.first_name} ${userData.last_name}!<br>
                         Role: ${userData.role}<br>
                         <br>
-                        <a href="http://192.168.2.56:8080" target="_blank" style="color: #667eea; text-decoration: none;">
+                        <a href="http://localhost:8080" target="_blank" style="color: #667eea; text-decoration: none;">
                             🚀 Go to ERP System
                         </a>
                     `;

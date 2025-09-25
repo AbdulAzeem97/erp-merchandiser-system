@@ -5,17 +5,17 @@ console.log('='.repeat(50));
 
 async function testAdminLogin() {
   const adminCredentials = [
-    { email: 'admin@horizonsourcing.com', password: 'password123' },
-    { email: 'admin@horizonsourcing.com', password: 'admin123' },
-    { email: 'admin@horizonsourcing.com', password: 'admin' },
-    { email: 'admin@horizonsourcing.com', password: 'password' }
+    { email: 'admin@erp.local', password: 'password123' },
+    { email: 'admin@erp.local', password: 'admin123' },
+    { email: 'admin@erp.local', password: 'admin' },
+    { email: 'admin@erp.local', password: 'password' }
   ];
 
   for (const cred of adminCredentials) {
     try {
       console.log(`\n🧪 Testing: ${cred.email} with password: ${cred.password}`);
       
-      const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+      const response = await fetch('http://localhost:3001/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

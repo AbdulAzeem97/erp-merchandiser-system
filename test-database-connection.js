@@ -13,7 +13,7 @@ try {
   console.log('✅ Users table accessible:', usersResult);
   
   // Test if we can get a specific user
-  const adminUser = await dbAdapter.query('SELECT * FROM users WHERE email = $1', ['admin@horizonsourcing.com']);
+  const adminUser = await dbAdapter.query('SELECT * FROM users WHERE email = $1', ['admin@erp.local']);
   console.log('✅ Admin user query:', adminUser);
   
 } catch (error) {

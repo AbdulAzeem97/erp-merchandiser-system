@@ -4,11 +4,11 @@ console.log('🔐 Testing Exact Frontend Request');
 console.log('='.repeat(50));
 
 async function testExactFrontendRequest() {
-  const email = 'admin@horizonsourcing.com';
+  const email = 'admin@erp.local';
   const password = 'password123';
   
   console.log('📤 Making request exactly like frontend...');
-  console.log(`📤 URL: http://192.168.2.56:3001/api/auth/login`);
+  console.log(`📤 URL: http://localhost:3001/api/auth/login`);
   console.log(`📤 Email: "${email}" (length: ${email.length})`);
   console.log(`📤 Password: "${password}" (length: ${password.length})`);
   
@@ -18,13 +18,13 @@ async function testExactFrontendRequest() {
   console.log(`📤 Request Body Length: ${requestBody.length} bytes`);
   
   try {
-    const response = await fetch('http://192.168.2.56:3001/api/auth/login', {
+    const response = await fetch('http://localhost:3001/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'Origin': 'http://192.168.2.56:8080',
-        'Referer': 'http://192.168.2.56:8080/',
+        'Origin': 'http://localhost:8080',
+        'Referer': 'http://localhost:8080/',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
       body: requestBody

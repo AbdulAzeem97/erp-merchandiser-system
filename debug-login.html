@@ -18,7 +18,7 @@
     <div class="container">
         <h2>Debug Login - Admin</h2>
         <form id="loginForm">
-            <input type="email" id="email" placeholder="Email" value="admin@horizonsourcing.com" required>
+            <input type="email" id="email" placeholder="Email" value="admin@erp.local" required>
             <input type="password" id="password" placeholder="Password" value="password123" required>
             <button type="submit">Debug Login</button>
         </form>
@@ -26,7 +26,7 @@
     </div>
 
     <script>
-        const API_BASE_URL = 'http://192.168.2.56:3001/api';
+        const API_BASE_URL = 'http://localhost:3001/api';
         
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();

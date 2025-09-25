@@ -7,7 +7,7 @@ try {
   // Get the admin user
   const userResult = await dbAdapter.query(
     'SELECT * FROM users WHERE email = $1 AND is_active = true',
-    ['admin@horizonsourcing.com']
+    ['admin@erp.local']
   );
   
   if (userResult.rows.length === 0) {

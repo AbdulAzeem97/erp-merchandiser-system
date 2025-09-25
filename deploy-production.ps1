@@ -328,7 +328,7 @@ Write-Host "   🏥 Health Check: http://localhost:$($config.PORT)/health" -Fore
 Write-Host ""
 
 Write-Host "🔑 Default Login Credentials:" -ForegroundColor Yellow
-Write-Host "   👤 Admin: admin@horizonsourcing.com" -ForegroundColor White
+Write-Host "   👤 Admin: admin@erp.local" -ForegroundColor White
 Write-Host "   🔒 Password: admin123" -ForegroundColor White
 Write-Host ""
 

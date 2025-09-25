@@ -31,28 +31,28 @@ $env:JWT_SECRET='your-super-secret-jwt-key-change-this-in-production'; $env:PORT
 
 #### 3. **Started Frontend with Network Environment Variables**
 ```powershell
-$env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'; $env:VITE_API_URL='http://192.168.2.56:3001'; npm run dev
+$env:VITE_API_BASE_URL='http://localhost:3001/api'; $env:VITE_API_URL='http://localhost:3001'; npm run dev
 ```
 
 ### 🧪 **Testing Results:**
 
 #### ✅ **Backend Health Check:**
-- **URL:** `http://192.168.2.56:3001/health`
+- **URL:** `http://localhost:3001/health`
 - **Status:** ✅ PASSED
 - **Response:** `{"status":"OK","environment":"development"}`
 
 #### ✅ **Frontend Access:**
-- **URL:** `http://192.168.2.56:8080`
+- **URL:** `http://localhost:8080`
 - **Status:** ✅ PASSED
 - **Response:** 200 OK
 
 #### ✅ **API Endpoint:**
-- **URL:** `http://192.168.2.56:3001/api/auth/login`
+- **URL:** `http://localhost:3001/api/auth/login`
 - **Status:** ✅ PASSED
 - **Response:** 200 OK with valid token
 
 #### ✅ **Product Creation:**
-- **URL:** `http://192.168.2.56:3001/api/products`
+- **URL:** `http://localhost:3001/api/products`
 - **Status:** ✅ PASSED
 - **Result:** Product created successfully
 
@@ -60,9 +60,9 @@ $env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'; $env:VITE_API_URL='http:/
 
 **Your ERP System is now fully functional over the network:**
 
-- **Frontend:** `http://192.168.2.56:8080`
-- **Backend API:** `http://192.168.2.56:3001/api`
-- **Health Check:** `http://192.168.2.56:3001/health`
+- **Frontend:** `http://localhost:8080`
+- **Backend API:** `http://localhost:3001/api`
+- **Health Check:** `http://localhost:3001/health`
 
 ### 🎯 **Environment Variables Set:**
 
@@ -73,8 +73,8 @@ $env:PORT=3001
 $env:NODE_ENV='development'
 
 # Frontend
-$env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'
-$env:VITE_API_URL='http://192.168.2.56:3001'
+$env:VITE_API_BASE_URL='http://localhost:3001/api'
+$env:VITE_API_URL='http://localhost:3001'
 ```
 
 ### 🚀 **Easy Startup Commands:**
@@ -85,7 +85,7 @@ $env:VITE_API_URL='http://192.168.2.56:3001'
 $env:JWT_SECRET='your-super-secret-jwt-key-change-this-in-production'; $env:PORT=3001; $env:NODE_ENV='development'; node server/index.js
 
 # Terminal 2 - Frontend
-$env:VITE_API_BASE_URL='http://192.168.2.56:3001/api'; $env:VITE_API_URL='http://192.168.2.56:3001'; npm run dev
+$env:VITE_API_BASE_URL='http://localhost:3001/api'; $env:VITE_API_URL='http://localhost:3001'; npm run dev
 ```
 
 #### **Option 2: Network Startup Script**
@@ -101,7 +101,7 @@ start-network.bat
 ### 📱 **Team Access:**
 
 **Your team members can now access the system at:**
-- **Main Application:** `http://192.168.2.56:8080`
+- **Main Application:** `http://localhost:8080`
 - **Login Credentials:** Any user with password `password123`
 
 ### 🧪 **Testing Tools Created:**

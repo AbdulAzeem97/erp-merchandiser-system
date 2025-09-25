@@ -107,7 +107,7 @@ Write-Host "Backend Server: http://localhost:5000" -ForegroundColor White
 Write-Host "Frontend Server: http://localhost:8080 (or check the terminal for exact port)" -ForegroundColor White
 Write-Host ""
 Write-Host "Default Admin Login:" -ForegroundColor Yellow
-Write-Host "Email: admin@horizonsourcing.com" -ForegroundColor White
+Write-Host "Email: admin@erp.local" -ForegroundColor White
 Write-Host "Password: admin123" -ForegroundColor White
 Write-Host ""
 

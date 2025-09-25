@@ -40,7 +40,7 @@ Start-Sleep -Seconds 5
 
 # Step 5: Start Frontend Server
 Write-Host "🎨 Starting Frontend Server..." -ForegroundColor Yellow
-$localIP = "192.168.2.56"
+$localIP = "localhost"
 $backendPort = 3001
 
 $frontendJob = Start-Job -ScriptBlock {
@@ -60,7 +60,7 @@ Start-Sleep -Seconds 8
 # Step 7: Test the system
 Write-Host "🧪 Testing system..." -ForegroundColor Yellow
 try {
-    $healthResponse = Invoke-WebRequest -Uri "http://192.168.2.56:3001/health" -TimeoutSec 10
+    $healthResponse = Invoke-WebRequest -Uri "http://localhost:3001/health" -TimeoutSec 10
     if ($healthResponse.StatusCode -eq 200) {
         Write-Host "✅ Backend health check: PASSED" -ForegroundColor Green
     } else {
@@ -71,7 +71,7 @@ try {
 }
 
 try {
-    $frontendResponse = Invoke-WebRequest -Uri "http://192.168.2.56:8080" -TimeoutSec 10
+    $frontendResponse = Invoke-WebRequest -Uri "http://localhost:8080" -TimeoutSec 10
     if ($frontendResponse.StatusCode -eq 200) {
         Write-Host "✅ Frontend access: PASSED" -ForegroundColor Green
     } else {
@@ -86,12 +86,12 @@ Write-Host ""
 Write-Host "🎉 ERP System Restarted Successfully!" -ForegroundColor Green
 Write-Host "=" * 50
 Write-Host "📱 Access URLs:" -ForegroundColor Cyan
-Write-Host "   • Frontend: http://192.168.2.56:8080" -ForegroundColor White
-Write-Host "   • Backend API: http://192.168.2.56:3001/api" -ForegroundColor White
-Write-Host "   • Health Check: http://192.168.2.56:3001/health" -ForegroundColor White
+Write-Host "   • Frontend: http://localhost:8080" -ForegroundColor White
+Write-Host "   • Backend API: http://localhost:3001/api" -ForegroundColor White
+Write-Host "   • Health Check: http://localhost:3001/health" -ForegroundColor White
 Write-Host ""
 Write-Host "🔐 Login Credentials:" -ForegroundColor Cyan
-Write-Host "   • Admin: admin@horizonsourcing.com / password123" -ForegroundColor White
+Write-Host "   • Admin: admin@erp.local / password123" -ForegroundColor White
 Write-Host "   • Designer: emma.wilson@horizonsourcing.com / password123" -ForegroundColor White
 Write-Host "   • Inventory: inventory@horizonsourcing.com / password123" -ForegroundColor White
 Write-Host ""

@@ -30,7 +30,7 @@ async function seedEnhancedData() {
       // Admin
       {
         username: 'admin',
-        email: 'admin@horizonsourcing.com',
+        email: 'admin@erp.local',
         password: 'admin123',
         first_name: 'System',
         last_name: 'Administrator',
@@ -431,7 +431,7 @@ async function seedEnhancedData() {
     console.log(`- Prepress Jobs: 40 (with activity logs)`);
     console.log(`- Notifications: 20`);
     console.log('\n🔑 Login Credentials:');
-    console.log('Admin: admin@horizonsourcing.com / admin123');
+    console.log('Admin: admin@erp.local / admin123');
     console.log('Head of Merchandiser: sarah.chen@horizonsourcing.com / hom123');
     console.log('Head of Production: mike.rodriguez@horizonsourcing.com / hop123');
     console.log('HOD Prepress: alex.kumar@horizonsourcing.com / hod123');

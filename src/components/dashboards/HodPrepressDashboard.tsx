@@ -50,9 +50,11 @@ import {
   Shield,
   RefreshCw,
   Layers,
-  MonitorSpeaker
+  MonitorSpeaker,
+  ExternalLink
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +78,41 @@ interface HodPrepressDashboardProps {
   isLoading?: boolean;
 }
 
+interface RatioReport {
+  id: number;
+  job_card_id: number;
+  excel_file_link: string;
+  excel_file_name: string;
+  factory_name: string;
+  po_number: string;
+  job_number: string;
+  brand_name: string;
+  item_name: string;
+  report_date: string;
+  total_ups: number;
+  total_sheets: number;
+  total_plates: number;
+  qty_produced: number;
+  excess_qty: number;
+  efficiency_percentage: number;
+  excess_percentage: number;
+  required_order_qty: number;
+  color_details: Array<{
+    color: string;
+    size: string;
+    requiredQty: number;
+    plate: string;
+    ups: number;
+    sheets: number;
+    qtyProduced: number;
+    excessQty: number;
+  }>;
+  plate_distribution: Record<string, number>;
+  color_efficiency: Record<string, number>;
+  raw_excel_data: any;
+  created_at: string;
+}
+
 interface HODJob {
   id: string;
   job_card_id: string;
@@ -95,6 +132,8 @@ interface HODJob {
   customer_phone?: string;
   customer_address?: string;
   customer_notes?: string;
+  client_layout_link?: string;
+  final_design_link?: string;
   estimated_hours?: number;
   time_spent?: number;
   progress: number;
@@ -267,6 +306,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [isProcessSequenceModalOpen, setIsProcessSequenceModalOpen] = useState(false);
   const [selectedJobForProcessEdit, setSelectedJobForProcessEdit] = useState<HODJob | null>(null);
   const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
+  const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
+  const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
 
   // Load all jobs and designers
   const loadHODData = async () => {
@@ -337,6 +378,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             customer_phone: job.customer_phone || 'N/A',
             customer_address: job.customer_address || 'N/A',
             customer_notes: job.notes || job.description || '',
+            client_layout_link: job.client_layout_link || '',
+            final_design_link: job.final_design_link || '',
             estimated_hours: job.estimated_hours || 8,
             time_spent: job.time_spent || 0,
             progress: job.progress || 0,
@@ -411,6 +454,35 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load ratio report for a specific job
+  const loadRatioReport = async (jobId: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setRatioReport(data.ratioReport);
+          setIsRatioReportOpen(true);
+        } else {
+          toast.info('No ratio report found for this job');
+        }
+      } else if (response.status === 404) {
+        toast.info('No ratio report uploaded for this job yet');
+      } else {
+        toast.error('Failed to load ratio report');
+      }
+    } catch (error) {
+      console.error('Error loading ratio report:', error);
+      toast.error('Error loading ratio report');
     }
   };
 
@@ -1306,6 +1378,34 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                     )}
                                   </div>
 
+                                  {/* Google Drive Links Section */}
+                                  {(job.client_layout_link || job.final_design_link) && (
+                                    <div className="bg-blue-50 p-3 rounded-lg mt-3">
+                                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                                        <ExternalLink className="h-4 w-4" />
+                                        Google Drive Links
+                                      </h4>
+                                      <div className="space-y-3">
+                                        {job.client_layout_link && (
+                                          <GoogleDrivePreview
+                                            url={job.client_layout_link}
+                                            label="Client Layout"
+                                            showThumbnail={true}
+                                            showPreview={true}
+                                          />
+                                        )}
+                                        {job.final_design_link && (
+                                          <GoogleDrivePreview
+                                            url={job.final_design_link}
+                                            label="Final Design"
+                                            showThumbnail={true}
+                                            showPreview={true}
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+
                                   {/* Customer Information */}
                                   <div className="bg-purple-50 p-3 rounded-lg">
                                     <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
@@ -1351,6 +1451,28 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                         </div>
                                       )}
                                     </div>
+                                  </div>
+
+                                  {/* Ratio Report Section */}
+                                  <div className="bg-purple-50 p-3 rounded-lg mt-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                                        <BarChart3 className="h-4 w-4" />
+                                        Production Ratio Report
+                                      </h4>
+                                      <Button
+                                        onClick={() => loadRatioReport(job.id)}
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                                      >
+                                        <BarChart3 className="h-3 w-3 mr-1" />
+                                        View Report
+                                      </Button>
+                                    </div>
+                                    <p className="text-xs text-gray-600">
+                                      View production metrics, color details, and efficiency data for this job
+                                    </p>
                                   </div>
 
                                   {/* Process Sequence Display */}
@@ -1829,6 +1951,166 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         productType={selectedJobForProcessEdit?.product_type || 'Offset'}
         onSave={handleSaveProcessSequence}
       />
+
+      {/* Ratio Report Modal */}
+      <Dialog open={isRatioReportOpen} onOpenChange={setIsRatioReportOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Production Ratio Report - {ratioReport?.job_number}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {ratioReport && (
+            <div className="space-y-6">
+              {/* Order Information */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-800 mb-3">Order Information</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div><strong>Factory:</strong> {ratioReport.factory_name}</div>
+                  <div><strong>PO Number:</strong> {ratioReport.po_number}</div>
+                  <div><strong>Job Number:</strong> {ratioReport.job_number}</div>
+                  <div><strong>Brand:</strong> {ratioReport.brand_name}</div>
+                  <div><strong>Item:</strong> {ratioReport.item_name}</div>
+                  <div><strong>Report Date:</strong> {new Date(ratioReport.report_date).toLocaleDateString()}</div>
+                </div>
+              </div>
+
+              {/* Production Metrics */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-800 mb-3">Production Metrics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {typeof ratioReport.total_ups === 'number' ? ratioReport.total_ups : ratioReport.total_ups || 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total UPS</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {typeof ratioReport.total_sheets === 'number' ? ratioReport.total_sheets : ratioReport.total_sheets || 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total Sheets</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {typeof ratioReport.total_plates === 'number' ? ratioReport.total_plates : ratioReport.total_plates || 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total Plates</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {typeof ratioReport.qty_produced === 'number' ? ratioReport.qty_produced : ratioReport.qty_produced || 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Qty Produced</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {typeof ratioReport.excess_qty === 'number' ? ratioReport.excess_qty : ratioReport.excess_qty || 'N/A'}
+                    </div>
+                    <div className="text-sm text-orange-700">Excess Qty</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {typeof ratioReport.efficiency_percentage === 'number' 
+                        ? ratioReport.efficiency_percentage.toFixed(1) 
+                        : ratioReport.efficiency_percentage || 'N/A'}%
+                    </div>
+                    <div className="text-sm text-blue-700">Efficiency</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {typeof ratioReport.excess_percentage === 'number' 
+                        ? ratioReport.excess_percentage.toFixed(1) 
+                        : ratioReport.excess_percentage || 'N/A'}%
+                    </div>
+                    <div className="text-sm text-purple-700">Excess %</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-600">
+                      {typeof ratioReport.required_order_qty === 'number' ? ratioReport.required_order_qty : ratioReport.required_order_qty || 'N/A'}
+                    </div>
+                    <div className="text-sm text-indigo-700">Required Qty</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Color Details Table */}
+              {ratioReport.color_details && ratioReport.color_details.length > 0 && (
+                <div className="bg-white border rounded-lg overflow-hidden">
+                  <h4 className="font-medium bg-gray-50 p-3 border-b">Color Details</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Color</th>
+                          <th className="px-3 py-2 text-left">Size</th>
+                          <th className="px-3 py-2 text-left">Required Qty</th>
+                          <th className="px-3 py-2 text-left">Plate</th>
+                          <th className="px-3 py-2 text-left">UPS</th>
+                          <th className="px-3 py-2 text-left">Sheets</th>
+                          <th className="px-3 py-2 text-left">Qty Produced</th>
+                          <th className="px-3 py-2 text-left">Excess Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ratioReport.color_details.map((detail, index) => (
+                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-3 py-2">{detail.color || 'N/A'}</td>
+                            <td className="px-3 py-2">{detail.size || 'N/A'}</td>
+                            <td className="px-3 py-2">{typeof detail.requiredQty === 'number' ? detail.requiredQty : detail.requiredQty || 'N/A'}</td>
+                            <td className="px-3 py-2 font-medium text-blue-600">{detail.plate || 'N/A'}</td>
+                            <td className="px-3 py-2">{typeof detail.ups === 'number' ? detail.ups : detail.ups || 'N/A'}</td>
+                            <td className="px-3 py-2">{typeof detail.sheets === 'number' ? detail.sheets : detail.sheets || '-'}</td>
+                            <td className="px-3 py-2">{typeof detail.qtyProduced === 'number' ? detail.qtyProduced : detail.qtyProduced || 'N/A'}</td>
+                            <td className="px-3 py-2">
+                              <span className={detail.excessQty > 0 ? 'text-orange-600 font-medium' : 'text-green-600'}>
+                                {typeof detail.excessQty === 'number' ? detail.excessQty : detail.excessQty || 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Plate Distribution */}
+              {ratioReport.plate_distribution && Object.keys(ratioReport.plate_distribution).length > 0 && (
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-yellow-800 mb-3">Plate Distribution</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {Object.entries(ratioReport.plate_distribution).map(([plate, count]) => (
+                      <div key={plate} className="text-center">
+                        <div className="text-xl font-bold text-yellow-600">{count}</div>
+                        <div className="text-sm text-yellow-700">Plate {plate}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Excel File Link */}
+              {ratioReport.excel_file_link && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-800 mb-2">Source File</h4>
+                  <a 
+                    href={ratioReport.excel_file_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {ratioReport.excel_file_name || 'Download Excel Report'}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };

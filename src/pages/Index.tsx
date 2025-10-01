@@ -7,6 +7,7 @@ import HeadOfMerchandiserDashboard from '../components/dashboards/HeadOfMerchand
 import HeadOfProductionDashboard from '../components/dashboards/HeadOfProductionDashboard';
 import { HodPrepressDashboard } from '../components/dashboards/HodPrepressDashboard';
 import { DesignerDashboard } from '../components/dashboards/DesignerDashboard';
+import QADashboard from '../components/qa/QADashboard';
 import HODPrepressDashboard from '../components/prepress/HODPrepressDashboard';
 import DesignerWorkbench from '../components/prepress/DesignerWorkbench';
 import ProductsModule from '../components/modules/ProductsModule';
@@ -17,7 +18,7 @@ import { ProductMaster } from '../types/erp';
 import { Toaster } from '@/components/ui/sonner';
 import { authAPI } from '@/services/api';
 
-type ViewType = 'dashboard' | 'productForm' | 'jobForm' | 'reports' | 'prepressHOD' | 'prepressDesigner' | 'products' | 'jobs' | 'companies' | 'users' | 'settings';
+type ViewType = 'dashboard' | 'productForm' | 'jobForm' | 'reports' | 'prepressHOD' | 'prepressDesigner' | 'qaDashboard' | 'products' | 'jobs' | 'companies' | 'users' | 'settings';
 
 const Index = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
@@ -93,6 +94,8 @@ const Index = () => {
       // Redirect to complete designer dashboard
       window.location.href = '/designer/dashboard';
       return;
+    } else if (user?.role === 'QA' || user?.role === 'QA_PREPRESS') {
+      setCurrentView('qaDashboard');
     } else {
       setCurrentView('dashboard');
     }
@@ -123,6 +126,8 @@ const Index = () => {
           // Redirect to complete designer dashboard
           window.location.href = '/designer/dashboard';
           return;
+        } else if (user?.role === 'QA' || user?.role === 'QA_PREPRESS') {
+          setCurrentView('qaDashboard');
         } else {
           setCurrentView('dashboard');
         }
@@ -201,6 +206,10 @@ const Index = () => {
       case 'prepressDesigner':
         return (
           <DesignerDashboard onNavigate={handleNavigate} onLogout={handleLogout} />
+        );
+      case 'qaDashboard':
+        return (
+          <QADashboard />
         );
       case 'products':
         return <ProductsModule />;

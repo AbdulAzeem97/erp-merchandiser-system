@@ -43,6 +43,7 @@ import { productsAPI, jobsAPI, companiesAPI, usersAPI } from '@/services/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fetchProcessSequence } from '../../utils/processSequenceUtils';
 import { ProcessPreview } from '../ProcessPreview';
+import RatioExcelUpload from '../ui/RatioExcelUpload';
 
 const MERCHANDISER_OPTIONS = ['Abdullah', 'Jaseem', 'Ali', 'Ahmed'];
 
@@ -77,6 +78,9 @@ interface JobCardData {
   companyId: string;
   merchandiser: string;
   assignedDesigner: string;
+  clientLayoutLink: string;
+  ratioExcelLink?: string;
+  ratioData?: any;
 }
 
 
@@ -137,7 +141,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     specialInstructions: '',
     companyId: '',
     merchandiser: '',
-    assignedDesigner: ''
+    assignedDesigner: '',
+    clientLayoutLink: ''
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -533,6 +538,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         merchandiser: jobCardData.merchandiser,
         customer_name: jobCardData.customerInfo.name,
         customer_email: jobCardData.customerInfo.email,
+        client_layout_link: jobCardData.clientLayoutLink,
         customer_phone: jobCardData.customerInfo.phone,
         customer_address: jobCardData.customerInfo.address,
         assigned_designer_id: jobCardData.assignedDesigner || null
@@ -548,6 +554,54 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       
       // Save job to API
       const savedJob = await jobsAPI.create(jobData);
+      
+      // Save ratio report if provided
+      if (jobCardData.ratioData && jobCardData.ratioExcelLink) {
+        try {
+          const ratioReportData = {
+            excel_file_link: jobCardData.ratioExcelLink,
+            excel_file_name: 'Ratio_Report.xlsx', // You can extract this from the file if needed
+            factory_name: jobCardData.ratioData.factoryName || '',
+            po_number: jobCardData.poNumber,
+            job_number: jobData.job_card_id,
+            brand_name: product.brand || '',
+            item_name: product.name || '',
+            report_date: new Date().toISOString().split('T')[0],
+            total_ups: jobCardData.ratioData.rawData?.summary?.totalUPS || jobCardData.ratioData.totalUPS || null,
+            total_sheets: jobCardData.ratioData.totalSheets || null,
+            total_plates: jobCardData.ratioData.totalPlates || null,
+            qty_produced: jobCardData.ratioData.rawData?.summary?.qtyProduced || jobCardData.ratioData.qtyProduced || null,
+            excess_qty: jobCardData.ratioData.excessQuantity || null,
+            efficiency_percentage: jobCardData.ratioData.productionEfficiency || null,
+            excess_percentage: jobCardData.ratioData.excessPercentage || (jobCardData.ratioData.excessQuantity && jobCardData.ratioData.rawData?.summary?.requiredOrderQty ? ((jobCardData.ratioData.excessQuantity / jobCardData.ratioData.rawData.summary.requiredOrderQty) * 100).toFixed(2) : null),
+            required_order_qty: jobCardData.ratioData.rawData?.summary?.requiredOrderQty || jobCardData.ratioData.requiredOrderQty || null,
+            color_details: jobCardData.ratioData.rawData?.colorDetails || [],
+            plate_distribution: jobCardData.ratioData.plateDistribution || {},
+            color_efficiency: jobCardData.ratioData.colorEfficiency || {},
+            raw_excel_data: jobCardData.ratioData.rawData || {}
+          };
+
+          const ratioResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${savedJob.job.id}/ratio-report`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            },
+            body: JSON.stringify(ratioReportData)
+          });
+
+          if (ratioResponse.ok) {
+            console.log('Ratio report saved successfully');
+            toast.success('Ratio report saved successfully! 📊');
+          } else {
+            console.error('Failed to save ratio report:', await ratioResponse.text());
+            toast.warning('Job created but ratio report failed to save');
+          }
+        } catch (error) {
+          console.error('Error saving ratio report:', error);
+          toast.warning('Job created but ratio report failed to save');
+        }
+      }
       
       // Create prepress job automatically
       if (jobCardData.assignedDesigner) {
@@ -1378,6 +1432,67 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                       rows={3}
                     />
                   </div>
+
+                  {/* Client Layout Link */}
+                  <div className="space-y-2">
+                    <Label htmlFor="clientLayoutLink" className="flex items-center gap-2">
+                      <Paperclip className="w-4 h-4" />
+                      Client Layout Link (Google Drive)
+                    </Label>
+                    <Input
+                      id="clientLayoutLink"
+                      type="url"
+                      value={jobCardData.clientLayoutLink}
+                      onChange={(e) => handleInputChange('clientLayoutLink', e.target.value)}
+                      placeholder="https://drive.google.com/file/d/..."
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Upload client layout to Google Drive and paste the shareable link here
+                    </p>
+                  </div>
+
+                  {/* Ratio Excel Upload - Only for specific product types that require ratio optimization */}
+                  {product && product.product_type && ['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
+                    <div className="space-y-2">
+                      <RatioExcelUpload
+                        value={jobCardData.ratioExcelLink || ''}
+                        onChange={(excelLink, parsedData) => {
+                          handleInputChange('ratioExcelLink', excelLink);
+                          handleInputChange('ratioData', parsedData);
+                        }}
+                        parsedData={jobCardData.ratioData}
+                        label="Ratio Optimization Report (Excel)"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Upload the Excel report from ratio optimization software for automated production planning
+                      </p>
+                      <p className="text-xs text-blue-600 font-medium">
+                        ⓘ Ratio optimization is required for {product.product_type} products to calculate optimal plate usage and material requirements
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Message for product types that don't require ratio optimization */}
+                  {product && product.product_type && !['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
+                    <div className="space-y-2">
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span className="text-blue-600 text-xs font-bold">ℹ</span>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-700 font-medium">
+                              Ratio optimization not required
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {product.product_type} products do not require ratio optimization for production planning
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>

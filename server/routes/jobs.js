@@ -2,6 +2,7 @@ import express from 'express';
 import { body, validationResult, query } from 'express-validator';
 import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { requirePermission, authenticateToken } from '../middleware/rbac.js';
 
 const router = express.Router();
 
@@ -13,47 +14,78 @@ const jobValidation = [
   body('quantity').isInt({ min: 1 }),
   body('delivery_date').isISO8601(),
   body('priority').isIn(['LOW', 'MEDIUM', 'NORMAL', 'HIGH', 'URGENT']),
-  body('status').isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
+  body('status').isIn(['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']),
+  body('client_layout_link').optional({ nullable: true }).custom((value) => {
+    if (value === null || value === '' || value === undefined) return true;
+    return /^https?:\/\/.+/.test(value);
+  }),
 ];
 
 // Get all jobs with pagination and filtering
 router.get('/', asyncHandler(async (req, res) => {
   try {
     console.log('Getting jobs...');
+    console.log('Query params:', req.query);
+    
+    // Build WHERE clause based on query parameters
+    const whereConditions = [];
+    const queryParams = [];
+    let paramIndex = 1;
+    
+    if (req.query.status) {
+      whereConditions.push(`jc.status = $${paramIndex}`);
+      queryParams.push(req.query.status);
+      paramIndex++;
+    }
+    
+    if (req.query.search) {
+      whereConditions.push(`(jc."jobNumber" ILIKE $${paramIndex} OR jc.customer_name ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex})`);
+      queryParams.push(`%${req.query.search}%`);
+      paramIndex++;
+    }
+    
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
     // Enhanced query with proper joins to get complete job information
-    const jobsQuery = `
-      SELECT 
-        jc.*,
+  const jobsQuery = `
+    SELECT 
+      jc.*,
         p.sku as product_code,
         p.name as product_name,
-        p.brand,
+      p.brand,
         p.gsm,
         p.description as product_description,
+        p."fscCertified" as fsc,
+        p."fscLicense" as fsc_claim,
         m.name as material_name,
-        c.name as company_name,
+        cat.name as category_name,
+      c.name as company_name,
         jc.customer_name,
         jc.customer_email,
         jc.customer_phone,
         jc.customer_address,
-        u."firstName" || ' ' || u."lastName" as assigned_designer_name
-      FROM job_cards jc
+        u."firstName" || ' ' || u."lastName" as assigned_designer_name,
+        u.email as assigned_designer_email,
+        u.phone as assigned_designer_phone
+    FROM job_cards jc
       LEFT JOIN products p ON jc."productId" = p.id
       LEFT JOIN materials m ON p.material_id = m.id
+      LEFT JOIN categories cat ON p."categoryId" = cat.id
       LEFT JOIN companies c ON jc."companyId" = c.id
       LEFT JOIN users u ON jc."assignedToId" = u.id
+    ${whereClause}
       ORDER BY jc."createdAt" DESC
       LIMIT 20
-    `;
+  `;
 
-    const jobsResult = await dbAdapter.query(jobsQuery);
+    const jobsResult = await dbAdapter.query(jobsQuery, queryParams);
     const jobs = jobsResult.rows;
 
     console.log(`Found ${jobs.length} jobs`);
 
-    res.json({
-      jobs,
-      pagination: {
+  res.json({
+    jobs,
+    pagination: {
         page: 1,
         limit: 20,
         total: jobs.length,
@@ -69,30 +101,185 @@ router.get('/', asyncHandler(async (req, res) => {
   }
 }));
 
+// Add ratio report to a job
+router.post('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    console.log(`💾 Creating ratio report for job ID: ${jobId}`);
+    const {
+      excel_file_link,
+      excel_file_name,
+      factory_name,
+      po_number,
+      job_number,
+      brand_name,
+      item_name,
+      report_date,
+      total_ups,
+      total_sheets,
+      total_plates,
+      qty_produced,
+      excess_qty,
+      efficiency_percentage,
+      excess_percentage,
+      required_order_qty,
+      color_details,
+      plate_distribution,
+      color_efficiency,
+      raw_excel_data
+    } = req.body;
+
+    // Verify job exists
+    const jobCheck = await dbAdapter.query('SELECT id FROM job_cards WHERE id = $1', [jobId]);
+    if (jobCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Insert ratio report
+    const result = await dbAdapter.query(`
+      INSERT INTO ratio_reports (
+        job_card_id, excel_file_link, excel_file_name, factory_name, po_number,
+        job_number, brand_name, item_name, report_date, total_ups, total_sheets,
+        total_plates, qty_produced, excess_qty, efficiency_percentage, excess_percentage,
+        required_order_qty, color_details, plate_distribution, color_efficiency,
+        raw_excel_data, created_by
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+      ) RETURNING *
+    `, [
+      jobId, excel_file_link, excel_file_name, factory_name, po_number,
+      job_number, brand_name, item_name, report_date, total_ups, total_sheets,
+      total_plates, qty_produced, excess_qty, efficiency_percentage, excess_percentage,
+      required_order_qty, JSON.stringify(color_details), JSON.stringify(plate_distribution),
+      JSON.stringify(color_efficiency), JSON.stringify(raw_excel_data), req.user.id
+    ]);
+
+    console.log(`✅ Ratio report created successfully for job ${jobId}`);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Ratio report added successfully',
+      ratioReport: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Error adding ratio report:', error);
+    res.status(500).json({ error: 'Server error', message: error.message });
+  }
+}));
+
+// Get ratio report for a job
+router.get('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    console.log(`🔍 Looking for ratio report for job ID: ${jobId}`);
+    console.log(`🔍 User making request:`, req.user);
+    console.log(`🔍 Database adapter initialized:`, dbAdapter.initialized);
+
+    console.log(`🔍 About to query ratio_reports table...`);
+    const result = await dbAdapter.query(`
+      SELECT * FROM ratio_reports 
+      WHERE job_card_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `, [jobId]);
+    console.log(`🔍 Database query completed successfully`);
+
+    console.log(`📊 Found ${result.rows.length} ratio reports for job ${jobId}`);
+    
+    if (result.rows.length > 0) {
+      console.log(`📊 Ratio report data types:`, {
+        total_ups: typeof result.rows[0].total_ups,
+        total_ups_value: result.rows[0].total_ups,
+        total_sheets: typeof result.rows[0].total_sheets,
+        color_details: typeof result.rows[0].color_details,
+        color_details_sample: result.rows[0].color_details
+      });
+    }
+
+    if (result.rows.length === 0) {
+      // Let's also check if there are any ratio reports at all
+      const allReports = await dbAdapter.query('SELECT job_card_id, job_number, brand_name FROM ratio_reports LIMIT 5');
+      console.log('📝 Available ratio reports:', allReports.rows);
+      
+      // Also check if the job exists in job_cards
+      const jobExists = await dbAdapter.query('SELECT id, "jobNumber" FROM job_cards WHERE id = $1', [jobId]);
+      console.log(`🔍 Job ${jobId} exists in job_cards:`, jobExists.rows.length > 0);
+      if (jobExists.rows.length > 0) {
+        console.log('Job details:', jobExists.rows[0]);
+      }
+      
+      return res.status(404).json({ error: 'No ratio report found for this job' });
+    }
+
+    const ratioReport = result.rows[0];
+    
+    // Parse JSON fields if they are strings, otherwise keep as objects
+    if (ratioReport.color_details && typeof ratioReport.color_details === 'string') {
+      ratioReport.color_details = JSON.parse(ratioReport.color_details);
+    }
+    if (ratioReport.plate_distribution && typeof ratioReport.plate_distribution === 'string') {
+      ratioReport.plate_distribution = JSON.parse(ratioReport.plate_distribution);
+    }
+    if (ratioReport.color_efficiency && typeof ratioReport.color_efficiency === 'string') {
+      ratioReport.color_efficiency = JSON.parse(ratioReport.color_efficiency);
+    }
+    if (ratioReport.raw_excel_data && typeof ratioReport.raw_excel_data === 'string') {
+      ratioReport.raw_excel_data = JSON.parse(ratioReport.raw_excel_data);
+    }
+
+    // Transform plate_distribution from complex format to simple count format
+    // Complex format: {A: {colors: [...], sheets: 50, totalUPS: 18}, ...}
+    // Simple format: {A: 3, B: 3, C: 2, D: 1} (number of colors per plate)
+    if (ratioReport.plate_distribution && typeof ratioReport.plate_distribution === 'object') {
+      const simplePlateDistribution = {};
+      Object.entries(ratioReport.plate_distribution).forEach(([plate, data]) => {
+        if (data && typeof data === 'object' && data.colors) {
+          // Complex format - count the colors array
+          simplePlateDistribution[plate] = data.colors.length;
+        } else if (typeof data === 'number') {
+          // Already simple format
+          simplePlateDistribution[plate] = data;
+        }
+      });
+      ratioReport.plate_distribution_simple = simplePlateDistribution;
+    }
+
+    res.json({
+      success: true,
+      ratioReport
+    });
+
+  } catch (error) {
+    console.error('Error fetching ratio report:', error);
+    res.status(500).json({ error: 'Server error', message: error.message });
+  }
+}));
+
 // Get job by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-    const query = `
-      SELECT 
-        jc.*,
+  const query = `
+    SELECT 
+      jc.*,
         p.sku as product_code,
         p.name as product_name,
-        p.brand,
-        p.gsm,
+      p.brand,
+      p.gsm,
         p.description as product_description,
-        m.name as material_name,
-        c.name as company_name,
+      m.name as material_name,
+      c.name as company_name,
         jc.customer_name,
         jc.customer_email,
         jc.customer_phone,
         jc.customer_address
-      FROM job_cards jc
+    FROM job_cards jc
       LEFT JOIN products p ON jc."productId" = p.id
-      LEFT JOIN materials m ON p.material_id = m.id
+    LEFT JOIN materials m ON p.material_id = m.id
       LEFT JOIN companies c ON jc."companyId" = c.id
-      WHERE jc.id = $1
-    `;
+    WHERE jc.id = $1
+  `;
 
   const result = await dbAdapter.query(query, [id]);
 
@@ -112,6 +299,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
 router.post('/', jobValidation, asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
+    console.log('Validation errors:', errors.array());
+    console.log('Request body keys:', Object.keys(req.body));
     return res.status(400).json({
       error: 'Validation error',
       details: errors.array()
@@ -134,7 +323,8 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     customer_email,
     customer_phone,
     customer_address,
-    assigned_designer_id
+    assigned_designer_id,
+    client_layout_link
   } = req.body;
 
   // Check if job card ID already exists
@@ -155,8 +345,8 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     INSERT INTO job_cards (
       "jobNumber", "productId", "companyId", "sequenceId", quantity, "dueDate",
       notes, urgency, status, "totalCost", "createdById", "updatedAt", po_number,
-      customer_name, customer_email, customer_phone, customer_address, "assignedToId"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      customer_name, customer_email, customer_phone, customer_address, "assignedToId", client_layout_link
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     RETURNING *
   `;
 
@@ -187,7 +377,8 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     customer_email || '', // Customer email
     customer_phone || '', // Customer phone
     customer_address || '', // Customer address
-    assigned_designer_id || null // Assigned designer ID
+    assigned_designer_id || null, // Assigned designer ID
+    client_layout_link || '' // Client layout Google Drive link
   ]);
 
   const job = result.rows[0];
@@ -559,11 +750,16 @@ router.get('/:id/attachments', asyncHandler(async (req, res) => {
 }));
 
 // Job assignment endpoint for HOD Prepress
-router.post('/job-assignment/assign', asyncHandler(async (req, res) => {
+router.post('/job-assignment/assign', 
+  authenticateToken,
+  requirePermission('ASSIGN_PREPRESS_JOBS'),
+  asyncHandler(async (req, res) => {
   try {
     const { jobCardId, assignedDesignerId, isReassignment = false, priority = 'MEDIUM', dueDate, notes } = req.body;
     
     console.log('🔄 Job assignment request:', { jobCardId, assignedDesignerId, isReassignment, priority, dueDate, notes });
+    console.log('🔐 User info:', req.user);
+    console.log('🔐 User role:', req.user?.role);
     
     // Verify job exists
     const jobResult = await dbAdapter.query(
@@ -685,7 +881,9 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         jc.*,
         c.name as company_name,
         u."firstName" || ' ' || u."lastName" as created_by_name,
-        d."firstName" || ' ' || d."lastName" as assigned_designer_name
+        d."firstName" || ' ' || d."lastName" as assigned_designer_name,
+        d.email as assigned_designer_email,
+        d.phone as assigned_designer_phone
       FROM job_cards jc
       LEFT JOIN companies c ON jc."companyId" = c.id
       LEFT JOIN users u ON jc."createdById" = u.id
@@ -770,6 +968,10 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         notes: job.notes || '',
         createdBy: job.created_by_name || 'N/A',
         assignedDesigner: job.assigned_designer_name || 'N/A',
+        assignedDesignerEmail: job.assigned_designer_email || 'N/A',
+        assignedDesignerPhone: job.assigned_designer_phone || 'N/A',
+        clientLayoutLink: job.client_layout_link || '',
+        finalDesignLink: job.final_design_link || '',
         createdAt: job.createdAt,
         updatedAt: job.updatedAt
       };
@@ -991,6 +1193,221 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
   }
 }));
 
+// QA Approve Job
+router.post('/:id/qa-approve', 
+  authenticateToken,
+  requirePermission('APPROVE_QA_JOBS'),
+  asyncHandler(async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { qaNotes } = req.body;
+      
+      console.log('✅ QA Approving job:', id);
+      
+      // Update job status to APPROVED_BY_QA
+      const updateQuery = `
+        UPDATE job_cards 
+        SET status = 'APPROVED_BY_QA', 
+            qa_notes = $1,
+            qa_approved_by = $2,
+            qa_approved_at = CURRENT_TIMESTAMP,
+            "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING *
+      `;
+      
+      const result = await dbAdapter.query(updateQuery, [
+        qaNotes || '',
+        req.user?.id || 1,
+        id
+      ]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Job not found'
+        });
+      }
+      
+      // Update prepress job status if exists
+      try {
+        await dbAdapter.query(`
+          UPDATE prepress_jobs 
+          SET status = 'APPROVED_BY_QA', updated_at = CURRENT_TIMESTAMP
+          WHERE job_card_id = $1
+        `, [id]);
+        
+        // Log QA activity
+        await dbAdapter.query(`
+          INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
+          SELECT pj.id, $1, 'APPROVED_BY_QA', 'SUBMITTED_TO_QA', 'APPROVED_BY_QA', $2
+          FROM prepress_jobs pj WHERE pj.job_card_id = $3
+        `, [req.user?.id || 1, qaNotes || 'Approved by QA', id]);
+      } catch (prepressError) {
+        console.log('⚠️ Prepress update failed, but job approval succeeded:', prepressError);
+      }
+      
+      console.log('✅ Job approved by QA successfully');
+      
+      res.json({
+        success: true,
+        message: 'Job approved by QA',
+        data: result.rows[0]
+      });
+      
+    } catch (error) {
+      console.error('❌ QA approval error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to approve job'
+      });
+    }
+  })
+);
+
+// QA Reject Job
+router.post('/:id/qa-reject', 
+  authenticateToken,
+  requirePermission('REJECT_QA_JOBS'),
+  asyncHandler(async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { qaNotes } = req.body;
+      
+      console.log('❌ QA Rejecting job:', id);
+      
+      // Update job status to REVISIONS_REQUIRED
+      const updateQuery = `
+        UPDATE job_cards 
+        SET status = 'REVISIONS_REQUIRED', 
+            qa_notes = $1,
+            "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING *
+      `;
+      
+      const result = await dbAdapter.query(updateQuery, [
+        qaNotes || '',
+        id
+      ]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Job not found'
+        });
+      }
+      
+      // Update prepress job status if exists
+      try {
+        await dbAdapter.query(`
+          UPDATE prepress_jobs 
+          SET status = 'REVISIONS_REQUIRED', updated_at = CURRENT_TIMESTAMP
+          WHERE job_card_id = $1
+        `, [id]);
+        
+        // Log QA activity
+        await dbAdapter.query(`
+          INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
+          SELECT pj.id, $1, 'REVISIONS_REQUIRED', 'SUBMITTED_TO_QA', 'REVISIONS_REQUIRED', $2
+          FROM prepress_jobs pj WHERE pj.job_card_id = $3
+        `, [req.user?.id || 1, qaNotes || 'Revisions required by QA', id]);
+      } catch (prepressError) {
+        console.log('⚠️ Prepress update failed, but job rejection succeeded:', prepressError);
+      }
+      
+      console.log('✅ Job rejected by QA successfully');
+      
+      res.json({
+        success: true,
+        message: 'Job returned for revisions',
+        data: result.rows[0]
+      });
+      
+    } catch (error) {
+      console.error('❌ QA rejection error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to reject job'
+      });
+    }
+  })
+);
+
+// Submit to QA
+router.post('/:id/submit-to-qa', 
+  authenticateToken,
+  requirePermission('SUBMIT_TO_QA'),
+  asyncHandler(async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { finalDesignLink, status } = req.body;
+      
+      console.log('🎨 Designer submitting job to QA:', id);
+      
+      // Update job with final design link and status
+      const updateQuery = `
+        UPDATE job_cards 
+        SET final_design_link = $1,
+            status = $2,
+            "updatedAt" = CURRENT_TIMESTAMP
+        WHERE id = $3
+        RETURNING *
+      `;
+      
+      const result = await dbAdapter.query(updateQuery, [
+        finalDesignLink || '',
+        status || 'SUBMITTED_TO_QA',
+        id
+      ]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Job not found'
+        });
+      }
+      
+      // Update prepress job status if exists
+      try {
+        await dbAdapter.query(`
+          UPDATE prepress_jobs 
+          SET status = 'SUBMITTED_TO_QA', updated_at = CURRENT_TIMESTAMP
+          WHERE job_card_id = $1
+        `, [id]);
+        
+        // Log activity
+        await dbAdapter.query(`
+          INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
+          SELECT pj.id, $1, 'SUBMITTED_TO_QA', 'IN_PROGRESS', 'SUBMITTED_TO_QA', 'Submitted to QA for review'
+          FROM prepress_jobs pj WHERE pj.job_card_id = $2
+        `, [req.user?.id || 1, id]);
+      } catch (prepressError) {
+        console.log('⚠️ Prepress update failed, but job submission succeeded:', prepressError);
+      }
+      
+      console.log('✅ Job submitted to QA successfully');
+      
+      res.json({
+        success: true,
+        message: 'Job submitted to QA',
+        data: result.rows[0]
+      });
+      
+    } catch (error) {
+      console.error('❌ Submit to QA error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to submit job to QA',
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
+  })
+);
+
 export default router;
+
+
 
 

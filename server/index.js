@@ -193,9 +193,9 @@ app.use('*', (req, res) => {
     await dbAdapter.initialize();
 
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 ERP Merchandiser Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 ERP Merchandiser Server running on port ${PORT}`);
+  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
       console.log(`🌐 Network access: http://0.0.0.0:${PORT}`);
       console.log(`🔌 Socket.io server initialized`);
     });

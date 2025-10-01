@@ -132,6 +132,13 @@ const menuItems: MenuItem[] = [
         roles: ['ADMIN', 'DESIGNER']
       },
       {
+        id: 'qa-dashboard',
+        label: 'QA Prepress Dashboard',
+        icon: CheckCircle,
+        page: 'qa-dashboard',
+        roles: ['ADMIN', 'QA', 'QA_PREPRESS']
+      },
+      {
         id: 'job-queue',
         label: 'Job Queue',
         icon: Layers,

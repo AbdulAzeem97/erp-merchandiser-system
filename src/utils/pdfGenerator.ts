@@ -19,6 +19,20 @@ interface JobCardData {
     width: number;
     height: number;
   };
+  // Additional fields for complete job data
+  clientLayoutLink?: string;
+  finalDesignLink?: string;
+  assignedDesigner?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  material?: string;
+  fsc?: string;
+  fscClaim?: string;
+  brand?: string;
+  gsm?: number;
+  category?: string;
 }
 
 interface PDFGenerationOptions {
@@ -344,6 +358,61 @@ export class AdvancedJobCardPDFGenerator {
     this.currentY += 6; // Reduced from 8
   }
 
+  // Add Google Drive links and designer information section
+  private createLinksAndDesignerSection(): void {
+    this.checkPageBreak(40);
+    
+    this.createSectionHeader('LINKS & ASSIGNMENTS');
+    
+    // Google Drive Links
+    if (this.options.jobCardData.clientLayoutLink || this.options.jobCardData.finalDesignLink) {
+      this.pdf.setFont('helvetica', 'bold');
+      this.pdf.setFontSize(9);
+      this.pdf.setTextColor(0, 0, 0);
+      this.pdf.text('Google Drive Links:', this.margin, this.currentY);
+      this.currentY += 8;
+      
+      this.pdf.setFont('helvetica', 'normal');
+      this.pdf.setFontSize(8);
+      this.pdf.setTextColor(64, 64, 64);
+      
+      if (this.options.jobCardData.clientLayoutLink) {
+        this.pdf.text('🔗 Client Layout: ' + this.options.jobCardData.clientLayoutLink, this.margin + 5, this.currentY);
+        this.currentY += 6;
+      }
+      
+      if (this.options.jobCardData.finalDesignLink) {
+        this.pdf.text('🔗 Final Design: ' + this.options.jobCardData.finalDesignLink, this.margin + 5, this.currentY);
+        this.currentY += 6;
+      }
+      
+      this.currentY += 8;
+    }
+    
+    // Assigned Designer Information
+    if (this.options.jobCardData.assignedDesigner) {
+      this.pdf.setFont('helvetica', 'bold');
+      this.pdf.setFontSize(9);
+      this.pdf.setTextColor(0, 0, 0);
+      this.pdf.text('Assigned Designer:', this.margin, this.currentY);
+      this.currentY += 8;
+      
+      this.pdf.setFont('helvetica', 'normal');
+      this.pdf.setFontSize(8);
+      this.pdf.setTextColor(64, 64, 64);
+      this.pdf.text(`Name: ${this.options.jobCardData.assignedDesigner.name}`, this.margin + 5, this.currentY);
+      this.currentY += 6;
+      this.pdf.text(`Email: ${this.options.jobCardData.assignedDesigner.email}`, this.margin + 5, this.currentY);
+      this.currentY += 6;
+      if (this.options.jobCardData.assignedDesigner.phone) {
+        this.pdf.text(`Phone: ${this.options.jobCardData.assignedDesigner.phone}`, this.margin + 5, this.currentY);
+        this.currentY += 6;
+      }
+      
+      this.currentY += 8;
+    }
+  }
+
   // Professional product specifications with enhanced table
   private createProductSpecifications(): void {
     this.checkPageBreak(60); // Reduced from 70
@@ -351,13 +420,14 @@ export class AdvancedJobCardPDFGenerator {
     this.createSectionHeader('PRODUCT SPECIFICATIONS');
     
     const productSpecs = [
-      { label: 'Brand', value: this.options.product.brand },
-      { label: 'Material', value: this.options.product.material_name || this.options.product.material_id || 'N/A' },
-      { label: 'GSM', value: `${this.options.product.gsm} g/m²` },
-      { label: 'Product Type', value: this.options.product.product_type },
+      { label: 'Brand', value: this.options.jobCardData.brand || this.options.product.brand || 'N/A' },
+      { label: 'Material', value: this.options.jobCardData.material || this.options.product.material_name || this.options.product.material_id || 'N/A' },
+      { label: 'GSM', value: `${this.options.jobCardData.gsm || this.options.product.gsm || 0} g/m²` },
+      { label: 'Product Type', value: this.options.product.product_type || 'Offset' },
+      { label: 'Category', value: this.options.jobCardData.category || this.options.product.category_name || 'N/A' },
       { label: 'Color Specifications', value: this.options.product.color_specifications || this.options.product.color || 'As per Approved Sample/Artwork' },
-      { label: 'FSC Certified', value: this.options.product.fsc },
-      { label: 'FSC Claim', value: this.options.product.fsc_claim || 'Not Applicable' }
+      { label: 'FSC Certified', value: this.options.jobCardData.fsc || this.options.product.fsc || 'No' },
+      { label: 'FSC Claim', value: this.options.jobCardData.fscClaim || this.options.product.fsc_claim || 'Not Applicable' }
     ];
 
     // Create compact 3x3 table with borders (7 items)
@@ -908,6 +978,7 @@ export class AdvancedJobCardPDFGenerator {
       // Page 1: Main job card
       this.createHeader();
       this.createJobDetailsSection();
+      this.createLinksAndDesignerSection();
       this.createProductSpecifications();
       this.createProcessWorkflow();
       

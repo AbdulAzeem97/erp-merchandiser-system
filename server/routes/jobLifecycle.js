@@ -55,14 +55,14 @@ router.get('/all',
  * @desc Get specific job lifecycle data
  * @access ADMIN, HEAD_OF_MERCHANDISER, HOD_PREPRESS, DESIGNER
  */
-router.get('/:jobCardId', 
+router.get('/:jobCardId',
   requirePermission('VIEW_JOBS'),
   async (req, res) => {
     try {
       const { jobCardId } = req.params;
       
       const lifecycle = await lifecycleService.getJobLifecycle(jobCardId);
-
+      
       if (!lifecycle) {
         return res.status(404).json({
           success: false,
@@ -186,7 +186,7 @@ router.put('/:jobCardId/status',
  * @desc Get dashboard statistics
  * @access ADMIN, HEAD_OF_MERCHANDISER, HOD_PREPRESS
  */
-router.get('/stats/dashboard', 
+router.get('/stats/dashboard',
   requirePermission('VIEW_JOBS'),
   async (req, res) => {
     try {
@@ -211,7 +211,7 @@ router.get('/stats/dashboard',
  * @desc Get jobs assigned to current user
  * @access DESIGNER, HOD_PREPRESS
  */
-router.get('/my-jobs', 
+router.get('/my-jobs',
   requirePermission('VIEW_JOBS'),
   async (req, res) => {
     try {

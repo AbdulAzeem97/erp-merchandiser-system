@@ -331,7 +331,6 @@ npm run dev:full
 - **Designer**: emma.wilson@horizonsourcing.com / designer123
 - **Merchandiser**: tom.anderson@horizonsourcing.com / merch123
 
----
 
 **🎉 CONGRATULATIONS!** 
 

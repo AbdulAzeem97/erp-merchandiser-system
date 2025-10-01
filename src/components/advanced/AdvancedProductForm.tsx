@@ -290,6 +290,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
       const productData: any = {
         sku: formData.product_item_code,
         brand: formData.brand,
+        material_id: formData.material_id, // ← ADDED THIS
         gsm: parseInt(formData.gsm.toString()) || null,
         description: formData.remarks || '',
         category_id: 1 // Default category for now
@@ -682,7 +683,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                                   <SelectItem value="loading-materials" disabled>Loading materials...</SelectItem>
                                 ) : (
                                   materials.map(material => (
-                                    <SelectItem key={material.id} value={material.name}>{material.name}</SelectItem>
+                                    <SelectItem key={material.id} value={material.id}>{material.name}</SelectItem>
                                   ))
                                 )}
                               </SelectContent>

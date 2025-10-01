@@ -232,11 +232,24 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         },
         specialInstructions: job.notes || 'Standard processing',
         shippingMethod: 'Standard',
-        assignedDesigner: 'System Assigned',
         dimensions: {
           width: 0,
           height: 0
-        }
+        },
+        // Add new fields for complete PDF generation
+        clientLayoutLink: job.client_layout_link || '',
+        finalDesignLink: job.final_design_link || '',
+        assignedDesigner: job.assigned_designer ? {
+          name: job.assigned_designer,
+          email: job.assigned_designer_email || 'designer@example.com',
+          phone: job.assigned_designer_phone || ''
+        } : 'System Assigned',
+        material: job.material_name || product?.material_name || 'N/A',
+        fsc: job.fsc || product?.fsc || 'No',
+        fscClaim: job.fsc_claim || product?.fsc_claim || 'Not Applicable',
+        brand: job.brand || product?.brand || 'N/A',
+        gsm: job.gsm || product?.gsm || 0,
+        category: job.category_name || product?.category_name || 'N/A'
       };
 
       // Create complete product with process sequence and all required fields

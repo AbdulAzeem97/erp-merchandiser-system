@@ -1,5 +1,7 @@
+/* CACHE_BUST_VERSION_2 - FORCE_RELOAD_NOW */
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { generateRatioReportPDF } from '@/utils/ratioReportPdfGenerator';
 import {
   Palette,
   Clock,
@@ -44,9 +46,12 @@ import {
   Timer,
   Award,
   Crown,
-  Shield
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';
+import ModernColorPicker from '../ui/ModernColorPicker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -63,6 +68,41 @@ import { MainLayout } from '../layout/MainLayout';
 import { authAPI, processSequencesAPI, jobsAPI } from '@/services/api';
 import { getProcessSequence } from '@/data/processSequences';
 import ProcessSequenceModal from './ProcessSequenceModal';
+
+interface RatioReport {
+  id: number;
+  job_card_id: number;
+  excel_file_link: string;
+  excel_file_name: string;
+  factory_name: string;
+  po_number: string;
+  job_number: string;
+  brand_name: string;
+  item_name: string;
+  report_date: string;
+  total_ups: number;
+  total_sheets: number;
+  total_plates: number;
+  qty_produced: number;
+  excess_qty: number;
+  efficiency_percentage: number;
+  excess_percentage: number;
+  required_order_qty: number;
+  color_details: Array<{
+    color: string;
+    size: string;
+    requiredQty: number;
+    plate: string;
+    ups: number;
+    sheets: number;
+    qtyProduced: number;
+    excessQty: number;
+  }>;
+  plate_distribution: Record<string, number>;
+  color_efficiency: Record<string, number>;
+  raw_excel_data: any;
+  created_at: string;
+}
 
 interface DesignerJob {
   id: string;
@@ -94,6 +134,8 @@ interface DesignerJob {
   product_category: string;
   // Additional complete information
   customer_name: string;
+  client_layout_link: string;
+  final_design_link: string;
   customer_email: string;
   customer_phone: string;
   customer_address: string;
@@ -176,6 +218,11 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isJobDetailsOpen, setIsJobDetailsOpen] = useState(false);
   const [jobDetailsData, setJobDetailsData] = useState<DesignerJob | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string>('');
+  const [isEditingColor, setIsEditingColor] = useState(false);
+  const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
+  const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
+  const [markedItems, setMarkedItems] = useState<Set<number>>(new Set());
   const [newStatus, setNewStatus] = useState('');
   const [statusNotes, setStatusNotes] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
@@ -184,6 +231,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [isSubmitToQADialogOpen, setIsSubmitToQADialogOpen] = useState(false);
+  const [finalDesignLink, setFinalDesignLink] = useState('');
 
   // Load user data on component mount
   useEffect(() => {
@@ -298,7 +347,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             id: job.id.toString(),
             job_card_id: job.jobNumber || `JC-${job.id}`,
             // Complete product information from API
-            product_name: product.name || job.productName || 'N/A',
+            product_name: product.name || job.product_name || 'N/A',
             product_item_code: product.product_item_code || job.productCode || job.sku || 'N/A',
             product_type: product.product_type || job.productType || 'Offset',
             product_brand: product.brand || job.brand || 'N/A',
@@ -309,9 +358,11 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             product_color: product.color_specifications || product.color || job.colorSpecifications || 'N/A',
             product_remarks: product.remarks || job.remarks || '',
             product_category: product.category_name || job.categoryName || 'N/A',
-            due_date: job.dueDate, // Add due date mapping
+            due_date: job.dueDate || job.due_date, // Add due date mapping
             // Additional complete information
-            customer_name: job.customerName || job.companyName || 'N/A',
+            customer_name: job.customerName || job.company_name || 'N/A',
+            client_layout_link: job.clientLayoutLink || job.client_layout_link || '',
+            final_design_link: job.finalDesignLink || job.final_design_link || '',
             customer_email: job.customerEmail || 'N/A',
             customer_phone: job.customerPhone || 'N/A',
             customer_address: job.customerAddress || 'N/A',
@@ -373,6 +424,74 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     }
   };
 
+  // Load ratio report for a specific job
+  const loadRatioReport = async (jobId: string) => {
+    try {
+      toast.info('Loading ratio report...');
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.ratioReport) {
+          console.log('📊 Ratio Report Data:', data.ratioReport);
+          console.log('📊 Raw Excel Data:', data.ratioReport.raw_excel_data);
+          console.log('📊 Color Details:', data.ratioReport.color_details);
+          
+          // Open modal with report data
+          setRatioReport(data.ratioReport);
+          setMarkedItems(new Set()); // Reset marked items
+          setIsRatioReportOpen(true);
+          toast.success('Ratio report loaded! 📊');
+        } else {
+          toast.info('No ratio report found for this job');
+        }
+      } else if (response.status === 404) {
+        toast.info('No ratio report uploaded for this job yet');
+      } else {
+        toast.error('Failed to load ratio report');
+      }
+    } catch (error) {
+      console.error('Error loading ratio report:', error);
+      toast.error('Error loading ratio report');
+    }
+  };
+
+  // Toggle marked item
+  const toggleMarkedItem = (index: number) => {
+    setMarkedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  // Download PDF of ratio report
+  const downloadRatioReportPDF = () => {
+    if (ratioReport) {
+      generateRatioReportPDF(ratioReport);
+      toast.success('PDF downloaded! 📄');
+    }
+  };
+
+  // Helper to safely render values (convert objects to strings)
+  const safeRender = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'object') {
+      console.warn('⚠️ Attempting to render object as string:', value);
+      return JSON.stringify(value);
+    }
+    return String(value);
+  };
+
   // Filter jobs
   useEffect(() => {
     let filtered = jobs;
@@ -380,8 +499,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     if (searchTerm) {
       filtered = filtered.filter(job =>
         job.job_card_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.companyName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        job.productName.toLowerCase().includes(searchTerm.toLowerCase())
+        job.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        job.product_name.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -547,6 +666,41 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     console.log('Job ID:', job.id, 'Job Card ID:', job.job_card_id);
     setSelectedJobForProcessEdit(job);
     setIsProcessSequenceModalOpen(true);
+  };
+
+  const handleSubmitToQA = async () => {
+    if (!selectedJob || !finalDesignLink.trim()) {
+      toast.error('Please provide a final design link');
+      return;
+    }
+
+    try {
+      // Update job with final design link and status
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${selectedJob.id}/submit-to-qa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          finalDesignLink: finalDesignLink.trim(),
+          status: 'SUBMITTED_TO_QA'
+        })
+      });
+
+      if (response.ok) {
+        toast.success('Job submitted to QA successfully! 🎨');
+        setIsSubmitToQADialogOpen(false);
+        setFinalDesignLink('');
+        loadJobs(); // Refresh the jobs list
+      } else {
+        const errorData = await response.json();
+        toast.error(`Failed to submit to QA: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error('❌ Error submitting to QA:', error);
+      toast.error('Failed to submit to QA');
+    }
   };
 
 
@@ -898,227 +1052,104 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 <p className="text-gray-500">No jobs match your current filters.</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredJobs.map((job, index) => (
                   <motion.div
                     key={job.prepress_job_id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    whileHover={{ scale: 1.02, y: -2 }}
-                    className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-xl p-6 hover:shadow-xl hover:bg-white/80 transition-all duration-300"
+                    whileHover={{ scale: 1.02, y: -4 }}
+                    onClick={() => setSelectedJob(job)}
+                    className="bg-white border border-gray-200 rounded-lg overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all duration-300"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        {/* Enhanced Compact Header */}
-                        <div className="flex items-center gap-4 mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-100 rounded-lg">
-                              <Package className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <h3 className="font-bold text-xl text-gray-900">
-                              {job.job_card_id || job.job_card_number}
-                          </h3>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={`${statusColors[job.status]} shadow-sm`}>
-                            {getStatusIcon(job.status)}
-                              <span className="ml-1 font-medium">{job.status.replace('_', ' ')}</span>
-                          </Badge>
-                            <Badge className={`${priorityColors[job.priority]} shadow-sm`}>
-                            {getPriorityIcon(job.priority)}
-                              <span className="ml-1 font-medium">{job.priority}</span>
-                          </Badge>
-                            {getDaysUntilDue(job.due_date) <= 2 && (
-                              <Badge className="bg-red-500 text-white border-0 shadow-sm animate-pulse">
-                                <Zap className="h-3 w-3 mr-1" />
-                                URGENT
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* Compact Summary View */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
-                          <div>
-                            <span className="font-medium">Product:</span> {job.product_item_code}
-                          </div>
-                          <div>
-                            <span className="font-medium">Customer:</span> {job.customer_name || job.company_name}
-                          </div>
-                          <div>
-                            <span className="font-medium">Quantity:</span> {job.quantity.toLocaleString()} units
-                          </div>
-                          <div>
-                            <span className="font-medium">Due Date:</span> 
-                            <span className={getDaysUntilDue(job.dueDate) <= 2 ? 'text-red-600 font-medium ml-1' : 'ml-1'}>
-                              {formatDate(job.dueDate)} ({getDaysUntilDue(job.dueDate)}d)
-                            </span>
-                          </div>
-                        </div>
+                    {/* Card Header with Status Banner */}
+                    <div className={`${statusColors[job.status]} px-4 py-2 flex items-center justify-between`}>
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(job.status)}
+                        <span className="font-semibold text-sm">{job.status.replace('_', ' ')}</span>
+                      </div>
+                      <Badge className={`${priorityColors[job.priority]} border-0`}>
+                        {getPriorityIcon(job.priority)}
+                        <span className="ml-1">{job.priority}</span>
+                      </Badge>
+                    </div>
 
-                        {/* Expandable Details */}
-                        {expandedJobId === job.prepress_job_id && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="space-y-3"
-                          >
-                            {/* Complete Product Details */}
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-800 mb-2">Product Specifications</h4>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                <div><span className="font-medium">Name:</span> {job.product_name}</div>
-                                <div><span className="font-medium">Brand:</span> {job.product_brand}</div>
-                                <div><span className="font-medium">Type:</span> {job.product_type}</div>
-                                <div><span className="font-medium">Material:</span> {job.product_material}</div>
-                                <div><span className="font-medium">GSM:</span> {job.product_gsm} g/m²</div>
-                                <div><span className="font-medium">Category:</span> {job.product_category}</div>
-                                <div><span className="font-medium">FSC:</span> {job.product_fsc}</div>
-                                <div><span className="font-medium">FSC Claim:</span> {job.product_fsc_claim}</div>
-                                <div><span className="font-medium">Color:</span> {job.product_color}</div>
-                          </div>
-                              {job.product_remarks && job.product_remarks !== 'N/A' && (
-                                <div className="mt-2 text-sm">
-                                  <span className="font-medium">Remarks:</span> {job.product_remarks}
-                          </div>
-                              )}
-                        </div>
-
-                            {/* Customer Information */}
-                            <div className="bg-purple-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                <div><span className="font-medium">Name:</span> {job.customer_name || job.company_name}</div>
-                                {job.customer_email && job.customer_email !== 'N/A' && (
-                                  <div><span className="font-medium">Email:</span> {job.customer_email}</div>
-                                )}
-                                {job.customer_phone && job.customer_phone !== 'N/A' && (
-                                  <div><span className="font-medium">Phone:</span> {job.customer_phone}</div>
-                                )}
-                                {job.customer_address && job.customer_address !== 'N/A' && (
-                                  <div className="col-span-2">
-                                    <span className="font-medium">Address:</span> {job.customer_address}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Job Details */}
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                <div><span className="font-medium">Quantity:</span> {job.quantity} units</div>
-                                <div><span className="font-medium">PO Number:</span> {job.po_number}</div>
-                                <div><span className="font-medium">Priority:</span> 
-                                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                                    job.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
-                                    job.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-green-100 text-green-800'
-                                  }`}>
-                                    {job.priority}
-                                  </span>
-                                </div>
-                                {job.delivery_address && job.delivery_address !== 'N/A' && (
-                                  <div className="col-span-2">
-                                    <span className="font-medium">Delivery Address:</span> {job.delivery_address}
-                                  </div>
-                                )}
-                                {job.special_instructions && job.special_instructions !== 'N/A' && (
-                                  <div className="col-span-2">
-                                    <span className="font-medium">Special Instructions:</span> {job.special_instructions}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Process Sequence Display */}
-                            {job.process_sequence && (
-                              <div className="p-2 bg-green-50 rounded-lg border border-green-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
-                                  <span className="text-xs text-green-600">Product Type: {job.product_type}</span>
-                                </div>
-                                <div className="text-xs text-green-600 mb-2">
-                                  Process steps configured for this product type. You can modify as needed.
-                                </div>
-                                <div className="flex flex-wrap gap-1">
-                                  {job.process_sequence.steps.map((step, idx) => (
-                                    <Badge key={step.id} variant="outline" className="text-xs">
-                                      {step.name} ({step.estimatedHours}h)
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Prepress Workflow Status */}
-                            {job.prepress_status && (
-                              <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                <h4 className="text-sm font-medium text-blue-800 mb-2">Prepress Workflow</h4>
-                                <div className="text-xs text-blue-600">
-                                  Current Status: {job.prepress_status} | Progress: {job.workflow_progress?.progress || 0}%
-                                </div>
-                              </div>
-                            )}
-
-                        {job.customer_notes && (
-                              <div className="mb-2">
-                                <span className="text-sm font-medium text-gray-700">Customer Notes:</span>
-                                <p className="text-sm text-gray-600">{job.customer_notes}</p>
-                          </div>
-                            )}
-                          </motion.div>
-                        )}
-
-                        {job.progress > 0 && (
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-gray-600">Progress</span>
-                              <span className="text-sm font-medium">{job.progress}%</span>
-                            </div>
-                            <Progress value={job.progress} className="h-2" />
-                          </div>
-                        )}
+                    {/* Card Body */}
+                    <div className="p-4 space-y-3">
+                      {/* Job ID */}
+                      <div className="flex items-center gap-2 border-b pb-2">
+                        <Package className="h-4 w-4 text-blue-600" />
+                        <h3 className="font-bold text-lg text-gray-900">{job.job_card_id || job.job_card_number}</h3>
                       </div>
 
-                      <div className="flex flex-col gap-3 ml-4 min-w-[140px]">
-                        {/* Enhanced Action Buttons */}
+                      {/* Key Info Grid */}
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Product:</span>
+                          <span className="font-medium text-gray-900 text-right">{job.product_item_code}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Brand:</span>
+                          <span className="font-medium text-gray-900 text-right">{job.product_brand || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Customer:</span>
+                          <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.customer_name || job.company_name}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Quantity:</span>
+                          <span className="font-medium text-gray-900">{job.quantity.toLocaleString()} units</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Material:</span>
+                          <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.product_material || 'N/A'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-500">Color:</span>
+                          <span className="font-medium text-gray-900">{job.product_color || 'N/A'}</span>
+                        </div>
+                      </div>
+
+                      {/* Due Date Highlight */}
+                      <div className={`flex items-center justify-between p-2 rounded ${getDaysUntilDue(job.due_date) <= 2 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                        <div className="flex items-center gap-1">
+                          <Clock className={`h-4 w-4 ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-600'}`} />
+                          <span className="text-xs text-gray-600">Due Date:</span>
+                        </div>
+                        <span className={`text-sm font-semibold ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-900'}`}>
+                          {formatDate(job.due_date)} ({getDaysUntilDue(job.due_date)}d)
+                        </span>
+                      </div>
+
+                      {/* Quick Actions */}
+                      <div className="flex gap-2 pt-2">
                         <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedJob(job);
+                          }}
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setExpandedJobId(expandedJobId === job.prepress_job_id ? null : job.prepress_job_id);
-                          }}
-                          className="bg-white/50 hover:bg-white/80 border-gray-200 hover:border-blue-300 transition-all duration-200"
+                          className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
                         >
-                          <Eye className="w-4 h-4 mr-2" />
-                          {expandedJobId === job.prepress_job_id ? 'Collapse' : 'View Details'}
+                          <Eye className="h-3 w-3 mr-1" />
+                          Details
                         </Button>
-                        
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setSelectedJob(job);
-                            setNewStatus(job.status);
-                            setIsStatusDialogOpen(true);
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200"
-                        >
-                          <Edit className="h-4 w-4 mr-2" />
-                          Update Status
-                        </Button>
-                        
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleEditProcessSequence(job)}
-                          className="bg-white/50 hover:bg-white/80 border-gray-200 hover:border-purple-300 transition-all duration-200"
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          Edit Process
-                        </Button>
+                        {job.status === 'IN_PROGRESS' && (
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedJob(job);
+                              setIsSubmitToQADialogOpen(true);
+                            }}
+                            size="sm"
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Submit
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </motion.div>
@@ -1128,6 +1159,223 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           </CardContent>
         </Card>
         </motion.div>
+        </div>
+      </div>
+
+      {/* Job Details Modal - shown when clicking on a job card */}
+      <Dialog open={!!selectedJob && !isStatusDialogOpen && !isSubmitToQADialogOpen} onOpenChange={(open) => !open && setSelectedJob(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Job Details - {selectedJob?.job_card_id || selectedJob?.job_card_number}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedJob && (
+            <div className="space-y-4">
+              {/* Status and Priority */}
+              <div className="flex items-center gap-3">
+                <Badge className={`${statusColors[selectedJob.status]}`}>
+                  {getStatusIcon(selectedJob.status)}
+                  <span className="ml-1">{selectedJob.status.replace('_', ' ')}</span>
+                </Badge>
+                <Badge className={`${priorityColors[selectedJob.priority]}`}>
+                  {getPriorityIcon(selectedJob.priority)}
+                  <span className="ml-1">{selectedJob.priority}</span>
+                </Badge>
+                {getDaysUntilDue(selectedJob.due_date) <= 2 && (
+                  <Badge className="bg-red-500 text-white animate-pulse">
+                    <Zap className="h-3 w-3 mr-1" />
+                    URGENT - {getDaysUntilDue(selectedJob.due_date)}d remaining
+                  </Badge>
+                )}
+              </div>
+
+              {/* Product Specifications */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="font-semibold text-gray-800 mb-3">Product Specifications</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div><span className="font-medium text-gray-600">Name:</span> <span className="text-gray-900">{selectedJob.product_name}</span></div>
+                  <div><span className="font-medium">Brand:</span> {selectedJob.product_brand}</div>
+                  <div><span className="font-medium">Type:</span> {selectedJob.product_type}</div>
+                  <div><span className="font-medium">Material:</span> {selectedJob.product_material}</div>
+                  <div><span className="font-medium">GSM:</span> {selectedJob.product_gsm} g/m²</div>
+                  <div><span className="font-medium">Category:</span> {selectedJob.product_category}</div>
+                  <div><span className="font-medium">FSC:</span> {selectedJob.product_fsc}</div>
+                  <div><span className="font-medium">FSC Claim:</span> {selectedJob.product_fsc_claim}</div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium">Color:</span> 
+                                  <div className="flex items-center space-x-2">
+                      <span className="text-sm">{selectedJob.product_color}</span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                          setSelectedColor(selectedJob.product_color);
+                                        setIsEditingColor(true);
+                                      }}
+                                      className="h-6 w-6 p-0"
+                                    >
+                                      <Palette className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                          </div>
+                {selectedJob.product_remarks && selectedJob.product_remarks !== 'N/A' && (
+                                <div className="mt-2 text-sm">
+                    <span className="font-medium">Remarks:</span> {selectedJob.product_remarks}
+                          </div>
+                              )}
+                        </div>
+
+                            {/* Google Drive Links Section */}
+              {(selectedJob.client_layout_link || selectedJob.final_design_link) && (
+                              <div className="bg-blue-50 p-3 rounded-lg mt-3">
+                                <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                                  <ExternalLink className="h-4 w-4" />
+                                  Google Drive Links
+                                </h4>
+                                <div className="space-y-3">
+                    {selectedJob.client_layout_link && (
+                                    <GoogleDrivePreview
+                        url={selectedJob.client_layout_link}
+                                      label="Client Layout"
+                                      showThumbnail={true}
+                                      showPreview={true}
+                                    />
+                                  )}
+                    {selectedJob.final_design_link && (
+                                    <GoogleDrivePreview
+                        url={selectedJob.final_design_link}
+                                      label="Final Design"
+                                      showThumbnail={true}
+                                      showPreview={true}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Customer Information */}
+                            <div className="bg-purple-50 p-3 rounded-lg">
+                              <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div><span className="font-medium">Name:</span> {selectedJob.customer_name || selectedJob.company_name}</div>
+                  {selectedJob.customer_email && selectedJob.customer_email !== 'N/A' && (
+                    <div><span className="font-medium">Email:</span> {selectedJob.customer_email}</div>
+                  )}
+                  {selectedJob.customer_phone && selectedJob.customer_phone !== 'N/A' && (
+                    <div><span className="font-medium">Phone:</span> {selectedJob.customer_phone}</div>
+                  )}
+                  {selectedJob.customer_address && selectedJob.customer_address !== 'N/A' && (
+                                  <div className="col-span-2">
+                      <span className="font-medium">Address:</span> {selectedJob.customer_address}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Job Details */}
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                              <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div><span className="font-medium">Quantity:</span> {selectedJob.quantity} units</div>
+                  <div><span className="font-medium">PO Number:</span> {selectedJob.po_number}</div>
+                                <div><span className="font-medium">Priority:</span> 
+                                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
+                      selectedJob.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
+                      selectedJob.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-green-100 text-green-800'
+                                  }`}>
+                      {selectedJob.priority}
+                                  </span>
+                                </div>
+                  {selectedJob.delivery_address && selectedJob.delivery_address !== 'N/A' && (
+                                  <div className="col-span-2">
+                      <span className="font-medium">Delivery Address:</span> {selectedJob.delivery_address}
+                                  </div>
+                                )}
+                  {selectedJob.special_instructions && selectedJob.special_instructions !== 'N/A' && (
+                                  <div className="col-span-2">
+                      <span className="font-medium">Special Instructions:</span> {selectedJob.special_instructions}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Ratio Report Section */}
+                            <div className="bg-purple-50 p-3 rounded-lg mt-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                                  <BarChart3 className="h-4 w-4" />
+                                  Production Ratio Report
+                                </h4>
+                                <Button
+                    onClick={() => loadRatioReport(selectedJob.id)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                                >
+                                  <BarChart3 className="h-3 w-3 mr-1" />
+                                  View Report
+                                </Button>
+                              </div>
+                              <p className="text-xs text-gray-600">
+                                View production metrics, color details, and efficiency data for this job
+                              </p>
+                            </div>
+
+                            {/* Process Sequence Display */}
+              {selectedJob.process_sequence && selectedJob.process_sequence.steps && Array.isArray(selectedJob.process_sequence.steps) && selectedJob.process_sequence.steps.length > 0 && (
+                              <div className="p-2 bg-green-50 rounded-lg border border-green-200">
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
+                    <span className="text-xs text-green-600">Product Type: {selectedJob.product_type}</span>
+                                </div>
+                                <div className="text-xs text-green-600 mb-2">
+                                  Process steps configured for this product type. You can modify as needed.
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                    {selectedJob.process_sequence.steps.map((step, idx) => (
+                      <Badge key={step.id || idx} variant="outline" className="text-xs">
+                        {typeof step === 'object' && step.name ? `${step.name} (${step.estimatedHours || 0}h)` : String(step)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Prepress Workflow Status */}
+              {selectedJob.prepress_status && (
+                              <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                                <h4 className="text-sm font-medium text-blue-800 mb-2">Prepress Workflow</h4>
+                                <div className="text-xs text-blue-600">
+                    Current Status: {selectedJob.prepress_status} | Progress: {typeof selectedJob.workflow_progress === 'object' && selectedJob.workflow_progress?.progress !== undefined ? selectedJob.workflow_progress.progress : 0}%
+                                </div>
+                              </div>
+                            )}
+
+              {selectedJob.customer_notes && (
+                              <div className="mb-2">
+                                <span className="text-sm font-medium text-gray-700">Customer Notes:</span>
+                  <p className="text-sm text-gray-600">{selectedJob.customer_notes}</p>
+                          </div>
+                        )}
+
+              {selectedJob.progress > 0 && (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm text-gray-600">Progress</span>
+                    <span className="text-sm font-medium">{selectedJob.progress}%</span>
+                            </div>
+                  <Progress value={selectedJob.progress} className="h-2" />
+                          </div>
+                        )}
+                      </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Status Update Dialog */}
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
@@ -1170,11 +1418,74 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               <Button
                 onClick={() => {
                   if (selectedJob && newStatus) {
-                    updateJobStatus(selectedJob.prepress_job_id, newStatus, statusNotes);
+                    updateJobStatus(selectedJob.id, newStatus, statusNotes);
                   }
                 }}
               >
                 Update Status
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Submit to QA Dialog */}
+      <Dialog open={isSubmitToQADialogOpen} onOpenChange={setIsSubmitToQADialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Submit to QA</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Job: {selectedJob?.job_card_number}</Label>
+            </div>
+            
+            {/* Client Layout Link Display */}
+            {selectedJob?.client_layout_link && (
+              <div>
+                <Label className="text-sm font-medium text-gray-600">Client Layout</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <a
+                    href={selectedJob.client_layout_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    View Client Layout
+                  </a>
+                </div>
+              </div>
+            )}
+            
+            <div>
+              <Label htmlFor="finalDesignLink">Final Design Link (Google Drive)</Label>
+              <Input
+                id="finalDesignLink"
+                type="url"
+                value={finalDesignLink}
+                onChange={(e) => setFinalDesignLink(e.target.value)}
+                placeholder="https://drive.google.com/file/d/..."
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Upload your final design (PDF/AI) to Google Drive and paste the shareable link here
+              </p>
+            </div>
+            
+            <div className="flex justify-end space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setIsSubmitToQADialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitToQA}
+                disabled={!finalDesignLink.trim()}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                Submit to QA
               </Button>
             </div>
           </div>
@@ -1244,7 +1555,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-500">Due Date</Label>
-                          <p className="font-medium">{formatDate(jobDetailsData.dueDate)}</p>
+                          <p className="font-medium">{formatDate(jobDetailsData.due_date)}</p>
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-500">Last Updated</Label>
@@ -1564,8 +1875,384 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
         productType={selectedJobForProcessEdit?.product_type || 'Offset'}
         onSave={handleSaveProcessSequence}
       />
-        </div>
-      </div>
+
+      {/* Color Picker Modal */}
+      <Dialog open={isEditingColor} onOpenChange={setIsEditingColor}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Palette className="h-5 w-5" />
+              Edit Color - {selectedJob?.job_card_number}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h4 className="font-medium text-gray-800 mb-2">Product Information</h4>
+              <div className="text-sm text-gray-600 space-y-1">
+                <div><strong>Product:</strong> {selectedJob?.product_name}</div>
+                <div><strong>Current Color:</strong> {selectedJob?.product_color}</div>
+              </div>
+            </div>
+            
+            <ModernColorPicker
+              value={selectedColor}
+              onChange={setSelectedColor}
+              label="Select New Color"
+              placeholder="Choose a color for this product"
+              showPreview={true}
+            />
+            
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <h5 className="font-medium text-blue-800 mb-2">Color Guidelines</h5>
+              <ul className="text-sm text-blue-700 space-y-1">
+                <li>• Use brand-specific colors when available</li>
+                <li>• Consider print limitations and color accuracy</li>
+                <li>• Verify color specifications with client requirements</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsEditingColor(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                // Here you would typically save the color to the backend
+                toast.success(`Color updated to ${selectedColor}`);
+                setIsEditingColor(false);
+                // Update the job data with new color
+                if (selectedJob) {
+                  const updatedJobs = jobs.map(job => 
+                    job.id === selectedJob.id 
+                      ? { ...job, product_color: selectedColor }
+                      : job
+                  );
+                  setJobs(updatedJobs);
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Palette className="h-4 w-4 mr-2" />
+              Update Color
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Ratio Report Modal */}
+      <Dialog open={isRatioReportOpen} onOpenChange={setIsRatioReportOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Production Ratio Report - {ratioReport?.job_number}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {ratioReport && (
+            <div className="space-y-6">
+              {/* Instructions and Actions */}
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border-2 border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold text-blue-900 flex items-center gap-2">
+                    <span className="text-2xl">📋</span>
+                    How to use this report
+                  </h4>
+                  <Button
+                    onClick={downloadRatioReportPDF}
+                    variant="outline"
+                    size="sm"
+                    className="bg-white hover:bg-blue-50"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download PDF
+                  </Button>
+                </div>
+                <ul className="text-sm text-gray-700 space-y-1">
+                  <li>• Click on any row in the Color Details table to mark it as processed</li>
+                  <li>• Marked items will turn green with a checkmark ✓</li>
+                  <li>• This helps you track which items you've already worked on</li>
+                  <li>• Your progress is shown in the header: {markedItems.size}/{ratioReport.color_details?.length || 0} items completed</li>
+                </ul>
+              </div>
+
+              {/* Order Information */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-800 mb-3">Order Information</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div><strong>Factory:</strong> {safeRender(ratioReport.factory_name)}</div>
+                  <div><strong>PO Number:</strong> {safeRender(ratioReport.po_number)}</div>
+                  <div><strong>Job Number:</strong> {safeRender(ratioReport.job_number)}</div>
+                  <div><strong>Brand:</strong> {safeRender(ratioReport.brand_name)}</div>
+                  <div><strong>Item:</strong> {safeRender(ratioReport.item_name)}</div>
+                  <div><strong>Report Date:</strong> {ratioReport.report_date ? new Date(ratioReport.report_date).toLocaleDateString() : 'N/A'}</div>
+                </div>
+              </div>
+
+              {/* Production Metrics */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-800 mb-3">Production Metrics</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.total_ups !== null && ratioReport.total_ups !== undefined ? ratioReport.total_ups : 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total UPS</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.total_sheets !== null && ratioReport.total_sheets !== undefined ? ratioReport.total_sheets : 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total Sheets</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.total_plates !== null && ratioReport.total_plates !== undefined ? ratioReport.total_plates : 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Total Plates</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.qty_produced !== null && ratioReport.qty_produced !== undefined ? ratioReport.qty_produced : 'N/A'}
+                    </div>
+                    <div className="text-sm text-green-700">Qty Produced</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.excess_qty !== null && ratioReport.excess_qty !== undefined ? ratioReport.excess_qty : 'N/A'}
+                    </div>
+                    <div className="text-sm text-orange-700">Excess Qty</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {(ratioReport.efficiency_percentage !== null && ratioReport.efficiency_percentage !== undefined && typeof ratioReport.efficiency_percentage === 'number')
+                        ? `${ratioReport.efficiency_percentage.toFixed(1)}%`
+                        : 'N/A'
+                      }
+                    </div>
+                    <div className="text-sm text-blue-700">Efficiency</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">
+                      {(ratioReport.excess_percentage !== null && ratioReport.excess_percentage !== undefined && typeof ratioReport.excess_percentage === 'number')
+                        ? `${ratioReport.excess_percentage.toFixed(1)}%`
+                        : 'N/A'
+                      }
+                    </div>
+                    <div className="text-sm text-purple-700">Excess %</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-indigo-600">
+                      {/* CACHE_BUST_2025_01_01 */}{ratioReport.required_order_qty !== null && ratioReport.required_order_qty !== undefined ? ratioReport.required_order_qty : 'N/A'}
+                    </div>
+                    <div className="text-sm text-indigo-700">Required Qty</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Color Details Table */}
+              {ratioReport.color_details && Array.isArray(ratioReport.color_details) && ratioReport.color_details.length > 0 && (
+                <div className="bg-white border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-gray-50 p-3 border-b">
+                    <h4 className="font-medium">Color Details</h4>
+                    <span className="text-xs text-gray-600">
+                      💡 Click on any row to mark it as processed ({markedItems.size}/{ratioReport.color_details.length})
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Status</th>
+                          <th className="px-3 py-2 text-left">Color</th>
+                          <th className="px-3 py-2 text-left">Size</th>
+                          <th className="px-3 py-2 text-left">Required Qty</th>
+                          <th className="px-3 py-2 text-left">Plate</th>
+                          <th className="px-3 py-2 text-left">UPS</th>
+                          <th className="px-3 py-2 text-left">Sheets</th>
+                          <th className="px-3 py-2 text-left">Qty Produced</th>
+                          <th className="px-3 py-2 text-left">Excess Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ratioReport.color_details.map((detail, index) => {
+                          const isMarked = markedItems.has(index);
+                          return (
+                          <tr 
+                            key={index} 
+                            onClick={() => toggleMarkedItem(index)}
+                            className={`cursor-pointer transition-all duration-200 ${
+                              isMarked 
+                                ? 'bg-green-100 hover:bg-green-200 border-l-4 border-green-500' 
+                                : index % 2 === 0 
+                                  ? 'bg-white hover:bg-blue-50' 
+                                  : 'bg-gray-50 hover:bg-blue-50'
+                            }`}
+                          >
+                            <td className="px-3 py-2 text-center">
+                              {isMarked ? (
+                                <span className="text-green-600 font-bold text-lg">✓</span>
+                              ) : (
+                                <span className="text-gray-300">○</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">{safeRender(detail.color)}</td>
+                            <td className="px-3 py-2">{safeRender(detail.size)}</td>
+                            <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
+                            <td className="px-3 py-2 font-medium text-blue-600">{safeRender(detail.plate)}</td>
+                            <td className="px-3 py-2">{safeRender(detail.ups)}</td>
+                            <td className="px-3 py-2">{safeRender(detail.sheets)}</td>
+                            <td className="px-3 py-2">{safeRender(detail.qtyProduced)}</td>
+                            <td className="px-3 py-2">
+                              <span className={(typeof detail.excessQty === 'number' && detail.excessQty > 0) ? 'text-orange-600 font-medium' : 'text-green-600'}>
+                                {safeRender(detail.excessQty)}
+                              </span>
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Plate Distribution - Enhanced Modern UI */}
+              {ratioReport.plate_distribution && typeof ratioReport.plate_distribution === 'object' && Object.keys(ratioReport.plate_distribution).length > 0 && (() => {
+                const plateEntries = Object.entries(ratioReport.plate_distribution);
+                const totalCount = plateEntries.reduce((sum, [, count]) => sum + (typeof count === 'number' ? count : 0), 0);
+                const plateColors = [
+                  'from-blue-500 to-blue-600',
+                  'from-purple-500 to-purple-600',
+                  'from-pink-500 to-pink-600',
+                  'from-orange-500 to-orange-600',
+                  'from-teal-500 to-teal-600',
+                  'from-indigo-500 to-indigo-600',
+                  'from-red-500 to-red-600',
+                  'from-green-500 to-green-600'
+                ];
+                
+                return (
+                  <div className="bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 p-6 rounded-xl border-2 border-orange-200 shadow-lg">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg shadow-md">
+                          <BarChart3 className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="text-xl font-bold text-gray-800">Plate Distribution Analysis</h4>
+                          <p className="text-sm text-gray-600">Total of {totalCount} items across {plateEntries.length} plates</p>
+                        </div>
+                      </div>
+                      <Badge className="bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-md px-4 py-2 text-sm">
+                        {plateEntries.length} Plates
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {plateEntries.map(([plate, count], index) => {
+                        const percentage = totalCount > 0 ? ((typeof count === 'number' ? count : 0) / totalCount * 100).toFixed(1) : 0;
+                        const colorGradient = plateColors[index % plateColors.length];
+                        
+                        return (
+                          <motion.div
+                            key={plate}
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            transition={{ delay: index * 0.1, duration: 0.3 }}
+                            whileHover={{ scale: 1.05, y: -5 }}
+                            className="group relative"
+                          >
+                            <div className={`relative bg-gradient-to-br ${colorGradient} p-6 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden`}>
+                              {/* Background decoration */}
+                              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-12 translate-x-12"></div>
+                              <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/10 rounded-full translate-y-8 -translate-x-8"></div>
+                              
+                              {/* Content */}
+                              <div className="relative z-10">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg">
+                                      <Package className="w-5 h-5 text-white" />
+                                    </div>
+                                    <span className="text-white/90 text-sm font-medium">Plate</span>
+                                  </div>
+                                  <Badge className="bg-white/20 backdrop-blur-sm text-white border-0 text-xs">
+                                    {percentage}%
+                                  </Badge>
+                                </div>
+                                
+                                <div className="text-center py-4">
+                                  <div className="text-5xl font-black text-white mb-1 drop-shadow-lg">
+                                    {safeRender(plate)}
+                                  </div>
+                                  <div className="text-3xl font-bold text-white/90">
+                                    {safeRender(count)}
+                                  </div>
+                                  <div className="text-sm text-white/70 mt-1">
+                                    items
+                                  </div>
+                                </div>
+                                
+                                {/* Progress bar */}
+                                <div className="mt-4 bg-white/20 rounded-full h-2 overflow-hidden">
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${percentage}%` }}
+                                    transition={{ delay: index * 0.1 + 0.3, duration: 0.8, ease: "easeOut" }}
+                                    className="h-full bg-white/80 rounded-full"
+                                  />
+                                </div>
+                              </div>
+                              
+                              {/* Hover effect overlay */}
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all duration-300 rounded-xl"></div>
+                            </div>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Summary footer */}
+                    <div className="mt-6 pt-4 border-t-2 border-orange-200">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 bg-gradient-to-r from-orange-500 to-red-500 rounded-full"></div>
+                          <span className="text-gray-700 font-medium">Production Efficiency Indicator</span>
+                        </div>
+                        <span className="text-gray-600">
+                          Average: {(totalCount / plateEntries.length).toFixed(1)} items/plate
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Excel File Link */}
+              {ratioReport.excel_file_link && (
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-gray-800 mb-2">Source File</h4>
+                  <a 
+                    href={ratioReport.excel_file_link} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline flex items-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    {ratioReport.excel_file_name || 'Download Excel Report'}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 };

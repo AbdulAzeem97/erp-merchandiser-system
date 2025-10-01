@@ -63,6 +63,7 @@ const productValidation = [
   body('brand').optional().isLength({ min: 2, max: 100 }).trim(),
   body('gsm').optional().isInt({ min: 1, max: 1500 }),
   body('category_id').optional(),
+  body('material_id').optional(),
   body('description').optional().isLength({ max: 500 })
 ];
 
@@ -332,27 +333,19 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
     });
   }
 
-  // Handle material_id - validate UUID format
-  let finalMaterialId = material_id;
-  if (material_id && typeof material_id === 'string') {
-    // Check if it's a valid UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidRegex.test(material_id)) {
-      // It's a valid UUID, use it as is
-      finalMaterialId = material_id;
-    } else {
-      // It's a material name, try to find the material
-      const materialResult = await dbAdapter.query(
-        'SELECT id FROM materials WHERE name = $1 OR code = $1',
-        [material_id]
-      );
-      
-      if (materialResult.rows.length > 0) {
-        finalMaterialId = materialResult.rows[0].id;
-      } else {
-        // If material not found, set to null
-        finalMaterialId = null;
-      }
+  // Handle material_id - use as is if provided, otherwise null
+  let finalMaterialId = material_id || null;
+  
+  // If material_id is provided, validate it exists
+  if (finalMaterialId) {
+    const materialResult = await dbAdapter.query(
+      'SELECT id FROM materials WHERE id = $1 AND "isActive" = true',
+      [finalMaterialId]
+    );
+    
+    if (materialResult.rows.length === 0) {
+      console.warn(`Material ID ${finalMaterialId} not found or inactive, setting to null`);
+      finalMaterialId = null;
     }
   }
 

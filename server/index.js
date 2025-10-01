@@ -28,6 +28,7 @@ import jobAssignmentRoutes from './routes/jobAssignment.js';
 import jobAssignmentHistoryRoutes from './routes/jobAssignmentHistory.js';
 import prismaApiRoutes from './routes/prisma-api.js';
 import prismaAuthRoutes from './routes/prisma-auth.js';
+import ctpRoutes from './routes/ctp.js';
 
 // Import middleware
 import { authenticateToken } from './middleware/auth.js';
@@ -154,6 +155,7 @@ app.use('/api/process-sequences', processSequenceRoutes); // Re-enabled for job 
 app.use('/api/prepress', prepressRoutes);
 app.use('/api/enhanced-prepress', enhancedPrepressRoutes);
 app.use('/api/prepress-workflow', authenticateToken, prepressWorkflowRoutes);
+app.use('/api/ctp', authenticateToken, ctpRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/job-lifecycle', authenticateToken, jobLifecycleRoutes);
 app.use('/api/complete-job-lifecycle', authenticateToken, completeJobLifecycleRoutes);

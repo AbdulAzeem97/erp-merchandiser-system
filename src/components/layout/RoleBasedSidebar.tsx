@@ -115,7 +115,7 @@ const menuItems: MenuItem[] = [
     id: 'prepress',
     label: 'Prepress',
     icon: Palette,
-    roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER'],
+    roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER', 'QA', 'QA_PREPRESS'],
     children: [
       {
         id: 'hod-dashboard',
@@ -153,6 +153,15 @@ const menuItems: MenuItem[] = [
         roles: ['ADMIN', 'HOD_PREPRESS', 'DESIGNER']
       }
     ]
+  },
+
+  // CTP Section (Standalone for CTP Operators)
+  {
+    id: 'ctp',
+    label: 'CTP Department',
+    icon: Layers,
+    page: 'ctp-dashboard',
+    roles: ['ADMIN', 'CTP_OPERATOR']
   },
 
   // Production Section

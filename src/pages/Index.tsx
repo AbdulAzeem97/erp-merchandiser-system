@@ -8,6 +8,7 @@ import HeadOfProductionDashboard from '../components/dashboards/HeadOfProduction
 import { HodPrepressDashboard } from '../components/dashboards/HodPrepressDashboard';
 import { DesignerDashboard } from '../components/dashboards/DesignerDashboard';
 import QADashboard from '../components/qa/QADashboard';
+import CTPDashboard from '../components/ctp/CTPDashboard';
 import HODPrepressDashboard from '../components/prepress/HODPrepressDashboard';
 import DesignerWorkbench from '../components/prepress/DesignerWorkbench';
 import ProductsModule from '../components/modules/ProductsModule';
@@ -96,6 +97,9 @@ const Index = () => {
       return;
     } else if (user?.role === 'QA' || user?.role === 'QA_PREPRESS') {
       setCurrentView('qaDashboard');
+    } else if (user?.role === 'CTP_OPERATOR') {
+      // Redirect to CTP dashboard
+      setCurrentView('ctp-dashboard');
     } else {
       setCurrentView('dashboard');
     }
@@ -128,6 +132,9 @@ const Index = () => {
           return;
         } else if (user?.role === 'QA' || user?.role === 'QA_PREPRESS') {
           setCurrentView('qaDashboard');
+        } else if (user?.role === 'CTP_OPERATOR') {
+          // Redirect to CTP dashboard
+          setCurrentView('ctp-dashboard');
         } else {
           setCurrentView('dashboard');
         }
@@ -210,6 +217,10 @@ const Index = () => {
       case 'qaDashboard':
         return (
           <QADashboard />
+        );
+      case 'ctp-dashboard':
+        return (
+          <CTPDashboard onLogout={handleLogout} onNavigate={handleNavigate} />
         );
       case 'products':
         return <ProductsModule />;

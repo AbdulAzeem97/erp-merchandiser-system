@@ -18,6 +18,7 @@ import ModernDesignerWorkbench from "./components/prepress/ModernDesignerWorkben
 import DesignerDashboard from "./components/designer/DesignerDashboard";
 import HODDesignerDashboard from "./components/hod/HODDesignerDashboard";
 import QADashboard from "./components/qa/QADashboard";
+import CTPDashboard from "./components/ctp/CTPDashboard";
 import JobManagementDashboard from "./components/jobs/JobManagementDashboard";
 import MerchandiserDashboard from "./components/dashboards/MerchandiserDashboard";
 import JobManagementModule from "./components/modules/JobManagementModule";
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/designer/dashboard" element={<DesignerDashboard />} />
             <Route path="/hod/designer/dashboard" element={<HODDesignerDashboard />} />
             <Route path="/qa/dashboard" element={<QADashboard />} />
+            <Route path="/ctp/dashboard" element={<CTPDashboard onLogout={() => {}} onNavigate={() => {}} />} />
             <Route path="/jobs/management" element={<JobManagementDashboard />} />
             <Route path="/merchandiser/dashboard" element={<MerchandiserDashboard />} />
             

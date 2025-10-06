@@ -100,6 +100,14 @@ const Index = () => {
     } else if (user?.role === 'CTP_OPERATOR') {
       // Redirect to CTP dashboard
       setCurrentView('ctp-dashboard');
+    } else if (user?.role === 'INVENTORY_MANAGER') {
+      // Redirect to inventory dashboard
+      window.location.href = '/inventory/dashboard';
+      return;
+    } else if (user?.role === 'PROCUREMENT_MANAGER') {
+      // Redirect to procurement dashboard
+      window.location.href = '/procurement/dashboard';
+      return;
     } else {
       setCurrentView('dashboard');
     }
@@ -135,6 +143,14 @@ const Index = () => {
         } else if (user?.role === 'CTP_OPERATOR') {
           // Redirect to CTP dashboard
           setCurrentView('ctp-dashboard');
+        } else if (user?.role === 'INVENTORY_MANAGER') {
+          // Redirect to inventory dashboard
+          window.location.href = '/inventory/dashboard';
+          return;
+        } else if (user?.role === 'PROCUREMENT_MANAGER') {
+          // Redirect to procurement dashboard
+          window.location.href = '/procurement/dashboard';
+          return;
         } else {
           setCurrentView('dashboard');
         }

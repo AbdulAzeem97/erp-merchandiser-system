@@ -44,6 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { fetchProcessSequence } from '../../utils/processSequenceUtils';
 import { ProcessPreview } from '../ProcessPreview';
 import RatioExcelUpload from '../ui/RatioExcelUpload';
+import ItemSpecificationsExcelUpload from '../ui/ItemSpecificationsExcelUpload';
 
 const MERCHANDISER_OPTIONS = ['Abdullah', 'Jaseem', 'Ali', 'Ahmed'];
 
@@ -79,6 +80,8 @@ interface JobCardData {
   merchandiser: string;
   assignedDesigner: string;
   clientLayoutLink: string;
+  itemSpecificationsExcelLink?: string;
+  itemSpecificationsData?: any;
   ratioExcelLink?: string;
   ratioData?: any;
 }
@@ -554,6 +557,45 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       
       // Save job to API
       const savedJob = await jobsAPI.create(jobData);
+      
+      // Save item specifications if provided
+      if (jobCardData.itemSpecificationsData && jobCardData.itemSpecificationsExcelLink) {
+        try {
+          const itemSpecsData = {
+            excel_file_link: jobCardData.itemSpecificationsExcelLink,
+            excel_file_name: jobCardData.itemSpecificationsData.fileName || 'Item_Specifications.xlsx',
+            job_card_id: savedJob.job.id,
+            po_number: jobCardData.poNumber,
+            job_number: savedJob.job.job_card_id,
+            brand_name: product.brand || '',
+            item_name: product.name || '',
+            uploaded_at: new Date().toISOString(),
+            item_count: jobCardData.itemSpecificationsData.itemCount || 0,
+            total_quantity: jobCardData.itemSpecificationsData.summary?.totalQuantity || 0,
+            size_variants: jobCardData.itemSpecificationsData.summary?.sizeVariants || 0,
+            color_variants: jobCardData.itemSpecificationsData.summary?.colorVariants || 0,
+            specifications: jobCardData.itemSpecificationsData.specifications || {},
+            raw_excel_data: jobCardData.itemSpecificationsData || {}
+          };
+
+          const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${savedJob.job.id}/item-specifications`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(itemSpecsData)
+          });
+
+          if (itemSpecsResponse.ok) {
+            console.log('✅ Item specifications saved successfully');
+          } else {
+            console.warn('⚠️ Failed to save item specifications');
+          }
+        } catch (error) {
+          console.error('❌ Error saving item specifications:', error);
+        }
+      }
       
       // Save ratio report if provided
       if (jobCardData.ratioData && jobCardData.ratioExcelLink) {
@@ -1064,7 +1106,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                             setSearchTerm(e.target.value);
                             setJobCardData(prev => ({ ...prev, productCode: e.target.value }));
                           }}
-                          placeholder="Enter product code (e.g., BR-00-139-A)"
+                          placeholder="Enter product code (any format)"
                           className="font-mono pr-10"
                         />
                         <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1452,47 +1494,122 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                     </p>
                   </div>
 
-                  {/* Ratio Excel Upload - Only for specific product types that require ratio optimization */}
-                  {product && product.product_type && ['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
-                    <div className="space-y-2">
-                      <RatioExcelUpload
-                        value={jobCardData.ratioExcelLink || ''}
-                        onChange={(excelLink, parsedData) => {
-                          handleInputChange('ratioExcelLink', excelLink);
-                          handleInputChange('ratioData', parsedData);
-                        }}
-                        parsedData={jobCardData.ratioData}
-                        label="Ratio Optimization Report (Excel)"
-                      />
-                      <p className="text-xs text-gray-500">
-                        Upload the Excel report from ratio optimization software for automated production planning
+                  {/* Item Specifications & Ratio Optimization */}
+                  <div className="space-y-4">
+                    <div className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg">
+                      <h4 className="font-semibold text-blue-800 mb-2 flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Item Specifications & Production Planning
+                      </h4>
+                      <p className="text-sm text-blue-700 mb-3">
+                        Upload item specifications for all jobs, plus ratio optimization for variable items:
                       </p>
-                      <p className="text-xs text-blue-600 font-medium">
-                        ⓘ Ratio optimization is required for {product.product_type} products to calculate optimal plate usage and material requirements
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Message for product types that don't require ratio optimization */}
-                  {product && product.product_type && !['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
-                    <div className="space-y-2">
-                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                            <span className="text-blue-600 text-xs font-bold">ℹ</span>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* All Jobs - Item Specifications */}
+                        <div className="bg-white p-3 rounded-lg border border-blue-200">
+                          <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                            All Jobs - Item Specifications
+                          </h5>
+                          <p className="text-xs text-gray-600 mb-2">
+                            Required for all jobs: sizes, quantities, colors, materials
+                          </p>
+                          <div className="text-xs text-blue-600 font-medium">
+                            📋 Item specifications Excel required
                           </div>
-                          <div>
-                            <p className="text-sm text-gray-700 font-medium">
-                              Ratio optimization not required
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {product.product_type} products do not require ratio optimization for production planning
-                            </p>
+                        </div>
+                        
+                        {/* Variable Items - Ratio Optimization */}
+                        <div className="bg-white p-3 rounded-lg border border-blue-200">
+                          <h5 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-orange-600" />
+                            Variable Items - Ratio Optimization
+                          </h5>
+                          <p className="text-xs text-gray-600 mb-2">
+                            Additional optimization for complex variable items
+                          </p>
+                          <div className="text-xs text-orange-600 font-medium">
+                            📊 Ratio optimization Excel (optional)
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
+
+                    {/* Item Specifications Excel Upload - Required for ALL jobs */}
+                    <div className="space-y-2">
+                      <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                        <h5 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Item Specifications (Required for All Jobs)
+                        </h5>
+                        <ItemSpecificationsExcelUpload
+                          value={jobCardData.itemSpecificationsExcelLink || ''}
+                          onChange={(excelLink, parsedData) => {
+                            handleInputChange('itemSpecificationsExcelLink', excelLink);
+                            handleInputChange('itemSpecificationsData', parsedData);
+                          }}
+                          parsedData={jobCardData.itemSpecificationsData}
+                          label="Upload Item Specifications Excel File"
+                          required={true}
+                        />
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-blue-700">
+                            📋 Upload Excel file containing: sizes, quantities, colors, materials, specifications
+                          </p>
+                          <p className="text-xs text-blue-600 font-medium">
+                            ⚡ This data will flow through: Designer → QA → Production for all jobs
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ratio Excel Upload - Optional for variable items */}
+                    {product && product.product_type && ['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
+                      <div className="space-y-2">
+                        <div className="bg-orange-50 border border-orange-200 p-3 rounded-lg">
+                          <h5 className="font-medium text-orange-800 mb-2 flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            Variable Items - Ratio Optimization (Optional)
+                          </h5>
+                          <RatioExcelUpload
+                            value={jobCardData.ratioExcelLink || ''}
+                            onChange={(excelLink, parsedData) => {
+                              handleInputChange('ratioExcelLink', excelLink);
+                              handleInputChange('ratioData', parsedData);
+                            }}
+                            parsedData={jobCardData.ratioData}
+                            label="Upload Ratio Optimization Excel File (Optional)"
+                          />
+                          <div className="mt-2 space-y-1">
+                            <p className="text-xs text-orange-700">
+                              📋 Upload Excel file for advanced optimization: plate usage, material efficiency, production ratios
+                            </p>
+                            <p className="text-xs text-orange-600 font-medium">
+                              ⚡ This provides additional optimization data for complex variable items
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* For other product types */}
+                    {product && product.product_type && !['Offset', 'Screen Print', 'Digital', 'Heat Transfer Label'].includes(product.product_type) && (
+                      <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
+                        <h5 className="font-medium text-green-800 mb-2 flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4" />
+                          Constant Items - Standard Specifications
+                        </h5>
+                        <p className="text-xs text-green-700">
+                          ✅ {product.product_type} products typically use constant specifications. Ratio optimization not needed.
+                        </p>
+                        <p className="text-xs text-green-600 mt-1">
+                          📝 Item specifications Excel is still required above for production planning.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                 </CardContent>
               </Card>
             </motion.div>

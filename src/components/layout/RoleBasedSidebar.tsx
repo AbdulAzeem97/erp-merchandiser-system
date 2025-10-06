@@ -32,7 +32,12 @@ import {
   ChevronRight,
   LogOut,
   PanelLeft,
-  PanelLeftClose
+  PanelLeftClose,
+  Warehouse,
+  ShoppingCart,
+  TrendingDown,
+  Box,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -222,6 +227,89 @@ const menuItems: MenuItem[] = [
         icon: FileText,
         page: 'reports',
         roles: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS']
+      }
+    ]
+  },
+
+  // Inventory Management
+  {
+    id: 'inventory',
+    label: 'Inventory',
+    icon: Warehouse,
+    roles: ['ADMIN', 'INVENTORY_MANAGER'],
+    children: [
+      {
+        id: 'inventory-dashboard',
+        label: 'Dashboard',
+        icon: Home,
+        page: 'inventory-dashboard',
+        roles: ['ADMIN', 'INVENTORY_MANAGER']
+      },
+      {
+        id: 'inventory-items',
+        label: 'Items',
+        icon: Box,
+        page: 'inventory-items',
+        roles: ['ADMIN', 'INVENTORY_MANAGER']
+      },
+      {
+        id: 'inventory-transactions',
+        label: 'Transactions',
+        icon: Activity,
+        page: 'inventory-transactions',
+        roles: ['ADMIN', 'INVENTORY_MANAGER']
+      },
+      {
+        id: 'inventory-categories',
+        label: 'Categories & Locations',
+        icon: Layers,
+        page: 'inventory-categories',
+        roles: ['ADMIN', 'INVENTORY_MANAGER']
+      },
+      {
+        id: 'inventory-reports',
+        label: 'Reports',
+        icon: BarChart3,
+        page: 'inventory-reports',
+        roles: ['ADMIN', 'INVENTORY_MANAGER']
+      }
+    ]
+  },
+
+  // Procurement Management
+  {
+    id: 'procurement',
+    label: 'Procurement',
+    icon: ShoppingCart,
+    roles: ['ADMIN', 'PROCUREMENT_MANAGER'],
+    children: [
+      {
+        id: 'procurement-dashboard',
+        label: 'Dashboard',
+        icon: Home,
+        page: 'procurement-dashboard',
+        roles: ['ADMIN', 'PROCUREMENT_MANAGER']
+      },
+      {
+        id: 'procurement-suppliers',
+        label: 'Suppliers',
+        icon: Users,
+        page: 'procurement-suppliers',
+        roles: ['ADMIN', 'PROCUREMENT_MANAGER']
+      },
+      {
+        id: 'procurement-purchase-orders',
+        label: 'Purchase Orders',
+        icon: ClipboardList,
+        page: 'procurement-purchase-orders',
+        roles: ['ADMIN', 'PROCUREMENT_MANAGER']
+      },
+      {
+        id: 'procurement-reports',
+        label: 'Reports',
+        icon: BarChart3,
+        page: 'procurement-reports',
+        roles: ['ADMIN', 'PROCUREMENT_MANAGER']
       }
     ]
   },

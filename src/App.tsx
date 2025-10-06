@@ -29,6 +29,15 @@ import JobLifecycleDemo from "./pages/JobLifecycleDemo";
 import PrepressDemo from "./pages/PrepressDemo";
 import InventoryModule from "./components/modules/InventoryModule";
 import ProductionDashboard from "./components/production/ProductionDashboard";
+import InventoryDashboard from "./components/inventory/InventoryDashboard";
+import InventoryItemsManager from "./components/inventory/InventoryItemsManager";
+import InventoryTransactionsManager from "./components/inventory/InventoryTransactionsManager";
+import InventoryReportsManager from "./components/inventory/InventoryReportsManager";
+import InventoryCategoriesManager from "./components/inventory/InventoryCategoriesManager";
+import ProcurementDashboard from "./components/procurement/ProcurementDashboard";
+import PurchaseOrderManager from "./components/procurement/PurchaseOrderManager";
+import SupplierManager from "./components/procurement/SupplierManager";
+import ProcurementReportsManager from "./components/procurement/ProcurementReportsManager";
 import { SocketProvider } from "./services/socketService.tsx";
 
 const queryClient = new QueryClient({
@@ -89,7 +98,18 @@ const App = () => (
             
             {/* Inventory Management Routes */}
             <Route path="/inventory" element={<InventoryModule />} />
-            <Route path="/inventory/dashboard" element={<InventoryModule />} />
+            <Route path="/inventory/dashboard" element={<InventoryDashboard />} />
+            <Route path="/inventory/items" element={<InventoryItemsManager />} />
+            <Route path="/inventory/transactions" element={<InventoryTransactionsManager />} />
+            <Route path="/inventory/reports" element={<InventoryReportsManager />} />
+            <Route path="/inventory/categories" element={<InventoryCategoriesManager />} />
+            
+            {/* Procurement Management Routes */}
+            <Route path="/procurement" element={<ProcurementDashboard />} />
+            <Route path="/procurement/dashboard" element={<ProcurementDashboard />} />
+            <Route path="/procurement/purchase-orders" element={<PurchaseOrderManager />} />
+            <Route path="/procurement/suppliers" element={<SupplierManager />} />
+            <Route path="/procurement/reports" element={<ProcurementReportsManager />} />
             
             {/* Production System Routes */}
             <Route path="/production" element={<ProductionDashboard />} />

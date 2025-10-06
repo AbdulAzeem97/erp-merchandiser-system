@@ -243,7 +243,7 @@ const ProductsModule: React.FC = () => {
             id="product_item_code"
             value={formData.product_item_code}
             onChange={(e) => setFormData({ ...formData, product_item_code: e.target.value })}
-            placeholder="e.g., BR-00-139-A"
+            placeholder="Enter product code (any format)"
             required
           />
         </div>

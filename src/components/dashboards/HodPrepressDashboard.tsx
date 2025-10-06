@@ -308,6 +308,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
   const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
   const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
+  const [markedItems, setMarkedItems] = useState<Set<number>>(new Set());
 
   // Load all jobs and designers
   const loadHODData = async () => {
@@ -460,6 +461,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   // Load ratio report for a specific job
   const loadRatioReport = async (jobId: string) => {
     try {
+      console.log('🔄 Loading ratio report for job:', jobId);
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
         headers: {
@@ -469,9 +471,13 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ API call successful');
+        console.log('🔄 API Response:', data);
         if (data.success) {
           setRatioReport(data.ratioReport);
           setIsRatioReportOpen(true);
+          setMarkedItems(new Set()); // Reset marked items when opening new report
+          console.log('📊 Ratio report loaded:', data.ratioReport);
         } else {
           toast.info('No ratio report found for this job');
         }
@@ -483,6 +489,61 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     } catch (error) {
       console.error('Error loading ratio report:', error);
       toast.error('Error loading ratio report');
+    }
+  };
+
+  // Toggle marked item in ratio report
+  const toggleMarkedItem = (index: number) => {
+    setMarkedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  // Safe render function to handle any data type
+  const safeRender = (value: any): string => {
+    if (value === null || value === undefined) return 'N/A';
+    if (typeof value === 'string' || typeof value === 'number') return String(value);
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  // Download ratio report as PDF
+  const downloadRatioReportPDF = async () => {
+    if (!ratioReport) return;
+    
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${ratioReport.job_card_id}/ratio-report-pdf`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ratio-report-${ratioReport.job_number || 'report'}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('Ratio report PDF downloaded successfully!');
+      } else {
+        toast.error('Failed to download PDF');
+      }
+    } catch (error) {
+      console.error('Error downloading PDF:', error);
+      toast.error('Error downloading PDF');
     }
   };
 
@@ -2039,11 +2100,19 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               {/* Color Details Table */}
               {ratioReport.color_details && ratioReport.color_details.length > 0 && (
                 <div className="bg-white border rounded-lg overflow-hidden">
-                  <h4 className="font-medium bg-gray-50 p-3 border-b">Color Details</h4>
+                  <div className="flex items-center justify-between bg-gray-50 p-3 border-b">
+                    <h4 className="font-medium">Color Details</h4>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                        {markedItems.size} / {ratioReport.color_details.length} Completed
+                      </span>
+                    </div>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-3 py-2 text-left">Status</th>
                           <th className="px-3 py-2 text-left">Color</th>
                           <th className="px-3 py-2 text-left">Size</th>
                           <th className="px-3 py-2 text-left">Required Qty</th>
@@ -2055,42 +2124,102 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {ratioReport.color_details.map((detail, index) => (
-                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="px-3 py-2">{detail.color || 'N/A'}</td>
-                            <td className="px-3 py-2">{detail.size || 'N/A'}</td>
-                            <td className="px-3 py-2">{typeof detail.requiredQty === 'number' ? detail.requiredQty : detail.requiredQty || 'N/A'}</td>
-                            <td className="px-3 py-2 font-medium text-blue-600">{detail.plate || 'N/A'}</td>
-                            <td className="px-3 py-2">{typeof detail.ups === 'number' ? detail.ups : detail.ups || 'N/A'}</td>
-                            <td className="px-3 py-2">{typeof detail.sheets === 'number' ? detail.sheets : detail.sheets || '-'}</td>
-                            <td className="px-3 py-2">{typeof detail.qtyProduced === 'number' ? detail.qtyProduced : detail.qtyProduced || 'N/A'}</td>
-                            <td className="px-3 py-2">
-                              <span className={detail.excessQty > 0 ? 'text-orange-600 font-medium' : 'text-green-600'}>
-                                {typeof detail.excessQty === 'number' ? detail.excessQty : detail.excessQty || 'N/A'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        {ratioReport.color_details.map((detail, index) => {
+                          const isMarked = markedItems.has(index);
+                          return (
+                            <tr 
+                              key={index} 
+                              className={`
+                                ${isMarked ? 'bg-green-100 border-l-4 border-green-500' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
+                                cursor-pointer hover:bg-blue-50 transition-colors duration-200
+                              `}
+                              onClick={() => toggleMarkedItem(index)}
+                            >
+                              <td className="px-3 py-2">
+                                {isMarked ? (
+                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                ) : (
+                                  <div className="h-4 w-4 border-2 border-gray-300 rounded-full" />
+                                )}
+                              </td>
+                              <td className="px-3 py-2">{safeRender(detail.color)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.size)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
+                              <td className="px-3 py-2 font-medium text-blue-600">{safeRender(detail.plate)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.ups)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.sheets)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.qtyProduced)}</td>
+                              <td className="px-3 py-2">
+                                <span className={detail.excessQty > 0 ? 'text-orange-600 font-medium' : 'text-green-600'}>
+                                  {safeRender(detail.excessQty)}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="bg-gray-50 p-3 text-xs text-gray-600 border-t">
+                    💡 Click on any row to mark it as completed. Marked items will be highlighted in green.
                   </div>
                 </div>
               )}
 
               {/* Plate Distribution */}
               {ratioReport.plate_distribution && Object.keys(ratioReport.plate_distribution).length > 0 && (
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-yellow-800 mb-3">Plate Distribution</h4>
+                <div className="bg-gradient-to-br from-yellow-50 to-orange-50 p-6 rounded-xl border border-yellow-200">
+                  <h4 className="font-semibold text-yellow-800 mb-4 flex items-center gap-2">
+                    <Layers className="h-5 w-5" />
+                    Plate Distribution
+                  </h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(ratioReport.plate_distribution).map(([plate, count]) => (
-                      <div key={plate} className="text-center">
-                        <div className="text-xl font-bold text-yellow-600">{count}</div>
-                        <div className="text-sm text-yellow-700">Plate {plate}</div>
-                      </div>
+                    {Object.entries(ratioReport.plate_distribution).map(([plate, count], index) => (
+                      <motion.div
+                        key={plate}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="bg-white/70 backdrop-blur-sm p-4 rounded-lg border border-yellow-200 hover:shadow-md transition-all duration-300 hover:scale-105"
+                      >
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-yellow-600 mb-1">{safeRender(count)}</div>
+                          <div className="text-sm text-yellow-700 font-medium">Plate {safeRender(plate)}</div>
+                          <div className="w-full bg-yellow-200 rounded-full h-2 mt-2">
+                            <motion.div
+                              className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(100, (Number(count) / 10) * 100)}%` }}
+                              transition={{ delay: index * 0.1 + 0.3, duration: 0.8 }}
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
                     ))}
                   </div>
                 </div>
               )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3 justify-center">
+                <Button
+                  onClick={downloadRatioReportPDF}
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PDF Report
+                </Button>
+                {ratioReport.excel_file_link && (
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(ratioReport.excel_file_link, '_blank')}
+                    className="border-green-300 text-green-700 hover:bg-green-50 px-6 py-2 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    View Excel Source
+                  </Button>
+                )}
+              </div>
 
               {/* Excel File Link */}
               {ratioReport.excel_file_link && (

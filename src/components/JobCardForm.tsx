@@ -594,7 +594,7 @@ export const JobCardForm: React.FC<JobCardFormProps> = ({ product: initialProduc
                       id="productCode"
                       value={jobCardData.productCode}
                       onChange={(e) => handleInputChange('productCode', e.target.value)}
-                      placeholder="Enter product code (e.g., BR-00-139-A)"
+                      placeholder="Enter product code (any format)"
                       className="font-mono"
                     />
                   </div>

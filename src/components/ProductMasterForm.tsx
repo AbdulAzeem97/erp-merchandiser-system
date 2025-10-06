@@ -130,7 +130,7 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
                     id="productItemCode"
                     value={formData.product_item_code}
                     onChange={(e) => handleInputChange('product_item_code', e.target.value)}
-                    placeholder="e.g., BR-00-139-A"
+                    placeholder="Enter product code (any format)"
                     className="font-mono"
                   />
                 </div>

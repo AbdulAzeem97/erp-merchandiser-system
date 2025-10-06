@@ -145,9 +145,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
     switch (field) {
       case 'product_item_code':
         if (!value || !value.toString().trim()) return 'Product Item Code is required';
-        if (!/^[A-Z]{2}-\d{2}-\d{3}-[A-Z]$/.test(value.toString())) {
-          return 'Invalid format. Use: XX-XX-XXX-X (e.g., BR-00-139-A)';
-        }
+        // Accept any string format - no format validation
         return null;
       case 'brand':
         if (!value) return 'Brand selection is required';
@@ -232,7 +230,7 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
     if (field === 'product_item_code' && value.toString().length === 2) {
       // Auto suggest format - defer to avoid state update during render
       setTimeout(() => {
-        toast.info('Format: XX-XX-XXX-X (e.g., BR-00-139-A)');
+        toast.info('Enter any product code format (e.g., BR-00-139-A, ABC123, or custom format)');
       }, 0);
     }
   };
@@ -626,8 +624,8 @@ export const AdvancedProductForm: React.FC<AdvancedProductFormProps> = ({
                             <Input
                               id="productItemCode"
                               value={formData.product_item_code}
-                              onChange={(e) => handleInputChange('product_item_code', e.target.value.toUpperCase())}
-                              placeholder="BR-00-139-A"
+                              onChange={(e) => handleInputChange('product_item_code', e.target.value)}
+                              placeholder="Enter product code (any format)"
                               className={`font-mono ${getFieldError('product_item_code') ? 'border-red-300 bg-red-50' : ''}`}
                             />
                             {getFieldError('product_item_code') && (

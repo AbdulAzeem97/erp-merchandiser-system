@@ -2,6 +2,33 @@
 
 A complete, production-ready ERP system for merchandising and production management with PostgreSQL database, proper authentication, and full CRUD operations.
 
+## 🐳 Quick Start with Docker (Recommended)
+
+**Get the complete system running in 2 minutes!**
+
+### Windows
+```powershell
+git clone https://github.com/AbdulAzeem97/erp-merchandiser-system.git
+cd erp-merchandiser-system
+.\start-docker.ps1
+```
+
+### Linux/macOS
+```bash
+git clone https://github.com/AbdulAzeem97/erp-merchandiser-system.git
+cd erp-merchandiser-system
+chmod +x start-docker.sh
+./start-docker.sh
+```
+
+Then open **http://localhost:8080** and login with:
+- Email: `admin@horizonsourcing.com`
+- Password: `admin123`
+
+📖 **See [QUICKSTART-DOCKER.md](QUICKSTART-DOCKER.md) for details**
+
+---
+
 ## 🚀 Features
 
 ### Core Functionality

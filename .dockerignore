@@ -1,0 +1,81 @@
+# Node modules
+node_modules
+npm-debug.log
+
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist
+build
+
+# Logs
+logs
+*.log
+
+# Test files
+__tests__
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Documentation
+*.md
+docs
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Temporary files
+temp
+tmp
+*.tmp
+
+# Backups
+backups
+*.backup
+*.sql
+
+# Uploads (will be mounted as volume)
+uploads
+
+# Docker files (not needed in image)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Test scripts
+test-*.js
+check-*.js
+fix-*.js
+create-*.js
+migrate-*.js
+seed-test-*.js
+add-*.js
+debug-*.js
+run-*.js
+start-*.ps1
+start-*.bat
+setup-*.js
+clear-*.js
+find-*.js
+
+# Development files
+*.html
+nul
+

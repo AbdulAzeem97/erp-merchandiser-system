@@ -2143,12 +2143,12 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg shadow-md">
                           <BarChart3 className="w-6 h-6 text-white" />
-                        </div>
+                      </div>
                         <div>
                           <h4 className="text-xl font-bold text-gray-800">Plate Distribution Analysis</h4>
                           <p className="text-sm text-gray-600">Total of {totalCount} items across {plateEntries.length} plates</p>
-                        </div>
-                      </div>
+                  </div>
+                </div>
                       <Badge className="bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-md px-4 py-2 text-sm">
                         {plateEntries.length} Plates
                       </Badge>

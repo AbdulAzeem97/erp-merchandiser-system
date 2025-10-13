@@ -48,15 +48,15 @@ router.get('/items', async (req, res) => {
       WHERE 1=1
     `;
     
-    const params = [];
-    let paramCount = 0;
-    
-    if (category_id) {
-      paramCount++;
+  const params = [];
+  let paramCount = 0;
+
+  if (category_id) {
+    paramCount++;
       query += ` AND i.category_id = $${paramCount}`;
-      params.push(category_id);
-    }
-    
+    params.push(category_id);
+  }
+
     if (location_id) {
       paramCount++;
       query += ` AND ib.location_id = $${paramCount}`;
@@ -92,7 +92,7 @@ router.get('/items/:id', async (req, res) => {
     const { id } = req.params;
     
     const result = await pool.query(`
-      SELECT 
+    SELECT 
         i.*,
         c.department,
         c.master_category,
@@ -188,8 +188,8 @@ router.put('/items/:id', async (req, res) => {
       WHERE item_id = $1
       RETURNING *
     `, [id, item_code, item_name, unit, category_id, reorder_level, reorder_qty, unit_cost, is_active]);
-    
-    if (result.rows.length === 0) {
+  
+  if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Item not found' });
     }
     
@@ -211,7 +211,7 @@ router.get('/transactions', async (req, res) => {
     const { item_id, location_id, txn_type, date_from, date_to, ref_no, job_card_no } = req.query;
     
     let query = `
-      SELECT 
+    SELECT 
         t.*,
         i.item_code,
         i.item_name,
@@ -358,7 +358,7 @@ router.post('/categories', async (req, res) => {
     const { department, master_category, control_category, description } = req.body;
     
     if (!department || !master_category || !control_category) {
-      return res.status(400).json({ 
+    return res.status(400).json({ 
         success: false, 
         error: 'Missing required fields: department, master_category, control_category' 
       });
@@ -417,9 +417,9 @@ router.get('/reports/item-wise', async (req, res) => {
       WHERE 1=1
     `;
     
-    const params = [];
-    let paramCount = 0;
-    
+  const params = [];
+  let paramCount = 0;
+
     if (department) {
       paramCount++;
       query += ` AND department = $${paramCount}`;
@@ -427,7 +427,7 @@ router.get('/reports/item-wise', async (req, res) => {
     }
     
     if (master_category) {
-      paramCount++;
+    paramCount++;
       query += ` AND master_category = $${paramCount}`;
       params.push(master_category);
     }
@@ -485,7 +485,7 @@ router.get('/reports/reorder-alerts', async (req, res) => {
     const { stock_status } = req.query;
     
     let query = `SELECT * FROM v_reorder_alerts WHERE 1=1`;
-    const params = [];
+  const params = [];
     
     if (stock_status) {
       query += ` AND stock_status = $1`;
@@ -510,7 +510,7 @@ router.get('/reports/item-ledger/:item_id', async (req, res) => {
     const { date_from, date_to } = req.query;
     
     let query = `
-      SELECT 
+    SELECT 
         t.txn_date,
         t.txn_type,
         t.ref_no,
@@ -533,13 +533,13 @@ router.get('/reports/item-ledger/:item_id', async (req, res) => {
     let paramCount = 1;
     
     if (date_from) {
-      paramCount++;
+    paramCount++;
       query += ` AND t.txn_date >= $${paramCount}`;
       params.push(date_from);
-    }
-    
+  }
+
     if (date_to) {
-      paramCount++;
+    paramCount++;
       query += ` AND t.txn_date <= $${paramCount}`;
       params.push(date_to);
     }
@@ -592,7 +592,7 @@ router.get('/dashboard/stats', async (req, res) => {
     
     // Top categories by value
     const topCategoriesResult = await pool.query(`
-      SELECT 
+    SELECT 
         department,
         master_category,
         control_category,

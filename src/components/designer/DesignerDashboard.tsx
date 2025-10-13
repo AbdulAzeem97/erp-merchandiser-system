@@ -1372,6 +1372,31 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   <Progress value={selectedJob.progress} className="h-2" />
                           </div>
                         )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  onClick={() => {
+                    setIsStatusDialogOpen(true);
+                  }}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Update Status
+                </Button>
+                {selectedJob.status === 'IN_PROGRESS' && (
+                  <Button
+                    onClick={() => {
+                      setIsSubmitToQADialogOpen(true);
+                    }}
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Submit to QA
+                  </Button>
+                )}
+              </div>
                       </div>
           )}
         </DialogContent>

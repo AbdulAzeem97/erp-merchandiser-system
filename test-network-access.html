@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ERP Network Access Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s;
+            width: 100%;
+            margin: 10px 0;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .success {
+            background: rgba(76, 175, 80, 0.3);
+            border-left: 4px solid #4CAF50;
+        }
+        .error {
+            background: rgba(244, 67, 54, 0.3);
+            border-left: 4px solid #f44336;
+        }
+        .info {
+            background: rgba(33, 150, 243, 0.3);
+            border-left: 4px solid #2196F3;
+        }
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .url-box {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+        .url-box a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .url-box a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌐 ERP Network Access Test</h1>
+        <p class="subtitle">Test your LAN network connection to the ERP system</p>
+        
+        <div class="url-box">
+            <a href="http://192.168.2.124:8080" target="_blank">
+                🚀 Open ERP System: http://192.168.2.124:8080
+            </a>
+        </div>
+
+        <div class="test-section">
+            <h3>Backend Server Test</h3>
+            <button onclick="testBackend()">Test Backend Connection</button>
+            <div id="backendStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Frontend Server Test</h3>
+            <button onclick="testFrontend()">Test Frontend Connection</button>
+            <div id="frontendStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Login Test</h3>
+            <button onclick="testLogin()">Test Login API</button>
+            <div id="loginStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>Network Information</h3>
+            <div class="info" style="margin-top: 10px;">
+                <strong>Server IP:</strong> 192.168.2.124<br>
+                <strong>Frontend Port:</strong> 8080<br>
+                <strong>Backend Port:</strong> 5001<br>
+                <strong>Your IP:</strong> <span id="clientIP">Detecting...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://192.168.2.124:5001';
+        const FRONTEND_URL = 'http://192.168.2.124:8080';
+
+        // Detect client IP
+        fetch('https://api.ipify.org?format=json')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('clientIP').textContent = data.ip + ' (External)';
+            })
+            .catch(() => {
+                document.getElementById('clientIP').textContent = 'Unable to detect';
+            });
+
+        async function testBackend() {
+            const statusDiv = document.getElementById('backendStatus');
+            statusDiv.innerHTML = '<div class="info">Testing backend connection...</div>';
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerHTML = `
+                        <div class="success">
+                            ✅ Backend is accessible!<br>
+                            Status: ${data.status}<br>
+                            Environment: ${data.environment}<br>
+                            Timestamp: ${data.timestamp}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    statusDiv.innerHTML = `<div class="error">❌ Backend returned status: ${response.status}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Cannot connect to backend!<br>
+                        Error: ${error.message}<br><br>
+                        <strong>Possible issues:</strong><br>
+                        • Backend server is not running<br>
+                        • Windows Firewall is blocking port 5001<br>
+                        • Not on the same network (192.168.2.x)<br>
+                        • CORS issues
+                    </div>
+                `;
+            }
+        }
+
+        async function testFrontend() {
+            const statusDiv = document.getElementById('frontendStatus');
+            statusDiv.innerHTML = '<div class="info">Testing frontend connection...</div>';
+            
+            try {
+                const response = await fetch(FRONTEND_URL, {
+                    method: 'GET',
+                    mode: 'no-cors'
+                });
+                
+                statusDiv.innerHTML = `
+                    <div class="success">
+                        ✅ Frontend server is accessible!<br>
+                        You can access the application at:<br>
+                        <a href="${FRONTEND_URL}" target="_blank" style="color: #4CAF50;">${FRONTEND_URL}</a>
+                    </div>
+                `;
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Cannot connect to frontend!<br>
+                        Error: ${error.message}<br><br>
+                        <strong>Possible issues:</strong><br>
+                        • Frontend server is not running<br>
+                        • Windows Firewall is blocking port 8080<br>
+                        • Not on the same network (192.168.2.x)
+                    </div>
+                `;
+            }
+        }
+
+        async function testLogin() {
+            const statusDiv = document.getElementById('loginStatus');
+            statusDiv.innerHTML = '<div class="info">Testing login API...</div>';
+            
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: 'admin@erp.local',
+                        password: 'password123'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerHTML = `
+                        <div class="success">
+                            ✅ Login API is working!<br>
+                            User: ${data.user?.name || data.user?.email || 'Authenticated'}<br>
+                            Role: ${data.user?.role || 'N/A'}<br>
+                            Token received: ${data.token ? 'Yes' : 'No'}
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                } else {
+                    const error = await response.json();
+                    statusDiv.innerHTML = `
+                        <div class="error">
+                            ❌ Login failed!<br>
+                            Status: ${response.status}<br>
+                            Error: ${error.error || error.message}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Cannot connect to login API!<br>
+                        Error: ${error.message}<br><br>
+                        <strong>Possible issues:</strong><br>
+                        • Backend server is not running<br>
+                        • API endpoint not accessible<br>
+                        • CORS configuration issue
+                    </div>
+                `;
+            }
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testBackend();
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
+

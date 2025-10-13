@@ -1,0 +1,79 @@
+================================================================================
+                    DATABASE MIGRATION - QUICK START
+================================================================================
+
+STEP 1: Run the migration script
+---------------------------------
+    .\migrate-database.bat
+
+    When prompted for PostgreSQL password, try:
+    - postgres
+    - (just press Enter if password is blank)
+    - admin
+    - password
+    - your custom password
+
+STEP 2: Wait for completion
+----------------------------
+    The script will:
+    1. Test database connection
+    2. Create database
+    3. Apply Prisma schema (creates all tables)
+    4. Apply SQL migrations (adds extra features)
+    5. Verify everything
+
+STEP 3: Seed the database (optional but recommended)
+-----------------------------------------------------
+    node prisma\comprehensive-seed.cjs
+
+    This adds sample data:
+    - Admin user
+    - Sample companies
+    - Sample products
+    - Process sequences
+
+STEP 4: Start the system
+-------------------------
+    .\start-network-auto.ps1
+
+STEP 5: Access the system
+--------------------------
+    URL: http://192.168.2.124:8080
+    Email: admin@erp.local
+    Password: password123
+
+================================================================================
+                          TROUBLESHOOTING
+================================================================================
+
+Problem: "password authentication failed"
+------------------------------------------
+    Solution: You entered wrong password
+    
+    Find your PostgreSQL password:
+    1. Check your PostgreSQL installation notes
+    2. Try common passwords: postgres, admin, password
+    3. Or reset it (see DATABASE-MIGRATION-GUIDE.md)
+
+Problem: "psql command not found"
+----------------------------------
+    Solution: Add PostgreSQL to PATH
+    
+    1. Find: C:\Program Files\PostgreSQL\15\bin
+    2. Add to System PATH
+    3. Restart terminal
+
+Problem: "Cannot connect to PostgreSQL"
+----------------------------------------
+    Solution: Start PostgreSQL service
+    
+    net start postgresql-x64-15
+
+================================================================================
+
+For detailed instructions, see: DATABASE-MIGRATION-GUIDE.md
+
+Ready? Run: .\migrate-database.bat
+
+================================================================================
+

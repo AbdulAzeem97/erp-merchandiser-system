@@ -624,18 +624,18 @@ router.get('/:id/process-selections', asyncHandler(async (req, res) => {
 
   const query = `
     SELECT
-      pss."stepId" as step_id,
+      COALESCE(pss.step_id, pss."stepId", pss.process_step_id, pss."processStepId") as step_id,
       ps.name as step_name,
-      ps."isQualityCheck" as is_compulsory,
-      ps."stepNumber" as step_order,
-      pss.is_selected,
+      ps.is_compulsory,
+      ps.sequence_order as step_order,
+      COALESCE(pss.is_selected, pss."isSelected", false) as is_selected,
       prs.name as product_type,
       prs.description as sequence_description
     FROM product_step_selections pss
-    JOIN process_steps ps ON pss."stepId" = ps.id
-    JOIN process_sequences prs ON ps."sequenceId" = prs.id
-    WHERE pss."productId" = $1
-    ORDER BY ps."stepNumber"
+    JOIN process_steps ps ON ps.id = COALESCE(pss.step_id, pss."stepId", pss.process_step_id, pss."processStepId")
+    JOIN process_sequences prs ON ps.sequence_id = prs.id
+    WHERE pss.product_id = $1 OR pss."productId" = $1
+    ORDER BY ps.sequence_order
   `;
 
   const result = await dbAdapter.query(query, [productId]);
@@ -680,12 +680,12 @@ router.get('/:id/complete-process-info', asyncHandler(async (req, res) => {
     SELECT 
       ps.id,
       ps.name,
-      ps."isQualityCheck" as is_compulsory,
-      ps."stepNumber" as step_order
+      ps.is_compulsory,
+      ps.sequence_order as step_order
     FROM process_sequences prs
-    JOIN process_steps ps ON prs.id = ps."sequenceId"
+    JOIN process_steps ps ON prs.id = ps.sequence_id
     WHERE (prs.name = $1 OR prs.name LIKE $1 || '%') AND prs."isActive" = true AND ps."isActive" = true
-    ORDER BY ps."stepNumber"
+    ORDER BY ps.sequence_order
   `;
 
   const stepsResult = await dbAdapter.query(stepsQuery, [productType]);

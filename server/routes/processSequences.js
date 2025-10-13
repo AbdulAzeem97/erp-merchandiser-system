@@ -31,12 +31,12 @@ router.get('/by-product-type', [
         ps.description,
         pst.id as step_id,
         pst.name as step_name,
-        pst."isQualityCheck" as is_compulsory,
+        pst.is_compulsory as is_compulsory,
         pst."stepNumber" as step_order,
-        COALESCE(pps.is_selected, pst."isQualityCheck") as is_selected
+        COALESCE(pps.is_selected, pst.is_compulsory) as is_selected
       FROM process_sequences ps
-      JOIN process_steps pst ON ps.id = pst."sequenceId"
-      LEFT JOIN product_process_selections pps ON pst.id::text = pps."processStepId"::text AND pps."productId" = $2
+      JOIN process_steps pst ON ps.id = pst.sequence_id
+      LEFT JOIN product_process_selections pps ON pst.id::text = pps.process_step_id::text AND pps.product_id = $2
       WHERE (ps.name = $1 OR ps.name LIKE $1 || '%') AND ps."isActive" = true AND pst."isActive" = true
       ORDER BY pst."stepNumber" ASC
     `;
@@ -50,10 +50,10 @@ router.get('/by-product-type', [
         ps.description,
         pst.id as step_id,
         pst.name as step_name,
-        pst."isQualityCheck" as is_compulsory,
+        pst.is_compulsory as is_compulsory,
         pst."stepNumber" as step_order
       FROM process_sequences ps
-      LEFT JOIN process_steps pst ON ps.id = pst."sequenceId"
+      LEFT JOIN process_steps pst ON ps.id = pst.sequence_id
       WHERE (ps.name = $1 OR ps.name LIKE $1 || '%') AND ps."isActive" = true
       ORDER BY pst."stepNumber" ASC
     `;
@@ -116,12 +116,12 @@ router.get('/for-product/:productId', asyncHandler(async (req, res) => {
       ps.description,
       pst.id as step_id,
       pst.name as step_name,
-      pst."isQualityCheck" as is_compulsory,
+      pst.is_compulsory as is_compulsory,
       pst."stepNumber" as step_order,
-      COALESCE(pps.is_selected, pst."isQualityCheck") as is_selected
+      COALESCE(pps.is_selected, pst.is_compulsory) as is_selected
     FROM process_sequences ps
-    JOIN process_steps pst ON ps.id = pst."sequenceId"
-    LEFT JOIN product_process_selections pps ON pst.id = pps."processStepId" AND pps."productId" = $1
+    JOIN process_steps pst ON ps.id = pst.sequence_id
+    LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $1
     WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
     ORDER BY pst."stepNumber" ASC
   `;
@@ -174,12 +174,12 @@ router.get('/simple-for-product/:productId', asyncHandler(async (req, res) => {
       ps.description,
       pst.id as step_id,
       pst.name as step_name,
-      pst."isQualityCheck" as is_compulsory,
+      pst.is_compulsory as is_compulsory,
       pst."stepNumber" as step_order,
       pps.is_selected
     FROM process_sequences ps
-    JOIN process_steps pst ON ps.id = pst."sequenceId"
-    LEFT JOIN product_process_selections pps ON pst.id = pps."processStepId" AND pps."productId" = $1
+    JOIN process_steps pst ON ps.id = pst.sequence_id
+    LEFT JOIN product_process_selections pps ON pst.id = pps.process_step_id AND pps.product_id = $1
     WHERE ps.name = $2
     ORDER BY pst."stepNumber" ASC
   `;
@@ -221,7 +221,7 @@ router.get('/', asyncHandler(async (req, res) => {
       ps."createdAt" as created_at,
       COUNT(pst.id) as step_count
     FROM process_sequences ps
-    LEFT JOIN process_steps pst ON ps.id = pst."sequenceId"
+    LEFT JOIN process_steps pst ON ps.id = pst.sequence_id
     WHERE ps."isActive" = true
     GROUP BY ps.id, ps.name, ps.description, ps."isActive", ps."createdAt"
     ORDER BY ps.name ASC
@@ -265,12 +265,12 @@ router.get('/for-job/:jobId', asyncHandler(async (req, res) => {
       ps.description,
       pst.id as step_id,
       pst.name as step_name,
-      pst."isQualityCheck" as is_compulsory,
+      pst.is_compulsory as is_compulsory,
       pst."stepNumber" as step_order,
-      COALESCE(jps.is_selected, pst."isQualityCheck") as is_selected
+      COALESCE(jps.is_selected, pst.is_compulsory) as is_selected
     FROM process_sequences ps
-    JOIN process_steps pst ON ps.id = pst."sequenceId"
-    LEFT JOIN job_process_selections jps ON pst.id = jps."processStepId" AND jps."jobId" = $1
+    JOIN process_steps pst ON ps.id = pst.sequence_id
+    LEFT JOIN job_process_selections jps ON pst.id = jps.process_step_id AND jps.job_id = $1
     WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
     ORDER BY pst."stepNumber" ASC
   `;
@@ -340,12 +340,12 @@ router.post('/for-job/:jobId', asyncHandler(async (req, res) => {
         ps.description,
         pst.id as step_id,
         pst.name as step_name,
-        pst."isQualityCheck" as is_compulsory,
+        pst.is_compulsory as is_compulsory,
         pst."stepNumber" as step_order,
-        COALESCE(jps.is_selected, pst."isQualityCheck") as is_selected
+        COALESCE(jps.is_selected, pst.is_compulsory) as is_selected
       FROM process_sequences ps
-      JOIN process_steps pst ON ps.id = pst."sequenceId"
-      LEFT JOIN job_process_selections jps ON pst.id = jps."processStepId" AND jps."jobId" = $1
+      JOIN process_steps pst ON ps.id = pst.sequence_id
+      LEFT JOIN job_process_selections jps ON pst.id = jps.process_step_id AND jps.job_id = $1
       WHERE ps."isActive" = true AND pst."isActive" = true
       ORDER BY pst."stepNumber" ASC
     `, [jobId]);

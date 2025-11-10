@@ -55,6 +55,155 @@ const DESIGNER_OPTIONS = [
   { id: '10', name: 'Sarah Johnson', email: 'sarah.johnson@horizonsourcing.com' }
 ];
 
+// Customer/Company names list
+const CUSTOMER_NAMES = [
+  'ABDUL WAHID OMER & COMPANY',
+  'AL ABBAS GARMENTS ( PVT ) LTD',
+  'AL KARAM TEXTILE MILLS ( PVT)',
+  'CROWN TEXTILE',
+  'GRACE APPAREL ( PVT ) LTD.',
+  'ASAS APPAREL',
+  'RAJBY INDUSTRIES',
+  'YUNUS TEXTILE MILLS LIMITED',
+  'CRESOX (PVT.) LIMITED',
+  'NAJMA APPARELS',
+  'SIDDIQSONS LIMITED ( DENIM )',
+  'FRIENDS APPAREL',
+  'SOORTY ENTERPRISES (PVT) LTD',
+  'THE DYERS',
+  'PELIKAN KNITWEAR',
+  'MEZAN EXPORTS',
+  'KLASH (PVT) LTD',
+  'EASTERN GARMENTS (PVT) LTD',
+  'ROYAL GARMENTS INDUSTRIES (PVT) L',
+  'MIMA KNIT ( PVT ) LTD.',
+  'NAZ TEXTILE PVT. LTD',
+  'INTERLOOP LIMITED',
+  'BUKSH INDUSTRIES (PVT) LTD',
+  'POLANI TEXTILE',
+  'KINGS APPARELS INDUSTRIES (PVT',
+  'BK TEXTILE',
+  'ASCO INTERNATIONAL ( PVT ) LTD',
+  'FATIMA APPAREL',
+  'DENIM CLOTHING COMPANY',
+  'TAJIR IMPEX',
+  'ARTISTIC APPARELS (PVT) LTD',
+  'COMFORT APPAREL',
+  'AMNA APPAREL',
+  'MARTIN DOW LIMITED',
+  'COTTON WEB LIMITED',
+  'COTTON SMITH',
+  'TAJ INDUSTRIES',
+  'NISHAT MILLS LIMITED',
+  'ANIS APPAREL',
+  'KAM INTERNATIONAL',
+  'NIZAMIA APPARELS',
+  'GLOBAL EXPORT',
+  'AFRAZ KNIT & STITCHED',
+  'AL AMIN EXPORTS',
+  'HUMERA INDUSTRIES',
+  'SHAHPUR APPAREL',
+  'GUL AHMED TEXTILE MILLS LTD',
+  'Z.M.ENTERPRISES',
+  'DANIYAL ENTERPRISES',
+  'FAZAL INDUSTRIES',
+  'COMBINED APPAREL',
+  'ZBH CLOTHING',
+  'AZMAT GARMENT',
+  'CASUAL SPORTWEAR',
+  'AHMED TEXTILE & GENERAL MILLS',
+  'NFK EXPORTS (PVT) LTD',
+  'M.A. INDUSTRIES',
+  'FASHOINWEAR (PVT) LTD',
+  'KNIT & STITCH',
+  'MYM KNITWEAR',
+  'AL MUSTAFA FASHION APPAREL',
+  'SHAFI (PVT) LIMITED',
+  'TEXTILE CONNECTIONS',
+  'KEYSTONE ENTERPRISES',
+  'ZAHID ABID & CO',
+  'SHAHEEN KNITWEAR',
+  'ARTISTIC DENIM MILLS LTD.',
+  'AMNA ASHRAF APPARELS',
+  'AL-MUNAF CORPORATION',
+  'MASOOD TEXTILES MILLS LTD',
+  'RIZWAN INTERNATIONAL',
+  'SHAN FOODS (PVT) LTD.',
+  'SADAQAT LIMITED',
+  'BIZFLO INTERNATIONAL',
+  'THREE STARS HOSIERY MILLS (PVT) MULTAN',
+  'METROTEX INDUSTRIES',
+  'GnB SOX MILL',
+  'INTERNATIONAL TEXTILE LTD',
+  'ELITE',
+  'HI-KNIT (PVT) LTD',
+  'MEHRAN FOOD AND SPICES',
+  'SASSI INTERNATIONAL',
+  'ARTISTIC FABRIC & GARMENT INDUSTRIES ( PVT ) LTD.',
+  'ORIENT TEXTILE MILLS  LTD',
+  'TIME KNITS',
+  'SHEIKH OF SIALKOT PVT LTD',
+  'LUCKY TEXTILE MILLS LIMITED',
+  'NOVA LEATHERS',
+  'WEARME APPAREL',
+  'TOWELLERS LIMITED',
+  'HASSAN INDUSTRIES',
+  'DIGITAL APPAREL (PVT) LTD',
+  'SHAFI APPARELS',
+  'APPAREL MERCHANDIZING',
+  'HOME CARE TEXTILE',
+  'NISHAT CHUNIAN LTD',
+  'NOOR APPAREL',
+  'CLASSIC GARMENTS',
+  'AZIZ SONS',
+  'FIRHAJ FOOTWEAR (PVT) LTD',
+  'SAAD TEXTILE MILLS (PVT) LTD',
+  'KASHIF APPAREL',
+  'SHAHID TRADERS',
+  'RUSTAM TOWEL ( PRIVATE ) LIMITED',
+  'PRIME APPAREL',
+  'FAISAL HOSIERY WORKS',
+  'AZAN INTERNATIONAL',
+  'TAIS (PVT) LIMITED',
+  'M.I INDUSTRIES',
+  'AMOUR TEXTILE (PVT) LTD',
+  'LUCKY KNITS (PVT) LIMITED',
+  'CIS GARMENTS (PVT) LTD',
+  'SALMAN INDUSTRIES',
+  'KAY & EMMS (PVT) LTD.',
+  'ALMAJEED ENTERPRISES',
+  'FIVE STAR APPARELS',
+  'MUGHEES TEXTILES EXPORTER',
+  'Apparel Manufactures (Pvt) Ltd.',
+  'ASHRAF ENTERPRISE',
+  'BANI APPAREL',
+  'IBRAHIM EXPORTS',
+  'PARAAGON TEXTILE',
+  'W BROTHERS',
+  'AL SHIRKAT INDUSTRIES ( PVT ) LTD.',
+  'AL AZMAT PVT LTD',
+  'ZUBISMA APPAREAL',
+  'JILANI EXPORTS',
+  'JAS INDUSTRIES PVT LTD',
+  'ARTISTIC MILLINERS PVT (LTD)',
+  'TM EXPORT',
+  'S.H.Z TETXTILE',
+  'AL-AMEERA APPAREL PVT LTD',
+  'A M MERCHANDISING (PVT) LTD.',
+  'DENIM INTERNATIONAL',
+  'LIBERTY MILLS LIMITED',
+  'RAJWANI APPAREL PVT LTD',
+  'BILLS INC',
+  'JB INDUSTRIES',
+  'REBORN TEXTILE',
+  'JNS TEXTILE',
+  'SANA TEXTILE',
+  'MIANOOR TEXTILE INDUSTRIES PVT LTD',
+  'CRESCENT BAHUMAN LIMITED',
+  'GALAXY KNITWEAR COMPANY',
+  'AXIS TEXTILE INDUSTRIES'
+];
+
 interface AdvancedJobFormProps {
   product?: ProductMaster;
   onBack: () => void;
@@ -113,7 +262,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             material_name: completeProduct.material_name || 'N/A',
             category_name: completeProduct.category_name || 'N/A',
             color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
-            remarks: completeProduct.remarks || 'Print on Uncoated Side'
+            remarks: completeProduct.remarks || ''
           };
           
           setProduct(mappedProduct);
@@ -271,7 +420,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             material_name: completeProduct.material_name || 'N/A',
             category_name: completeProduct.category_name || 'N/A',
             color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
-            remarks: completeProduct.remarks || 'Print on Uncoated Side'
+            remarks: completeProduct.remarks || ''
           };
           
           console.log('Mapped selected product for display:', mappedProduct);
@@ -361,7 +510,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
               material_name: completeProduct.material_name || 'N/A',
               category_name: completeProduct.category_name || 'N/A',
               color_specifications: completeProduct.color_specifications || completeProduct.color || 'As per Approved Sample/Artwork',
-              remarks: completeProduct.remarks || 'Print on Uncoated Side'
+              remarks: completeProduct.remarks || ''
             };
             
             console.log('Mapped product for display:', mappedProduct);
@@ -406,11 +555,68 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
   };
 
 
+  // Calculate working days (excluding Sundays) between today and delivery date
+  const calculateWorkingDays = (deliveryDate: string): number => {
+    if (!deliveryDate) return 0;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const delivery = new Date(deliveryDate);
+    delivery.setHours(0, 0, 0, 0);
+    
+    if (delivery < today) return 0;
+    
+    let workingDays = 0;
+    const current = new Date(today);
+    
+    // Count from tomorrow to delivery date (inclusive)
+    // This excludes today from the count
+    current.setDate(current.getDate() + 1);
+    
+    while (current <= delivery) {
+      // Sunday is day 0 in JavaScript Date
+      if (current.getDay() !== 0) {
+        workingDays++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return workingDays;
+  };
+
+  // Calculate priority based on working days
+  const calculatePriorityFromWorkingDays = (workingDays: number): 'Low' | 'Medium' | 'High' | 'Urgent' => {
+    if (workingDays <= 2) return 'Urgent';
+    if (workingDays <= 5) return 'High';
+    if (workingDays <= 8) return 'Medium';
+    return 'Low';
+  };
+
   const handleInputChange = (field: keyof JobCardData, value: any) => {
-    setJobCardData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    // Ensure assignedDesigner is stored as string for consistent comparison
+    if (field === 'assignedDesigner') {
+      value = String(value).trim();
+      console.log('🎨 Designer selected:', value);
+      console.log('🎨 Available designers:', designers.map(d => ({ id: d.id, stringId: String(d.id), fullName: d.fullName })));
+    }
+    
+    setJobCardData(prev => {
+      const updated = {
+        ...prev,
+        [field]: value
+      };
+      
+      // Auto-calculate priority when delivery date changes
+      if (field === 'deliveryDate' && value) {
+        const workingDays = calculateWorkingDays(value);
+        const autoPriority = calculatePriorityFromWorkingDays(workingDays);
+        updated.priority = autoPriority;
+        console.log(`📅 Delivery date: ${value}, Working days: ${workingDays}, Auto-priority: ${autoPriority}`);
+      }
+      
+      return updated;
+    });
   };
 
   const handleCustomerInfoChange = (field: keyof JobCardData['customerInfo'], value: string) => {
@@ -476,13 +682,104 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         };
       }
       
+      // Fetch assigned designer information
+      let assignedDesignerInfo: { name: string; email: string; phone?: string } | undefined = undefined;
+      
+      // Ensure designers are loaded, if not, try to fetch them
+      let designersToUse = designers;
+      if (designersToUse.length === 0 && jobCardData.assignedDesigner) {
+        console.log('⚠️ Designers array is empty, fetching designers...');
+        try {
+          const response = await usersAPI.getDesigners();
+          if (response.success && response.designers) {
+            designersToUse = response.designers;
+            console.log('✅ Designers fetched successfully:', designersToUse.length);
+          }
+        } catch (error) {
+          console.error('Error fetching designers:', error);
+        }
+      }
+      
+      if (jobCardData.assignedDesigner && jobCardData.assignedDesigner.trim() && jobCardData.assignedDesigner !== 'loading' && jobCardData.assignedDesigner !== 'no-designers') {
+        console.log('🔍 Looking for designer with ID:', jobCardData.assignedDesigner);
+        console.log('📋 Available designers:', designersToUse.map(d => ({ id: d.id, fullName: d.fullName })));
+        
+        // Try multiple comparison methods to handle different ID formats
+        // Normalize both sides for comparison
+        const selectedDesignerId = String(jobCardData.assignedDesigner).trim();
+        const selectedDesigner = designersToUse.find(d => {
+          const designerId = String(d.id).trim();
+          return designerId === selectedDesignerId ||
+                 designerId === String(parseInt(selectedDesignerId)) ||
+                 parseInt(designerId) === parseInt(selectedDesignerId);
+        });
+        
+        if (selectedDesigner) {
+          console.log('✅ Found designer:', selectedDesigner);
+          assignedDesignerInfo = {
+            name: selectedDesigner.fullName || `${selectedDesigner.firstName || ''} ${selectedDesigner.lastName || ''}`.trim() || 'Unknown Designer',
+            email: selectedDesigner.email || 'designer@example.com',
+            phone: selectedDesigner.phone || ''
+          };
+          console.log('📄 Designer info for PDF:', assignedDesignerInfo);
+        } else {
+          console.warn('⚠️ Designer not found in local array! Selected ID:', jobCardData.assignedDesigner);
+          console.warn('⚠️ Available designer IDs:', designersToUse.map(d => ({ id: d.id, type: typeof d.id, string: d.id.toString() })));
+          console.warn('⚠️ Selected designer type:', typeof jobCardData.assignedDesigner);
+          
+          // Fallback: Try to fetch designer directly from API
+          try {
+            console.log('🔄 Trying to fetch designer directly from API...');
+            const designerResponse = await usersAPI.getById(jobCardData.assignedDesigner);
+            if (designerResponse && designerResponse.user) {
+              const designer = designerResponse.user;
+              console.log('✅ Fetched designer from API:', designer);
+              assignedDesignerInfo = {
+                name: `${designer.firstName || ''} ${designer.lastName || ''}`.trim() || designer.username || 'Unknown Designer',
+                email: designer.email || 'designer@example.com',
+                phone: designer.phone || ''
+              };
+              console.log('📄 Designer info for PDF (from API):', assignedDesignerInfo);
+            }
+          } catch (apiError) {
+            console.error('❌ Failed to fetch designer from API:', apiError);
+          }
+        }
+      } else {
+        console.log('ℹ️ No designer selected or invalid selection');
+      }
+      
+      // Debug: Log what we're passing to PDF
+      console.log('📄 Generating PDF with jobCardData:', {
+        assignedDesigner: assignedDesignerInfo,
+        hasDesigner: !!assignedDesignerInfo,
+        designerType: typeof assignedDesignerInfo
+      });
+      
+      // Normalize ratio data structure for PDF (flatten rawData if needed)
+      let normalizedRatioData = jobCardData.ratioData;
+      if (normalizedRatioData && normalizedRatioData.rawData && !normalizedRatioData.colorDetails) {
+        // Flatten structure: move rawData.colorDetails to top level if needed
+        normalizedRatioData = {
+          ...normalizedRatioData,
+          colorDetails: normalizedRatioData.rawData.colorDetails || [],
+          summary: normalizedRatioData.summary || normalizedRatioData.rawData.summary || {}
+        };
+      }
+      
       await generateJobCardPDF({
         product: completeProduct,
         jobCardData: {
           ...jobCardData,
           customerName: jobCardData.customerInfo.name,
           salesman: jobCardData.merchandiser,
-          jobCode: jobCardId
+          jobCode: jobCardId,
+          assignedDesigner: assignedDesignerInfo,
+          priority: jobCardData.priority, // Include priority level
+          ratioData: normalizedRatioData, // Include normalized ratio Excel data
+          itemSpecificationsData: jobCardData.itemSpecificationsData, // Include item specifications data
+          specialInstructions: jobCardData.specialInstructions, // Include remarks from job form
+          customerInfo: jobCardData.customerInfo // Include full customer info for tabular display
         },
         jobCardId
       });
@@ -564,7 +861,6 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
           const itemSpecsData = {
             excel_file_link: jobCardData.itemSpecificationsExcelLink,
             excel_file_name: jobCardData.itemSpecificationsData.fileName || 'Item_Specifications.xlsx',
-            job_card_id: savedJob.job.id,
             po_number: jobCardData.poNumber,
             job_number: savedJob.job.job_card_id,
             brand_name: product.brand || '',
@@ -575,7 +871,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             size_variants: jobCardData.itemSpecificationsData.summary?.sizeVariants || 0,
             color_variants: jobCardData.itemSpecificationsData.summary?.colorVariants || 0,
             specifications: jobCardData.itemSpecificationsData.specifications || {},
-            raw_excel_data: jobCardData.itemSpecificationsData || {}
+            raw_excel_data: jobCardData.itemSpecificationsData || {},
+            items: jobCardData.itemSpecificationsData.items || [] // Include individual items for database storage
           };
 
           const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${savedJob.job.id}/item-specifications`, {
@@ -705,13 +1002,127 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         };
       }
       
+      // Fetch assigned designer information for PDF
+      let assignedDesignerInfo: { name: string; email: string; phone?: string } | undefined = undefined;
+      
+      // Ensure designers are loaded, if not, try to fetch them
+      let designersToUse = designers;
+      if (designersToUse.length === 0 && jobCardData.assignedDesigner) {
+        console.log('⚠️ Designers array is empty in handleSubmit, fetching designers...');
+        try {
+          const response = await usersAPI.getDesigners();
+          if (response.success && response.designers) {
+            designersToUse = response.designers;
+            console.log('✅ Designers fetched successfully in handleSubmit:', designersToUse.length);
+          }
+        } catch (error) {
+          console.error('Error fetching designers in handleSubmit:', error);
+        }
+      }
+      
+      if (jobCardData.assignedDesigner && jobCardData.assignedDesigner.trim() && jobCardData.assignedDesigner !== 'loading' && jobCardData.assignedDesigner !== 'no-designers') {
+        console.log('🔍 [handleSubmit] Looking for designer with ID:', jobCardData.assignedDesigner);
+        console.log('📋 [handleSubmit] Available designers:', designersToUse.map(d => ({ id: d.id, fullName: d.fullName })));
+        
+        // Normalize both sides for comparison
+        const selectedDesignerId = String(jobCardData.assignedDesigner).trim();
+        const selectedDesigner = designersToUse.find(d => {
+          const designerId = String(d.id).trim();
+          return designerId === selectedDesignerId ||
+                 designerId === String(parseInt(selectedDesignerId)) ||
+                 parseInt(designerId) === parseInt(selectedDesignerId);
+        });
+        
+        if (selectedDesigner) {
+          console.log('✅ [handleSubmit] Found designer:', selectedDesigner);
+          assignedDesignerInfo = {
+            name: selectedDesigner.fullName || `${selectedDesigner.firstName || ''} ${selectedDesigner.lastName || ''}`.trim() || 'Unknown Designer',
+            email: selectedDesigner.email || 'designer@example.com',
+            phone: selectedDesigner.phone || ''
+          };
+          console.log('📄 [handleSubmit] Designer info for PDF:', assignedDesignerInfo);
+        } else {
+          console.warn('⚠️ [handleSubmit] Designer not found in local array! Selected ID:', jobCardData.assignedDesigner);
+          
+          // Fallback: Try to fetch designer directly from API
+          try {
+            console.log('🔄 [handleSubmit] Trying to fetch designer directly from API...');
+            const designerResponse = await usersAPI.getById(jobCardData.assignedDesigner);
+            if (designerResponse && designerResponse.user) {
+              const designer = designerResponse.user;
+              console.log('✅ [handleSubmit] Fetched designer from API:', designer);
+              assignedDesignerInfo = {
+                name: `${designer.firstName || ''} ${designer.lastName || ''}`.trim() || designer.username || 'Unknown Designer',
+                email: designer.email || 'designer@example.com',
+                phone: designer.phone || ''
+              };
+              console.log('📄 [handleSubmit] Designer info for PDF (from API):', assignedDesignerInfo);
+            }
+          } catch (apiError) {
+            console.error('❌ [handleSubmit] Failed to fetch designer from API:', apiError);
+          }
+        }
+      } else {
+        console.log('ℹ️ [handleSubmit] No designer selected or invalid selection');
+      }
+      
+      // Normalize ratio data structure for PDF (flatten rawData if needed)
+      let normalizedRatioData = jobCardData.ratioData;
+      if (normalizedRatioData && normalizedRatioData.rawData && !normalizedRatioData.colorDetails) {
+        // Flatten structure: move rawData.colorDetails to top level if needed
+        normalizedRatioData = {
+          ...normalizedRatioData,
+          colorDetails: normalizedRatioData.rawData.colorDetails || [],
+          summary: normalizedRatioData.summary || normalizedRatioData.rawData.summary || {}
+        };
+      }
+      
+      console.log('📄 [handleSubmit] Generating PDF with jobCardData:', {
+        assignedDesigner: assignedDesignerInfo,
+        hasDesigner: !!assignedDesignerInfo,
+        designerType: typeof assignedDesignerInfo,
+        hasRatioData: !!normalizedRatioData,
+        hasItemSpecsData: !!jobCardData.itemSpecificationsData,
+        ratioDataItems: normalizedRatioData?.colorDetails?.length || 0,
+        itemSpecsItems: jobCardData.itemSpecificationsData?.items?.length || 0
+      });
+      
+      // Log ratio data details
+      if (normalizedRatioData) {
+        console.log('📊 Ratio Data for PDF:', {
+          hasColorDetails: !!normalizedRatioData.colorDetails,
+          colorDetailsCount: normalizedRatioData.colorDetails?.length || 0,
+          summary: normalizedRatioData.summary,
+          hasRawData: !!normalizedRatioData.rawData
+        });
+      } else {
+        console.warn('⚠️ No ratio data found in jobCardData');
+      }
+      
+      // Log item specifications data details
+      if (jobCardData.itemSpecificationsData) {
+        console.log('📋 Item Specifications Data for PDF:', {
+          hasItems: !!jobCardData.itemSpecificationsData.items,
+          itemsCount: jobCardData.itemSpecificationsData.items?.length || 0,
+          summary: jobCardData.itemSpecificationsData.summary
+        });
+      } else {
+        console.warn('⚠️ No item specifications data found in jobCardData');
+      }
+      
       await generateJobCardPDF({
         product: completeProduct,
         jobCardData: {
           ...jobCardData,
           customerName: jobCardData.customerInfo.name,
           salesman: jobCardData.merchandiser,
-          jobCode: jobCardId
+          jobCode: jobCardId,
+          assignedDesigner: assignedDesignerInfo,
+          priority: jobCardData.priority, // Include priority level
+          ratioData: normalizedRatioData, // Include normalized ratio Excel data
+          itemSpecificationsData: jobCardData.itemSpecificationsData, // Include item specifications data
+          specialInstructions: jobCardData.specialInstructions, // Include remarks from job form
+          customerInfo: jobCardData.customerInfo // Include full customer info for tabular display
         },
         jobCardId
       });
@@ -1302,21 +1713,27 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                     
                     <div className="space-y-2">
                       <Label>Priority Level</Label>
-                      <div className="flex gap-2">
-                        {(['Low', 'Medium', 'High', 'Urgent'] as const).map((priority) => (
-                          <button
-                            key={priority}
-                            onClick={() => handleInputChange('priority', priority)}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                              jobCardData.priority === priority
-                                ? getPriorityColor(priority) + ' border-2'
-                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                          >
-                            {priority}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-3">
+                        {jobCardData.deliveryDate ? (
+                          <>
+                            <Badge className={getPriorityColor(jobCardData.priority)}>
+                              {jobCardData.priority}
+                            </Badge>
+                            <span className="text-sm text-gray-600">
+                              (Auto-calculated: {calculateWorkingDays(jobCardData.deliveryDate)} working days)
+                            </span>
+                          </>
+                        ) : (
+                          <Badge variant="outline" className="text-gray-500">
+                            Set delivery date to calculate priority
+                          </Badge>
+                        )}
                       </div>
+                      {jobCardData.deliveryDate && (
+                        <p className="text-xs text-gray-500">
+                          Priority is automatically calculated based on working days until delivery (excluding Sundays).
+                        </p>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -1340,13 +1757,24 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="customerName">Customer Name *</Label>
-                      <Input
-                        id="customerName"
-                        value={jobCardData.customerInfo.name}
-                        onChange={(e) => handleCustomerInfoChange('name', e.target.value)}
-                        placeholder="Enter customer name"
-                        className={!jobCardData.customerInfo.name.trim() && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}
-                      />
+                      <Select 
+                        value={jobCardData.customerInfo.name} 
+                        onValueChange={(value) => handleCustomerInfoChange('name', value)}
+                      >
+                        <SelectTrigger 
+                          id="customerName"
+                          className={!jobCardData.customerInfo.name.trim() && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}
+                        >
+                          <SelectValue placeholder="Select customer name" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                          {CUSTOMER_NAMES.map((customerName) => (
+                            <SelectItem key={customerName} value={customerName}>
+                              {customerName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     
                     <div className="space-y-2">
@@ -1382,7 +1810,10 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                       >
                         <option value="Standard">Standard Shipping</option>
                         <option value="Express">Express Shipping</option>
+                        <option value="Detain">Detain</option>
                         <option value="Overnight">Overnight</option>
+                        <option value="Same Day">Same Day</option>
+                        <option value="By Road">By Road</option>
                         <option value="Pickup">Customer Pickup</option>
                       </select>
                     </div>

@@ -141,6 +141,49 @@ router.get('/job/:jobId', asyncHandler(async (req, res) => {
   });
 }));
 
+// Upload Excel file (for item specifications, ratio reports, etc.)
+router.post('/excel', upload.single('file'), asyncHandler(async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'No file uploaded',
+        message: 'Please select an Excel file to upload'
+      });
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({
+        error: 'Invalid file type',
+        message: 'Please upload a valid Excel file (.xlsx or .xls)'
+      });
+    }
+
+    // Generate file URL (in production, this would be a Google Drive link or CDN URL)
+    // For now, return the filename - the actual file can be accessed via the download endpoint
+    const fileUrl = `/api/upload/file/${req.file.filename}`;
+
+    res.status(200).json({
+      success: true,
+      fileUrl: fileUrl,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      message: 'File uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Excel upload error:', error);
+    res.status(500).json({
+      error: 'Upload failed',
+      message: error.message
+    });
+  }
+}));
+
 // Download a file
 router.get('/file/:fileId', asyncHandler(async (req, res) => {
   const { fileId } = req.params;

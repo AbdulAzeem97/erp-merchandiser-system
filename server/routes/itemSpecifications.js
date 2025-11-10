@@ -1,17 +1,19 @@
 import express from 'express';
 import { authenticateToken } from '../middleware/auth.js';
+import dbAdapter from '../database/adapter.js';
+import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
 // Get item specifications for a specific job
-router.get('/jobs/:jobId/item-specifications', authenticateToken, async (req, res) => {
+router.get('/jobs/:jobId/item-specifications', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { jobId } = req.params;
     
     const query = `
       SELECT 
         isp.*,
-        jc."jobNumber",
+        jc."jobNumber" as job_number,
         p.name as product_name,
         c.name as company_name
       FROM item_specifications isp
@@ -22,7 +24,7 @@ router.get('/jobs/:jobId/item-specifications', authenticateToken, async (req, re
       ORDER BY isp.uploaded_at DESC
     `;
     
-    const result = await req.db.query(query, [jobId]);
+    const result = await dbAdapter.query(query, [jobId]);
     
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -31,9 +33,39 @@ router.get('/jobs/:jobId/item-specifications', authenticateToken, async (req, re
       });
     }
     
+    const itemSpec = result.rows[0];
+    
+    // Also fetch individual items from database
+    let items = [];
+    if (itemSpec && itemSpec.id) {
+      try {
+        const itemsQuery = `
+          SELECT 
+            item_code,
+            color,
+            size,
+            quantity,
+            secondary_code,
+            decimal_value,
+            material,
+            specifications
+          FROM item_specification_items
+          WHERE item_specification_id = $1
+          ORDER BY created_at ASC
+        `;
+        const itemsResult = await dbAdapter.query(itemsQuery, [itemSpec.id]);
+        items = itemsResult.rows;
+      } catch (error) {
+        console.warn('Could not fetch items from database:', error);
+      }
+    }
+    
     res.json({
       success: true,
-      itemSpecifications: result.rows[0]
+      itemSpecifications: {
+        ...itemSpec,
+        items: items // Include items in response
+      }
     });
     
   } catch (error) {
@@ -44,10 +76,10 @@ router.get('/jobs/:jobId/item-specifications', authenticateToken, async (req, re
       error: error.message
     });
   }
-});
+}));
 
 // Save item specifications for a job
-router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, res) => {
+router.post('/jobs/:jobId/item-specifications', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { jobId } = req.params;
     const {
@@ -63,12 +95,17 @@ router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, r
       size_variants,
       color_variants,
       specifications,
-      raw_excel_data
+      raw_excel_data,
+      items, // Array of individual items from Excel
+      job_card_id // Optional, will use jobId from params if not provided
     } = req.body;
+    
+    // Use jobId from params, or job_card_id from body
+    const finalJobId = jobId || job_card_id;
     
     // Check if item specifications already exist for this job
     const existingQuery = 'SELECT id FROM item_specifications WHERE job_card_id = $1';
-    const existingResult = await req.db.query(existingQuery, [jobId]);
+    const existingResult = await dbAdapter.query(existingQuery, [finalJobId]);
     
     let result;
     if (existingResult.rows.length > 0) {
@@ -93,8 +130,8 @@ router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, r
         RETURNING *
       `;
       
-      result = await req.db.query(updateQuery, [
-        jobId,
+      result = await dbAdapter.query(updateQuery, [
+        finalJobId,
         excel_file_link,
         excel_file_name,
         po_number,
@@ -132,8 +169,8 @@ router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, r
         RETURNING *
       `;
       
-      result = await req.db.query(insertQuery, [
-        jobId,
+      result = await dbAdapter.query(insertQuery, [
+        finalJobId,
         excel_file_link,
         excel_file_name,
         po_number,
@@ -151,10 +188,51 @@ router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, r
       ]);
     }
     
+    const itemSpecId = result.rows[0].id;
+    
+    // Save individual items to item_specification_items table if provided
+    if (items && Array.isArray(items) && items.length > 0) {
+      // Delete existing items for this specification
+      await dbAdapter.query(
+        'DELETE FROM item_specification_items WHERE item_specification_id = $1',
+        [itemSpecId]
+      );
+      
+      // Insert all items
+      for (const item of items) {
+        await dbAdapter.query(`
+          INSERT INTO item_specification_items (
+            item_specification_id,
+            item_code,
+            color,
+            size,
+            quantity,
+            secondary_code,
+            decimal_value,
+            material,
+            specifications
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+          itemSpecId,
+          item.itemCode || '',
+          item.color || '',
+          item.size || '',
+          item.quantity || 0,
+          item.secondaryCode || '',
+          item.decimalValue || 0,
+          item.material || '',
+          JSON.stringify(item.specifications || {})
+        ]);
+      }
+      
+      console.log(`✅ Saved ${items.length} items to database`);
+    }
+    
     res.json({
       success: true,
       message: 'Item specifications saved successfully',
-      itemSpecifications: result.rows[0]
+      itemSpecifications: result.rows[0],
+      itemsSaved: items ? items.length : 0
     });
     
   } catch (error) {
@@ -165,10 +243,46 @@ router.post('/jobs/:jobId/item-specifications', authenticateToken, async (req, r
       error: error.message
     });
   }
-});
+}));
+
+// Get items for a specific item specification
+router.get('/item-specifications/:specId/items', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { specId } = req.params;
+    
+    const query = `
+      SELECT 
+        item_code,
+        color,
+        size,
+        quantity,
+        secondary_code,
+        decimal_value,
+        material,
+        specifications
+      FROM item_specification_items
+      WHERE item_specification_id = $1
+      ORDER BY created_at ASC
+    `;
+    
+    const result = await dbAdapter.query(query, [specId]);
+    
+    res.json({
+      success: true,
+      items: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch items',
+      error: error.message
+    });
+  }
+}));
 
 // Get all item specifications (for admin/reporting)
-router.get('/item-specifications', authenticateToken, async (req, res) => {
+router.get('/item-specifications', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 50, jobId, poNumber } = req.query;
     const offset = (page - 1) * limit;
@@ -209,7 +323,7 @@ router.get('/item-specifications', authenticateToken, async (req, res) => {
     
     queryParams.push(limit, offset);
     
-    const result = await req.db.query(query, queryParams);
+    const result = await dbAdapter.query(query, queryParams);
     
     // Get total count
     const countQuery = `
@@ -217,7 +331,8 @@ router.get('/item-specifications', authenticateToken, async (req, res) => {
       FROM item_specifications isp
       ${whereClause}
     `;
-    const countResult = await req.db.query(countQuery, queryParams.slice(0, -2));
+    const countParams = queryParams.slice(0, -2);
+    const countResult = await dbAdapter.query(countQuery, countParams.length > 0 ? countParams : []);
     
     res.json({
       success: true,
@@ -225,19 +340,19 @@ router.get('/item-specifications', authenticateToken, async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: parseInt(countResult.rows[0].total),
-        pages: Math.ceil(countResult.rows[0].total / limit)
-      }
-    });
-    
-  } catch (error) {
-    console.error('Error fetching item specifications:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch item specifications',
-      error: error.message
-    });
-  }
-});
+      total: parseInt(countResult.rows[0].total),
+      pages: Math.ceil(countResult.rows[0].total / limit)
+    }
+  });
+  
+} catch (error) {
+  console.error('Error fetching item specifications:', error);
+  res.status(500).json({
+    success: false,
+    message: 'Failed to fetch item specifications',
+    error: error.message
+  });
+}
+}));
 
 export default router;

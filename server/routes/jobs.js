@@ -905,7 +905,9 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         fsc: 'N/A',
         fscClaim: 'N/A',
         materialName: 'N/A',
-        categoryName: 'N/A'
+        categoryName: 'N/A',
+        colorSpecifications: '',
+        remarks: ''
       };
       
       // Fetch complete product data if productId exists
@@ -914,6 +916,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
           const productResult = await dbAdapter.query(`
             SELECT 
               p.id, p.name, p.sku, p.brand, p.gsm, p."fscCertified", p."fscLicense",
+              p.color_specifications, p.remarks,
               m.name as material_name,
               c.name as category_name
             FROM products p
@@ -932,7 +935,9 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
               fsc: product.fscCertified ? 'Yes' : 'No',
               fscClaim: product.fscLicense || 'N/A',
               materialName: product.material_name || 'N/A',
-              categoryName: product.category_name || 'N/A'
+              categoryName: product.category_name || 'N/A',
+              colorSpecifications: product.color_specifications || '',
+              remarks: product.remarks || ''
             };
           }
         } catch (error) {
@@ -949,8 +954,8 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         gsm: productData.gsm,
         description: job.description || '',
         productType: 'Offset', // Default product type
-        colorSpecifications: 'As per Approved Sample/Artwork', // Default color specs
-        remarks: 'Print on Uncoated Side', // Default remarks
+        colorSpecifications: productData.colorSpecifications || '',
+        remarks: productData.remarks || '',
         fsc: productData.fsc,
         fscClaim: productData.fscClaim,
         materialName: productData.materialName,

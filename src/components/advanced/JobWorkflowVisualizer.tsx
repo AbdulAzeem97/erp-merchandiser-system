@@ -37,7 +37,6 @@ import {
   Wrench,
   Hammer,
   Paintbrush,
-  Cut,
   Image as ImageIcon,
   FileImage,
   Monitor,

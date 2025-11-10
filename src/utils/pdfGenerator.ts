@@ -1,5 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import QRCode from 'qrcode';
 import { ProductMaster, ProcessStep } from '../types/erp';
 import { PROCESS_SEQUENCES } from '../data/processSequences';
 
@@ -33,6 +34,46 @@ interface JobCardData {
   brand?: string;
   gsm?: number;
   category?: string;
+  // Ratio Excel data
+  ratioData?: {
+    colorDetails?: Array<{
+      color: string;
+      size: string;
+      requiredQty: number;
+      plate: string;
+      ups: number;
+      sheets: number;
+      qtyProduced: number;
+      excessQty: number;
+    }>;
+    summary?: {
+      totalUPS?: number;
+      totalSheets?: number;
+      totalPlates?: number;
+      qtyProduced?: number;
+      excessQty?: number;
+      efficiency?: number;
+      requiredOrderQty?: number;
+    };
+  };
+  // Item Specifications data
+  itemSpecificationsData?: {
+    items?: Array<{
+      itemCode: string;
+      color: string;
+      size: string;
+      quantity: number;
+      secondaryCode?: string;
+      decimalValue?: number;
+      material?: string;
+    }>;
+    summary?: {
+      totalItems?: number;
+      totalQuantity?: number;
+      sizeVariants?: number;
+      colorVariants?: number;
+    };
+  };
 }
 
 interface PDFGenerationOptions {
@@ -96,9 +137,9 @@ export class AdvancedJobCardPDFGenerator {
     this.pdf = new jsPDF('p', 'mm', 'a4');
     this.pageWidth = this.pdf.internal.pageSize.getWidth();
     this.pageHeight = this.pdf.internal.pageSize.getHeight();
-    this.margin = 15; // Reduced margin for more content space
+    this.margin = 15; // Professional margin for clean appearance
     this.contentWidth = this.pageWidth - (2 * this.margin);
-    this.currentY = 25; // Reduced top margin for more content space
+    this.currentY = 25; // Consistent top margin
   }
 
   // Professional page break handler
@@ -216,39 +257,123 @@ export class AdvancedJobCardPDFGenerator {
     this.currentY = tableStartY + tableHeight + 10; // Reduced spacing from 15 to 10
   }
 
+  // Customer information section in tabular format
+  private createCustomerSection(): void {
+    this.checkPageBreak(50);
+    
+    this.createSectionHeader('CUSTOMER INFORMATION');
+    
+    // Get customer data from jobCardData
+    const customerName = this.options.jobCardData.customerName || 
+                        (this.options.jobCardData as any).customerInfo?.name || 
+                        'N/A';
+    const customerPhone = (this.options.jobCardData as any).customerInfo?.phone || 
+                         (this.options.jobCardData as any).customer_phone || 
+                         'N/A';
+    const customerEmail = (this.options.jobCardData as any).customerInfo?.email || 
+                         (this.options.jobCardData as any).customer_email || 
+                         'N/A';
+    const customerAddress = (this.options.jobCardData as any).customerInfo?.address || 
+                           (this.options.jobCardData as any).customer_address || 
+                           'N/A';
+    
+    // Create customer information table with professional styling
+    const tableStartY = this.currentY;
+    const rowHeight = 9; // Increased for better readability
+    const labelWidth = 45; // Optimized label width
+    const valueWidth = this.contentWidth - labelWidth;
+    const valueStartX = this.margin + labelWidth + 5;
+    
+    // Calculate table height based on content
+    const nameLines = this.pdf.splitTextToSize(customerName, valueWidth - 10);
+    const emailLines = this.pdf.splitTextToSize(customerEmail, valueWidth - 10);
+    const addressLines = this.pdf.splitTextToSize(customerAddress, valueWidth - 10);
+    const maxLines = Math.max(nameLines.length, emailLines.length, addressLines.length, 1);
+    const dynamicRowHeight = maxLines > 1 ? rowHeight + (maxLines - 1) * 4 : rowHeight;
+    const tableHeight = dynamicRowHeight * 4;
+    
+    // Draw table with professional borders
+    this.pdf.setDrawColor(0, 0, 0);
+    this.pdf.setLineWidth(0.4);
+    
+    // Header row background - Blue theme for Customer Information
+    this.pdf.setFillColor(219, 234, 254); // Light blue
+    this.pdf.rect(this.margin, tableStartY, this.contentWidth, rowHeight, 'F');
+    
+    // Table borders
+    this.pdf.line(this.margin, tableStartY, this.pageWidth - this.margin, tableStartY); // Top
+    this.pdf.line(this.margin, tableStartY + rowHeight, this.pageWidth - this.margin, tableStartY + rowHeight); // After header
+    this.pdf.line(this.margin, tableStartY + rowHeight + dynamicRowHeight, this.pageWidth - this.margin, tableStartY + rowHeight + dynamicRowHeight); // After row 1
+    this.pdf.line(this.margin, tableStartY + rowHeight + dynamicRowHeight * 2, this.pageWidth - this.margin, tableStartY + rowHeight + dynamicRowHeight * 2); // After row 2
+    this.pdf.line(this.margin, tableStartY + rowHeight + dynamicRowHeight * 3, this.pageWidth - this.margin, tableStartY + rowHeight + dynamicRowHeight * 3); // After row 3
+    this.pdf.line(this.margin, tableStartY + tableHeight, this.pageWidth - this.margin, tableStartY + tableHeight); // Bottom
+    this.pdf.line(this.margin + labelWidth, tableStartY, this.margin + labelWidth, tableStartY + tableHeight); // Vertical separator
+    
+    // Header text
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.setFontSize(9);
+    this.pdf.setTextColor(0, 0, 0);
+    this.pdf.text('Field', this.margin + 5, tableStartY + 6);
+    this.pdf.text('Value', valueStartX + 5, tableStartY + 6);
+    
+    // Row 1: Name
+    let currentRowY = tableStartY + rowHeight;
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.setFontSize(8);
+    this.pdf.setTextColor(0, 0, 0);
+    this.pdf.text('Name:', this.margin + 5, currentRowY + 6);
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.setFontSize(8);
+    this.pdf.setTextColor(64, 64, 64);
+    this.pdf.text(nameLines, valueStartX + 5, currentRowY + 6);
+    
+    // Row 2: Phone
+    currentRowY += dynamicRowHeight;
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.text('Phone:', this.margin + 5, currentRowY + 6);
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.text(customerPhone, valueStartX + 5, currentRowY + 6);
+    
+    // Row 3: Email
+    currentRowY += dynamicRowHeight;
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.text('Email:', this.margin + 5, currentRowY + 6);
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.text(emailLines, valueStartX + 5, currentRowY + 6);
+    
+    // Row 4: Address
+    currentRowY += dynamicRowHeight;
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.text('Address:', this.margin + 5, currentRowY + 6);
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.text(addressLines, valueStartX + 5, currentRowY + 6);
+    
+    this.currentY = tableStartY + tableHeight + 8; // Consistent spacing after table
+  }
+
   // Professional job details section with enhanced table
   private createJobDetailsSection(): void {
     this.checkPageBreak(60);
     
     this.createSectionHeader('JOB DETAILS');
     
-    // Customer information
-    if (this.options.jobCardData.customerName) {
-      this.pdf.setFont('helvetica', 'bold');
-      this.pdf.setFontSize(9); // Reduced from 11
-      this.pdf.setTextColor(0, 0, 0);
-      this.pdf.text('Customer Information:', this.margin, this.currentY);
-      
-      this.pdf.setFont('helvetica', 'normal');
-      this.pdf.setFontSize(8); // Reduced from 10
-      this.pdf.setTextColor(64, 64, 64);
-      this.pdf.text(`Name: ${this.options.jobCardData.customerName}`, this.margin + 5, this.currentY + 5); // Reduced from 8
-      
-      if (this.options.jobCardData.salesman) {
-        this.pdf.text(`Account Manager: ${this.options.jobCardData.salesman}`, this.pageWidth - this.margin - 80, this.currentY + 5); // Reduced from 8
-      }
-      
-      this.currentY += 12; // Reduced from 20
-    }
+    // Customer information in tabular format
+    this.createCustomerSection();
 
     // Enhanced job details table with borders
+    // Get priority from jobCardData (can be in different formats)
+    const priority = (this.options.jobCardData as any).priority || 
+                    (this.options.jobCardData as any).urgency || 
+                    'N/A';
+    const priorityDisplay = typeof priority === 'string' ? priority.toUpperCase() : priority;
+    
     const jobDetails = [
       { label: 'Product Code', value: this.options.product.product_item_code },
       { label: 'PO Number', value: this.options.jobCardData.poNumber },
       { label: 'Job Code', value: this.options.jobCardData.jobCode || 'Auto-Generated' },
       { label: 'Quantity', value: this.options.jobCardData.quantity.toLocaleString() + ' units' },
-      { label: 'Delivery Date', value: new Date(this.options.jobCardData.deliveryDate).toLocaleDateString() },
-      { label: 'Target Date', value: this.options.jobCardData.targetDate || 'TBD' }
+      { label: 'Priority Level', value: priorityDisplay },
+      { label: 'Delivery Date', value: new Date(this.options.jobCardData.deliveryDate).toLocaleDateString() }
     ];
 
         // Create enhanced job details table with better formatting and alignment
@@ -257,7 +382,7 @@ export class AdvancedJobCardPDFGenerator {
     const tableHeight = jobDetails.length * rowHeight;
     
     // Calculate optimal column widths for better alignment
-    const labelWidth = 85; // Fixed width for labels
+    const labelWidth = 50; // Optimized label width for better alignment
     const valueWidth = this.contentWidth - labelWidth - 10; // Remaining width for values
     const valueStartX = this.margin + labelWidth + 5; // Start position for values
     
@@ -265,132 +390,210 @@ export class AdvancedJobCardPDFGenerator {
     this.pdf.setDrawColor(0, 0, 0);
     this.pdf.setLineWidth(0.4); // Slightly thicker for better visibility
     
-    // Enhanced header row with better styling and subtle shadow
-    this.pdf.setFillColor(245, 245, 245); // Lighter gray for subtle contrast
-    this.pdf.rect(this.margin, tableStartY - 4, this.contentWidth, 8, 'F');
+    // Professional header row with clean styling - Green theme for Job Details
+    this.pdf.setFillColor(209, 250, 229); // Light green
+    this.pdf.rect(this.margin, tableStartY, this.contentWidth, rowHeight, 'F');
     
-    // Add subtle shadow effect for header
-    this.pdf.setFillColor(235, 235, 235);
-    this.pdf.rect(this.margin + 1, tableStartY - 3, this.contentWidth, 8, 'F');
-    this.pdf.setFillColor(245, 245, 245);
-    this.pdf.rect(this.margin, tableStartY - 4, this.contentWidth, 8, 'F');
-    
-    // Header text with better positioning and enhanced typography
+    // Header text with professional typography
     this.pdf.setFont('helvetica', 'bold');
-    this.pdf.setFontSize(9); // Slightly larger for better readability
+    this.pdf.setFontSize(9);
     this.pdf.setTextColor(0, 0, 0);
-    this.pdf.text('Field', this.margin + 8, tableStartY);
-    this.pdf.text('Value', valueStartX + 5, tableStartY);
+    this.pdf.text('Field', this.margin + 5, tableStartY + 6);
+    this.pdf.text('Value', valueStartX + 5, tableStartY + 6);
     
-    // Enhanced header borders
-    this.pdf.line(this.margin, tableStartY - 4, this.pageWidth - this.margin, tableStartY - 4); // Top border
-    this.pdf.line(this.margin, tableStartY + 4, this.pageWidth - this.margin, tableStartY + 4); // Bottom border
-    this.pdf.line(this.margin + labelWidth, tableStartY - 4, this.margin + labelWidth, tableStartY + tableHeight); // Vertical separator
-    
-    // Data rows with enhanced formatting
-    jobDetails.forEach((detail, index) => {
-      const y = tableStartY + 8 + index * rowHeight;
-      
-      // Row borders with alternating row colors for better readability
-      if (index % 2 === 0) {
-        this.pdf.setFillColor(250, 250, 250); // Very light gray for alternating rows
-        this.pdf.rect(this.margin, y - 2, this.contentWidth, rowHeight, 'F');
-      } else {
-        this.pdf.setFillColor(255, 255, 255); // White for odd rows
-        this.pdf.rect(this.margin, y - 2, this.contentWidth, rowHeight, 'F');
-      }
-      
-      // Row separator lines with better styling
-      this.pdf.setDrawColor(220, 220, 220); // Slightly darker for better visibility
-      this.pdf.setLineWidth(0.15);
-      this.pdf.line(this.margin, y + 6, this.pageWidth - this.margin, y + 6);
-      
-      // Label with better formatting
-      this.pdf.setFont('helvetica', 'bold');
-      this.pdf.setFontSize(8); // Slightly larger for better readability
-      this.pdf.setTextColor(0, 0, 0);
-      this.pdf.text(detail.label, this.margin + 8, y + 2);
-      
-      // Value with better formatting and text wrapping
-      this.pdf.setFont('helvetica', 'normal');
-      this.pdf.setFontSize(8); // Slightly larger for better readability
-      this.pdf.setTextColor(64, 64, 64);
-      
-      // Handle long values with text wrapping
-      const valueText = detail.value.toString();
-      const valueLines = this.pdf.splitTextToSize(valueText, valueWidth - 10);
-      
-      // Display first line, and add ellipsis if there are more lines
-      if (valueLines.length > 1) {
-        this.pdf.text(valueLines[0] + '...', valueStartX + 5, y + 2);
-      } else {
-        this.pdf.text(valueText, valueStartX + 5, y + 2);
-      }
-    });
-    
-    // Bottom border with enhanced styling
+    // Professional table borders
     this.pdf.setDrawColor(0, 0, 0);
     this.pdf.setLineWidth(0.4);
-    this.pdf.line(this.margin, tableStartY + tableHeight + 4, this.pageWidth - this.margin, tableStartY + tableHeight + 4);
+    this.pdf.line(this.margin, tableStartY, this.pageWidth - this.margin, tableStartY); // Top border
+    this.pdf.line(this.margin, tableStartY + rowHeight, this.pageWidth - this.margin, tableStartY + rowHeight); // Header bottom
+    this.pdf.line(this.margin + labelWidth, tableStartY, this.margin + labelWidth, tableStartY + tableHeight); // Vertical separator
     
-    // Add subtle corner accents for professional look
-    const cornerSize = 3;
-    this.pdf.setFillColor(200, 200, 200);
-    this.pdf.rect(this.margin, tableStartY + tableHeight + 2, cornerSize, cornerSize, 'F');
-    this.pdf.rect(this.pageWidth - this.margin - cornerSize, tableStartY + tableHeight + 2, cornerSize, cornerSize, 'F');
+    // Data rows with professional formatting
+    jobDetails.forEach((detail, index) => {
+      const y = tableStartY + rowHeight + index * rowHeight;
+      
+      // Alternating row colors for better readability - Green theme
+      if (index % 2 === 0) {
+        this.pdf.setFillColor(236, 253, 245); // Very light green
+        this.pdf.rect(this.margin, y, this.contentWidth, rowHeight, 'F');
+      } else {
+        this.pdf.setFillColor(255, 255, 255);
+        this.pdf.rect(this.margin, y, this.contentWidth, rowHeight, 'F');
+      }
+      
+      // Row separator lines
+      this.pdf.setDrawColor(220, 220, 220);
+      this.pdf.setLineWidth(0.2);
+      this.pdf.line(this.margin, y + rowHeight, this.pageWidth - this.margin, y + rowHeight);
+      
+      // Label with consistent formatting
+      this.pdf.setFont('helvetica', 'bold');
+      this.pdf.setFontSize(8);
+      this.pdf.setTextColor(0, 0, 0);
+      this.pdf.text(detail.label, this.margin + 5, y + 6);
+      
+      // Value with proper text wrapping
+      this.pdf.setFont('helvetica', 'normal');
+      this.pdf.setFontSize(8);
+      this.pdf.setTextColor(64, 64, 64);
+      
+      const valueText = detail.value.toString();
+      const valueLines = this.pdf.splitTextToSize(valueText, valueWidth - 10);
+      this.pdf.text(valueLines, valueStartX + 5, y + 6);
+    });
     
-    this.currentY = tableStartY + tableHeight + 10; // Increased spacing for better visual separation
+    // Bottom border
+    this.pdf.setDrawColor(0, 0, 0);
+    this.pdf.setLineWidth(0.4);
+    this.pdf.line(this.margin, tableStartY + tableHeight, this.pageWidth - this.margin, tableStartY + tableHeight);
+    
+    this.currentY = tableStartY + tableHeight + 8; // Consistent spacing after table
   }
 
-  // Create professional section headers - more compact
+  // Create professional section headers with consistent styling
   private createSectionHeader(title: string): void {
-    this.pdf.setFont('helvetica', 'bold');
-    this.pdf.setFontSize(10); // Reduced from 12
-    this.pdf.setTextColor(0, 0, 0);
-    this.pdf.text(title, this.margin, this.currentY);
+    // Add spacing before section header
+    this.currentY += 3;
     
-    // Professional underline - matches text length
+    // Section header background
+    this.pdf.setFillColor(240, 240, 240);
+    this.pdf.rect(this.margin, this.currentY - 2, this.contentWidth, 8, 'F');
+    
+    // Section header text
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.setFontSize(11);
+    this.pdf.setTextColor(0, 0, 0);
+    this.pdf.text(title, this.margin + 5, this.currentY + 4);
+    
+    // Professional bottom border
     this.pdf.setDrawColor(0, 0, 0);
     this.pdf.setLineWidth(0.5);
-    const titleWidth = this.pdf.getTextWidth(title);
-    this.pdf.line(this.margin, this.currentY + 1.5, this.margin + titleWidth, this.currentY + 1.5); // Reduced from +2 to +1.5
+    this.pdf.line(this.margin, this.currentY + 6, this.pageWidth - this.margin, this.currentY + 6);
     
-    this.currentY += 6; // Reduced from 8
+    this.currentY += 10; // Consistent spacing after header
   }
 
-  // Add Google Drive links and designer information section
-  private createLinksAndDesignerSection(): void {
-    this.checkPageBreak(40);
+  // Helper method to generate QR code as base64 image
+  private async generateQRCode(url: string): Promise<string> {
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(url, {
+        width: 150,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      return qrCodeDataUrl;
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      return '';
+    }
+  }
+
+  // Add Google Drive links as QR codes and designer information section
+  private async createLinksAndDesignerSection(): Promise<void> {
+    this.checkPageBreak(60);
     
     this.createSectionHeader('LINKS & ASSIGNMENTS');
     
-    // Google Drive Links
+    // Google Drive Links as QR Codes
     if (this.options.jobCardData.clientLayoutLink || this.options.jobCardData.finalDesignLink) {
       this.pdf.setFont('helvetica', 'bold');
       this.pdf.setFontSize(9);
       this.pdf.setTextColor(0, 0, 0);
       this.pdf.text('Google Drive Links:', this.margin, this.currentY);
-      this.currentY += 8;
+      this.currentY += 10;
       
-      this.pdf.setFont('helvetica', 'normal');
-      this.pdf.setFontSize(8);
-      this.pdf.setTextColor(64, 64, 64);
+      const qrCodeSize = 30; // Size of QR code in mm
+      const qrSpacing = 5; // Spacing between QR codes
+      let qrStartX = this.margin;
       
+      // Client Layout QR Code
       if (this.options.jobCardData.clientLayoutLink) {
-        this.pdf.text('🔗 Client Layout: ' + this.options.jobCardData.clientLayoutLink, this.margin + 5, this.currentY);
-        this.currentY += 6;
+        try {
+          const qrCodeDataUrl = await this.generateQRCode(this.options.jobCardData.clientLayoutLink);
+          if (qrCodeDataUrl) {
+            // Add QR code image
+            this.pdf.addImage(qrCodeDataUrl, 'PNG', qrStartX, this.currentY, qrCodeSize, qrCodeSize);
+            
+            // Add label below QR code
+            this.pdf.setFont('helvetica', 'bold');
+            this.pdf.setFontSize(8);
+            this.pdf.setTextColor(0, 0, 0);
+            const labelText = 'Client Layout';
+            const labelWidth = this.pdf.getTextWidth(labelText);
+            this.pdf.text(labelText, qrStartX + (qrCodeSize - labelWidth) / 2, this.currentY + qrCodeSize + 5);
+            
+            // Add short link text below label
+            this.pdf.setFont('helvetica', 'normal');
+            this.pdf.setFontSize(6);
+            this.pdf.setTextColor(100, 100, 100);
+            const shortLink = this.options.jobCardData.clientLayoutLink.length > 40 
+              ? this.options.jobCardData.clientLayoutLink.substring(0, 37) + '...'
+              : this.options.jobCardData.clientLayoutLink;
+            const linkWidth = this.pdf.getTextWidth(shortLink);
+            this.pdf.text(shortLink, qrStartX + (qrCodeSize - linkWidth) / 2, this.currentY + qrCodeSize + 9);
+            
+            qrStartX += qrCodeSize + qrSpacing + 20; // Move to next position
+          }
+        } catch (error) {
+          console.error('Error generating Client Layout QR code:', error);
+          // Fallback to text if QR code generation fails
+          this.pdf.setFont('helvetica', 'normal');
+          this.pdf.setFontSize(8);
+          this.pdf.setTextColor(64, 64, 64);
+          this.pdf.text('Client Layout: ' + this.options.jobCardData.clientLayoutLink, this.margin, this.currentY);
+          this.currentY += 6;
+        }
       }
       
+      // Final Design QR Code
       if (this.options.jobCardData.finalDesignLink) {
-        this.pdf.text('🔗 Final Design: ' + this.options.jobCardData.finalDesignLink, this.margin + 5, this.currentY);
-        this.currentY += 6;
+        try {
+          const qrCodeDataUrl = await this.generateQRCode(this.options.jobCardData.finalDesignLink);
+          if (qrCodeDataUrl) {
+            // Add QR code image
+            this.pdf.addImage(qrCodeDataUrl, 'PNG', qrStartX, this.currentY, qrCodeSize, qrCodeSize);
+            
+            // Add label below QR code
+            this.pdf.setFont('helvetica', 'bold');
+            this.pdf.setFontSize(8);
+            this.pdf.setTextColor(0, 0, 0);
+            const labelText = 'Final Design';
+            const labelWidth = this.pdf.getTextWidth(labelText);
+            this.pdf.text(labelText, qrStartX + (qrCodeSize - labelWidth) / 2, this.currentY + qrCodeSize + 5);
+            
+            // Add short link text below label
+            this.pdf.setFont('helvetica', 'normal');
+            this.pdf.setFontSize(6);
+            this.pdf.setTextColor(100, 100, 100);
+            const shortLink = this.options.jobCardData.finalDesignLink.length > 40 
+              ? this.options.jobCardData.finalDesignLink.substring(0, 37) + '...'
+              : this.options.jobCardData.finalDesignLink;
+            const linkWidth = this.pdf.getTextWidth(shortLink);
+            this.pdf.text(shortLink, qrStartX + (qrCodeSize - linkWidth) / 2, this.currentY + qrCodeSize + 9);
+          }
+        } catch (error) {
+          console.error('Error generating Final Design QR code:', error);
+          // Fallback to text if QR code generation fails
+          this.pdf.setFont('helvetica', 'normal');
+          this.pdf.setFontSize(8);
+          this.pdf.setTextColor(64, 64, 64);
+          this.pdf.text('Final Design: ' + this.options.jobCardData.finalDesignLink, this.margin, this.currentY);
+          this.currentY += 6;
+        }
       }
       
-      this.currentY += 8;
+      // Move Y position down after QR codes
+      this.currentY += qrCodeSize + 15; // QR code height + spacing for labels
     }
     
     // Assigned Designer Information
-    if (this.options.jobCardData.assignedDesigner) {
+    if (this.options.jobCardData.assignedDesigner && 
+        typeof this.options.jobCardData.assignedDesigner === 'object' &&
+        this.options.jobCardData.assignedDesigner.name &&
+        this.options.jobCardData.assignedDesigner.email) {
       this.pdf.setFont('helvetica', 'bold');
       this.pdf.setFontSize(9);
       this.pdf.setTextColor(0, 0, 0);
@@ -833,30 +1036,42 @@ export class AdvancedJobCardPDFGenerator {
     });
   }
 
-  // Professional remarks section
+  // Professional remarks section - fetches from job form specialInstructions
   private createRemarksSection(): void {
-    if (!this.options.jobCardData.customerNotes && !this.options.product.remarks) return;
+    // Get remarks from specialInstructions (job form field) or customerNotes
+    const specialInstructions = (this.options.jobCardData as any).specialInstructions || 
+                               this.options.jobCardData.customerNotes || 
+                               '';
+    const productRemarks = this.options.product.remarks || '';
     
-    this.checkPageBreak(30);
+    if (!specialInstructions && !productRemarks) return;
     
-    this.createSectionHeader('SPECIAL INSTRUCTIONS & REMARKS');
+    this.checkPageBreak(40);
     
-    if (this.options.jobCardData.customerNotes) {
+    this.createSectionHeader('REMARKS & SPECIAL INSTRUCTIONS');
+    
+    // Show special instructions from job form (main remarks)
+    if (specialInstructions) {
       this.pdf.setFont('helvetica', 'bold');
       this.pdf.setFontSize(9);
       this.pdf.setTextColor(0, 0, 0);
-      this.pdf.text('Customer Notes:', this.margin, this.currentY);
+      this.pdf.text('Remarks:', this.margin, this.currentY);
       
       this.pdf.setFont('helvetica', 'normal');
       this.pdf.setFontSize(8);
       this.pdf.setTextColor(64, 64, 64);
-      const customerLines = this.pdf.splitTextToSize(this.options.jobCardData.customerNotes, this.contentWidth - 10);
-      this.pdf.text(customerLines, this.margin, this.currentY + 6);
+      const remarkLines = this.pdf.splitTextToSize(specialInstructions, this.contentWidth - 10);
+      this.pdf.text(remarkLines, this.margin + 5, this.currentY + 6);
       
-      this.currentY += 12 + (customerLines.length * 4);
+      this.currentY += 12 + (remarkLines.length * 4);
     }
     
-    if (this.options.product.remarks) {
+    // Show product remarks if different from special instructions
+    if (productRemarks && productRemarks !== specialInstructions) {
+      if (specialInstructions) {
+        this.currentY += 5; // Add spacing between sections
+      }
+      
       this.pdf.setFont('helvetica', 'bold');
       this.pdf.setFontSize(9);
       this.pdf.setTextColor(0, 0, 0);
@@ -865,11 +1080,13 @@ export class AdvancedJobCardPDFGenerator {
       this.pdf.setFont('helvetica', 'normal');
       this.pdf.setFontSize(8);
       this.pdf.setTextColor(64, 64, 64);
-      const remarkLines = this.pdf.splitTextToSize(this.options.product.remarks, this.contentWidth - 10);
-      this.pdf.text(remarkLines, this.margin, this.currentY + 6);
+      const productRemarksLines = this.pdf.splitTextToSize(productRemarks, this.contentWidth - 10);
+      this.pdf.text(productRemarksLines, this.margin + 5, this.currentY + 6);
       
-      this.currentY += 12 + (remarkLines.length * 4);
+      this.currentY += 12 + (productRemarksLines.length * 4);
     }
+    
+    this.currentY += 5; // Add extra spacing after section
   }
 
   // Professional timeline section
@@ -972,13 +1189,256 @@ export class AdvancedJobCardPDFGenerator {
     this.pdf.text('CONFIDENTIAL', this.pageWidth - this.margin - 40, footerY + 3);
   }
 
+  // Create Ratio Data Table
+  private createRatioDataTable(): void {
+    // Check for colorDetails in both direct location and rawData location
+    const colorDetails = this.options.jobCardData.ratioData?.colorDetails || 
+                        this.options.jobCardData.ratioData?.rawData?.colorDetails;
+    
+    if (!this.options.jobCardData.ratioData || !colorDetails || colorDetails.length === 0) {
+      return;
+    }
+
+    this.checkPageBreak(80);
+    
+    // Section header with consistent styling
+    this.createSectionHeader('PRODUCTION RATIO');
+
+    // Summary info - check both direct summary and rawData.summary
+    const summary = this.options.jobCardData.ratioData.summary || 
+                   this.options.jobCardData.ratioData.rawData?.summary;
+    if (summary) {
+      this.pdf.setFontSize(8);
+      this.pdf.setFont('helvetica', 'normal');
+      let summaryText = '';
+      if (summary.totalUPS) summaryText += `Total UPS: ${summary.totalUPS} | `;
+      if (summary.totalSheets || this.options.jobCardData.ratioData.totalSheets) {
+        summaryText += `Total Sheets: ${summary.totalSheets || this.options.jobCardData.ratioData.totalSheets} | `;
+      }
+      if (summary.totalPlates || this.options.jobCardData.ratioData.totalPlates) {
+        summaryText += `Total Plates: ${summary.totalPlates || this.options.jobCardData.ratioData.totalPlates} | `;
+      }
+      if (summary.qtyProduced) summaryText += `Qty Produced: ${summary.qtyProduced}`;
+      if (summaryText) {
+        this.pdf.text(summaryText, this.margin, this.currentY);
+        this.currentY += 6;
+      }
+    }
+
+    // Table header with professional styling - Orange/Amber theme for Production Ratio
+    const headerY = this.currentY;
+    this.pdf.setFillColor(254, 243, 199); // Light amber/orange
+    this.pdf.rect(this.margin, headerY, this.contentWidth, 8, 'F');
+    
+    this.pdf.setFontSize(8);
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.setTextColor(0, 0, 0);
+    
+    const colWidths = [25, 20, 20, 20, 20, 20, 25, 20];
+    const headers = ['Color', 'Size', 'Req Qty', 'Plate', 'UPS', 'Sheets', 'Qty Produced', 'Excess'];
+    
+    // Helper function to draw ratio table header - Orange/Amber theme
+    const drawRatioTableHeader = (yPosition: number) => {
+      this.pdf.setFillColor(254, 243, 199); // Light amber/orange
+      this.pdf.rect(this.margin, yPosition, this.contentWidth, 8, 'F');
+      this.pdf.setFontSize(8);
+      this.pdf.setFont('helvetica', 'bold');
+      this.pdf.setTextColor(0, 0, 0);
+      let xPos = this.margin + 3;
+      headers.forEach((header, idx) => {
+        this.pdf.text(header, xPos, yPosition + 6);
+        xPos += colWidths[idx];
+      });
+    };
+    
+    drawRatioTableHeader(headerY);
+    this.currentY = headerY + 8;
+
+    // Table rows
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.setFontSize(7);
+    
+    // Use the colorDetails we already extracted
+    const maxRowsPerPage = Math.floor((this.pageHeight - this.currentY - 30) / 6);
+    
+    // Process all items with pagination
+    let processedItems = 0;
+    colorDetails.forEach((item, index) => {
+      this.checkPageBreak(10);
+      
+      // If we've processed maxRowsPerPage, add new page and reset header
+      if (processedItems > 0 && processedItems % maxRowsPerPage === 0) {
+        this.addNewPage();
+        // Re-add table header on new page
+        drawRatioTableHeader(this.currentY);
+        this.currentY += 8;
+      }
+      
+      const rowY = this.currentY;
+      
+      // Alternate row background for better readability - Orange/Amber theme
+      if (processedItems % 2 === 0) {
+        this.pdf.setFillColor(255, 251, 235); // Very light amber
+        this.pdf.rect(this.margin, rowY, this.contentWidth, 7, 'F');
+      } else {
+        this.pdf.setFillColor(255, 255, 255);
+        this.pdf.rect(this.margin, rowY, this.contentWidth, 7, 'F');
+      }
+      
+      let xPos = this.margin + 3;
+      const rowData = [
+        item.color || '',
+        item.size || '',
+        item.requiredQty?.toString() || '0',
+        item.plate || '',
+        item.ups?.toString() || '0',
+        item.sheets?.toString() || '0',
+        item.qtyProduced?.toString() || '0',
+        item.excessQty?.toString() || '0'
+      ];
+      
+      this.pdf.setFontSize(7);
+      rowData.forEach((data, idx) => {
+        this.pdf.text(data.substring(0, 15), xPos, rowY + 5);
+        xPos += colWidths[idx];
+      });
+      
+      this.currentY = rowY + 7;
+      processedItems++;
+    });
+
+    // Add summary note
+    this.currentY += 3;
+    this.pdf.setFontSize(6);
+    this.pdf.setTextColor(128, 128, 128);
+    this.pdf.text(`Total: ${colorDetails.length} rows displayed`, this.margin, this.currentY);
+    this.currentY += 4;
+  }
+
+  // Create Item Specifications Table
+  private createItemSpecificationsTable(): void {
+    if (!this.options.jobCardData.itemSpecificationsData || !this.options.jobCardData.itemSpecificationsData.items || 
+        this.options.jobCardData.itemSpecificationsData.items.length === 0) {
+      return;
+    }
+
+    this.checkPageBreak(80);
+    
+    // Section header with consistent styling
+    this.createSectionHeader('PACKAGING DETAILS');
+
+    // Summary info
+    const summary = this.options.jobCardData.itemSpecificationsData.summary;
+    if (summary) {
+      this.pdf.setFontSize(8);
+      this.pdf.setFont('helvetica', 'normal');
+      let summaryText = '';
+      if (summary.totalItems) summaryText += `Total Items: ${summary.totalItems} | `;
+      if (summary.totalQuantity) summaryText += `Total Quantity: ${summary.totalQuantity} | `;
+      if (summary.sizeVariants) summaryText += `Sizes: ${summary.sizeVariants} | `;
+      if (summary.colorVariants) summaryText += `Colors: ${summary.colorVariants}`;
+      if (summaryText) {
+        this.pdf.text(summaryText, this.margin, this.currentY);
+        this.currentY += 6;
+      }
+    }
+
+    // Table header with professional styling - Purple/Pink theme for Packaging Details
+    const headerY = this.currentY;
+    this.pdf.setFillColor(250, 232, 255); // Light purple/pink
+    this.pdf.rect(this.margin, headerY, this.contentWidth, 8, 'F');
+    
+    this.pdf.setFontSize(8);
+    this.pdf.setFont('helvetica', 'bold');
+    this.pdf.setTextColor(0, 0, 0);
+    
+    const colWidths = [30, 20, 15, 30, 20, 15, 25];
+    const headers = ['Item Code', 'Color', 'Size', 'Secondary Code', 'Quantity', 'Decimal', 'Material'];
+    
+    // Helper function to draw table header - Purple/Pink theme
+    const drawTableHeader = (yPosition: number) => {
+      this.pdf.setFillColor(250, 232, 255); // Light purple/pink
+      this.pdf.rect(this.margin, yPosition, this.contentWidth, 8, 'F');
+      this.pdf.setFontSize(8);
+      this.pdf.setFont('helvetica', 'bold');
+      this.pdf.setTextColor(0, 0, 0);
+      let xPos = this.margin + 3;
+      headers.forEach((header, idx) => {
+        this.pdf.text(header, xPos, yPosition + 6);
+        xPos += colWidths[idx];
+      });
+    };
+    
+    drawTableHeader(headerY);
+    this.currentY = headerY + 8;
+
+    // Table rows
+    this.pdf.setFont('helvetica', 'normal');
+    this.pdf.setFontSize(7);
+    
+    const items = this.options.jobCardData.itemSpecificationsData.items;
+    const maxRowsPerPage = Math.floor((this.pageHeight - this.currentY - 30) / 6);
+    
+    // Process all items, handling pagination
+    let processedItems = 0;
+    items.forEach((item, index) => {
+      this.checkPageBreak(10);
+      
+      // If we've processed maxRowsPerPage, add new page and reset header
+      if (processedItems > 0 && processedItems % maxRowsPerPage === 0) {
+        this.addNewPage();
+        // Re-add table header on new page
+        drawTableHeader(this.currentY);
+        this.currentY += 8;
+      }
+      
+      const rowY = this.currentY;
+      
+      // Alternate row background for better readability - Purple/Pink theme
+      if (processedItems % 2 === 0) {
+        this.pdf.setFillColor(253, 244, 255); // Very light purple
+        this.pdf.rect(this.margin, rowY, this.contentWidth, 7, 'F');
+      } else {
+        this.pdf.setFillColor(255, 255, 255);
+        this.pdf.rect(this.margin, rowY, this.contentWidth, 7, 'F');
+      }
+      
+      let xPos = this.margin + 3;
+      const rowData = [
+        item.itemCode || '',
+        item.color || '',
+        item.size || '',
+        item.secondaryCode || '-',
+        item.quantity?.toString() || '0',
+        item.decimalValue?.toString() || '0',
+        item.material || '-'
+      ];
+      
+      this.pdf.setFontSize(7);
+      rowData.forEach((data, idx) => {
+        this.pdf.text(data.substring(0, 20), xPos, rowY + 5);
+        xPos += colWidths[idx];
+      });
+      
+      this.currentY = rowY + 7;
+      processedItems++;
+    });
+
+    // Add summary note
+    this.currentY += 3;
+    this.pdf.setFontSize(6);
+    this.pdf.setTextColor(128, 128, 128);
+    this.pdf.text(`Total: ${items.length} items displayed`, this.margin, this.currentY);
+    this.currentY += 4;
+  }
+
   // Main generation method
   public async generatePDF(): Promise<void> {
     try {
       // Page 1: Main job card
       this.createHeader();
       this.createJobDetailsSection();
-      this.createLinksAndDesignerSection();
+      await this.createLinksAndDesignerSection();
       this.createProductSpecifications();
       this.createProcessWorkflow();
       
@@ -987,11 +1447,55 @@ export class AdvancedJobCardPDFGenerator {
         this.addNewPage();
       }
       
-      this.createQualityControlSection();
+      // Quality control section removed as per user request
+      // this.createQualityControlSection();
       await this.createReferenceImagesSection();
       this.createRemarksSection();
       this.createTimelineSection();
-      this.createSignatureSection();
+      // Signature section removed as per user request - PDF doesn't need signatures
+      // this.createSignatureSection();
+      
+      // Add Ratio Data Table if available
+      const ratioColorDetails = this.options.jobCardData.ratioData?.colorDetails || 
+                                 this.options.jobCardData.ratioData?.rawData?.colorDetails;
+      
+      console.log('📊 PDF Generator - Checking ratio data:', {
+        hasRatioData: !!this.options.jobCardData.ratioData,
+        hasColorDetails: !!ratioColorDetails,
+        colorDetailsCount: ratioColorDetails?.length || 0,
+        hasRawData: !!this.options.jobCardData.ratioData?.rawData
+      });
+      
+      if (this.options.jobCardData.ratioData && ratioColorDetails && ratioColorDetails.length > 0) {
+        this.checkPageBreak(100);
+        if (this.currentY > this.pageHeight - 100) {
+          this.addNewPage();
+        }
+        console.log('✅ Adding Ratio Data Table to PDF');
+        this.createRatioDataTable();
+      } else {
+        console.warn('⚠️ Skipping Ratio Data Table - no data or empty colorDetails');
+      }
+      
+      // Add Item Specifications Table if available
+      console.log('📋 PDF Generator - Checking item specifications:', {
+        hasItemSpecsData: !!this.options.jobCardData.itemSpecificationsData,
+        hasItems: !!this.options.jobCardData.itemSpecificationsData?.items,
+        itemsCount: this.options.jobCardData.itemSpecificationsData?.items?.length || 0
+      });
+      
+      if (this.options.jobCardData.itemSpecificationsData && 
+          this.options.jobCardData.itemSpecificationsData.items && 
+          this.options.jobCardData.itemSpecificationsData.items.length > 0) {
+        this.checkPageBreak(100);
+        if (this.currentY > this.pageHeight - 100) {
+          this.addNewPage();
+        }
+        console.log('✅ Adding Item Specifications Table to PDF');
+        this.createItemSpecificationsTable();
+      } else {
+        console.warn('⚠️ Skipping Item Specifications Table - no data or empty items');
+      }
       
       // Add footer to all pages
       this.addFooterToAllPages();

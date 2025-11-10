@@ -112,6 +112,24 @@ interface QAJob {
   fsc?: boolean;
   fscClaim?: string;
   qaNotes?: string;
+  // Item Specifications
+  itemSpecifications?: {
+    id: string;
+    excel_file_name: string;
+    item_count: number;
+    total_quantity: number;
+    size_variants: number;
+    color_variants: number;
+    items: Array<{
+      item_code: string;
+      color: string;
+      size: string;
+      quantity: number;
+      secondary_code?: string;
+      decimal_value?: number;
+      material?: string;
+    }>;
+  };
 }
 
 const ModernQADashboard: React.FC = () => {
@@ -160,37 +178,58 @@ const ModernQADashboard: React.FC = () => {
       console.log('📊 API Response:', response);
       
       if (response.jobs) {
-        const qaJobs = response.jobs.map((job: any) => ({
-          id: job.id.toString(),
-          jobNumber: job.jobNumber,
-          productName: job.product_name || 'N/A',
-          customerName: job.customer_name || 'N/A',
-          designerName: job.assigned_designer_name || 'N/A',
-          merchandiserName: job.createdBy || 'N/A',
-          clientLayoutLink: job.client_layout_link || '',
-          finalDesignLink: job.final_design_link || '',
-          status: job.status,
-          priority: job.urgency,
-          dueDate: job.dueDate,
-          createdAt: job.createdAt,
-          submittedAt: job.updatedAt,
-          customerEmail: job.customer_email,
-          customerPhone: job.customer_phone,
-          customerAddress: job.customer_address,
-          quantity: job.quantity,
-          poNumber: job.po_number,
-          brand: job.brand,
-          gsm: job.gsm,
-          materialName: job.material_name,
-          categoryName: job.category_name,
-          fsc: job.fsc,
-          fscClaim: job.fsc_claim,
-          qaNotes: job.qa_notes
+        // Fetch item specifications for each job
+        const qaJobsWithSpecs = await Promise.all(response.jobs.map(async (job: any) => {
+          let itemSpecifications = null;
+          try {
+            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+              }
+            });
+            if (itemSpecsResponse.ok) {
+              const itemSpecsResult = await itemSpecsResponse.json();
+              if (itemSpecsResult.success && itemSpecsResult.itemSpecifications) {
+                itemSpecifications = itemSpecsResult.itemSpecifications;
+              }
+            }
+          } catch (error) {
+            console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+          }
+
+          return {
+            id: job.id.toString(),
+            jobNumber: job.jobNumber,
+            productName: job.product_name || 'N/A',
+            customerName: job.customer_name || 'N/A',
+            designerName: job.assigned_designer_name || 'N/A',
+            merchandiserName: job.createdBy || 'N/A',
+            clientLayoutLink: job.client_layout_link || '',
+            finalDesignLink: job.final_design_link || '',
+            status: job.status,
+            priority: job.urgency,
+            dueDate: job.dueDate,
+            createdAt: job.createdAt,
+            submittedAt: job.updatedAt,
+            customerEmail: job.customer_email,
+            customerPhone: job.customer_phone,
+            customerAddress: job.customer_address,
+            quantity: job.quantity,
+            poNumber: job.po_number,
+            brand: job.brand,
+            gsm: job.gsm,
+            materialName: job.material_name,
+            categoryName: job.category_name,
+            fsc: job.fsc,
+            fscClaim: job.fsc_claim,
+            qaNotes: job.qa_notes,
+            itemSpecifications: itemSpecifications || null
+          };
         }));
         
-        setJobs(qaJobs);
-        console.log('✅ QA Jobs loaded:', qaJobs.length);
-        toast.success(`Loaded ${qaJobs.length} jobs for review`);
+        setJobs(qaJobsWithSpecs);
+        console.log('✅ QA Jobs loaded:', qaJobsWithSpecs.length);
+        toast.success(`Loaded ${qaJobsWithSpecs.length} jobs for review`);
       } else {
         console.log('❌ No jobs found or API error');
         toast.error('No jobs found for review');
@@ -668,6 +707,72 @@ const ModernQADashboard: React.FC = () => {
                                   </div>
                                 </div>
                               </div>
+
+                              {/* Item Specifications */}
+                              {job.itemSpecifications && job.itemSpecifications.items && job.itemSpecifications.items.length > 0 && (
+                                <div className="col-span-2 space-y-4">
+                                  <h4 className="font-semibold text-gray-900 flex items-center">
+                                    <Package className="w-4 h-4 mr-2" />
+                                    Item Specifications
+                                  </h4>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <Label className="text-gray-600 text-xs">Total Items</Label>
+                                      <p className="font-bold text-gray-900">{job.itemSpecifications.item_count || job.itemSpecifications.items.length}</p>
+                                    </div>
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <Label className="text-gray-600 text-xs">Total Quantity</Label>
+                                      <p className="font-bold text-gray-900">{job.itemSpecifications.total_quantity?.toLocaleString() || job.itemSpecifications.items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0).toLocaleString()}</p>
+                                    </div>
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <Label className="text-gray-600 text-xs">Sizes</Label>
+                                      <p className="font-bold text-gray-900">{job.itemSpecifications.size_variants || new Set(job.itemSpecifications.items.map((i: any) => i.size)).size}</p>
+                                    </div>
+                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+                                      <Label className="text-gray-600 text-xs">Colors</Label>
+                                      <p className="font-bold text-gray-900">{job.itemSpecifications.color_variants || new Set(job.itemSpecifications.items.map((i: any) => i.color)).size}</p>
+                                    </div>
+                                  </div>
+                                  <div className="max-h-60 overflow-y-auto border rounded-lg bg-white">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-gray-100 sticky top-0">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Item Code</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Color</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Size</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Secondary Code</th>
+                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Material</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-200">
+                                        {job.itemSpecifications.items.slice(0, 50).map((item: any, index: number) => (
+                                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                            <td className="px-3 py-2 font-mono text-gray-900">{item.item_code}</td>
+                                            <td className="px-3 py-2">
+                                              <Badge variant="outline" className="bg-gray-50">{item.color}</Badge>
+                                            </td>
+                                            <td className="px-3 py-2 font-medium text-gray-900">{item.size}</td>
+                                            <td className="px-3 py-2 font-semibold text-gray-900">{item.quantity?.toLocaleString() || '0'}</td>
+                                            <td className="px-3 py-2 font-mono text-gray-600">{item.secondary_code || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-600">{item.material || '-'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                    {job.itemSpecifications.items.length > 50 && (
+                                      <div className="px-3 py-2 text-center text-xs text-gray-500 bg-gray-50">
+                                        Showing first 50 of {job.itemSpecifications.items.length} items
+                                      </div>
+                                    )}
+                                  </div>
+                                  {job.itemSpecifications.excel_file_name && (
+                                    <div className="text-xs text-gray-600">
+                                      <span className="font-medium">File:</span> {job.itemSpecifications.excel_file_name}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Customer Details */}
                               <div className="space-y-4">

@@ -39,6 +39,24 @@ interface Job {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  assigned_designer_name?: string;
+  assigned_designer_email?: string;
+  assigned_designer_phone?: string;
+  assigned_designer?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_address?: string;
+  product_code?: string;
+  material_name?: string;
+  category_name?: string;
+  company_name?: string;
+  po_number?: string;
+  client_layout_link?: string;
+  final_design_link?: string;
+  fsc?: string;
+  fsc_claim?: string;
+  gsm?: number;
 }
 
 interface JobManagementTableProps {
@@ -208,6 +226,99 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         // Continue without images if fetching fails
       }
 
+      // Fetch ratio report data if available
+      let ratioData = null;
+      try {
+        const ratioResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${job.id}/ratio-report`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          }
+        });
+        if (ratioResponse.ok) {
+          const ratioResult = await ratioResponse.json();
+          if (ratioResult.success && ratioResult.ratioReport) {
+            const report = ratioResult.ratioReport;
+            ratioData = {
+              colorDetails: report.color_details || [],
+              summary: {
+                totalUPS: report.total_ups,
+                totalSheets: report.total_sheets,
+                totalPlates: report.total_plates,
+                qtyProduced: report.qty_produced,
+                excessQty: report.excess_qty,
+                efficiency: report.efficiency_percentage,
+                requiredOrderQty: report.required_order_qty
+              },
+              rawData: report.raw_excel_data || {}
+            };
+            console.log('✅ Ratio report data loaded for PDF');
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not fetch ratio report:', error);
+        // Continue without ratio data
+      }
+
+      // Fetch item specifications data if available
+      let itemSpecificationsData = null;
+      try {
+        const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${job.id}/item-specifications`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          }
+        });
+        if (itemSpecsResponse.ok) {
+          const itemSpecsResult = await itemSpecsResponse.json();
+          if (itemSpecsResult.success && itemSpecsResult.itemSpecifications) {
+            const specs = itemSpecsResult.itemSpecifications;
+            // Get items from the response (already fetched from database)
+            let items = [];
+            if (specs.items && Array.isArray(specs.items)) {
+              // Items are already in the response from database
+              items = specs.items.map((item: any) => ({
+                itemCode: item.item_code,
+                color: item.color,
+                size: item.size,
+                quantity: item.quantity,
+                secondaryCode: item.secondary_code,
+                decimalValue: item.decimal_value,
+                material: item.material,
+                specifications: typeof item.specifications === 'string' ? JSON.parse(item.specifications) : (item.specifications || {})
+              }));
+            } else {
+              // Fallback: try to get from raw_excel_data
+              try {
+                if (specs.raw_excel_data) {
+                  let rawData = specs.raw_excel_data;
+                  if (typeof rawData === 'string') {
+                    rawData = JSON.parse(rawData);
+                  }
+                  if (rawData.items && Array.isArray(rawData.items)) {
+                    items = rawData.items;
+                  }
+                }
+              } catch (e) {
+                console.warn('Could not parse items from raw data');
+              }
+            }
+            
+            itemSpecificationsData = {
+              items: items,
+              summary: {
+                totalItems: specs.item_count || items.length || 0,
+                totalQuantity: specs.total_quantity || items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0,
+                sizeVariants: specs.size_variants || new Set(items.map((i: any) => i.size)).size || 0,
+                colorVariants: specs.color_variants || new Set(items.map((i: any) => i.color)).size || 0
+              }
+            };
+            console.log('✅ Item specifications data loaded for PDF');
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Could not fetch item specifications:', error);
+        // Continue without item specifications data
+      }
+
       // Create complete job card data from the job information
       const jobCardData = {
         productCode: job.product_code || product?.product_item_code || '',
@@ -220,7 +331,6 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         customerName: job.customer_name || job.company_name || 'Customer',
         salesman: 'System',
         jobCode: job.jobNumber, // Keep job number as job code
-        targetDate: job.dueDate,
         priority: job.urgency,
         status: job.status,
         // Add missing fields for complete PDF generation
@@ -239,17 +349,26 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         // Add new fields for complete PDF generation
         clientLayoutLink: job.client_layout_link || '',
         finalDesignLink: job.final_design_link || '',
-        assignedDesigner: job.assigned_designer ? {
-          name: job.assigned_designer,
+        assignedDesigner: (job.assigned_designer_name || job.assigned_designer) ? {
+          name: job.assigned_designer_name || job.assigned_designer || 'Unknown Designer',
           email: job.assigned_designer_email || 'designer@example.com',
           phone: job.assigned_designer_phone || ''
-        } : 'System Assigned',
+        } : undefined,
         material: job.material_name || product?.material_name || 'N/A',
         fsc: job.fsc || product?.fsc || 'No',
         fscClaim: job.fsc_claim || product?.fsc_claim || 'Not Applicable',
         brand: job.brand || product?.brand || 'N/A',
         gsm: job.gsm || product?.gsm || 0,
-        category: job.category_name || product?.category_name || 'N/A'
+        category: job.category_name || product?.category_name || 'N/A',
+        ratioData: ratioData, // Include ratio Excel data
+        itemSpecificationsData: itemSpecificationsData, // Include item specifications data
+        specialInstructions: job.notes || job.special_instructions || '', // Include remarks from job
+        customerInfo: {
+          name: job.customer_name || job.company_name || 'Customer',
+          email: job.customer_email || 'customer@example.com',
+          phone: job.customer_phone || '+1-234-567-8900',
+          address: job.customer_address || 'Customer Address'
+        }
       };
 
       // Create complete product with process sequence and all required fields
@@ -266,7 +385,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         productType: 'Offset',
         material_name: job.material_name || 'Standard Material',
         color_specifications: 'As per Approved Sample/Artwork',
-        remarks: 'Print on Uncoated Side'
+        remarks: product?.remarks || job.remarks || ''
       };
 
       // Generate PDF using the same generator as job creation

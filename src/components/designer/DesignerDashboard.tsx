@@ -166,6 +166,24 @@ interface DesignerJob {
     progress: number;
   };
   progress: number;
+  // Item Specifications
+  itemSpecifications?: {
+    id: string;
+    excel_file_name: string;
+    item_count: number;
+    total_quantity: number;
+    size_variants: number;
+    color_variants: number;
+    items: Array<{
+      item_code: string;
+      color: string;
+      size: string;
+      quantity: number;
+      secondary_code?: string;
+      decimal_value?: number;
+      material?: string;
+    }>;
+  };
 }
 
 interface DesignerStats {
@@ -338,6 +356,25 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             console.error(`Error fetching product info for job ${job.id}:`, error);
           }
 
+          // Fetch item specifications for this job
+          let itemSpecifications = null;
+          try {
+            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            if (itemSpecsResponse.ok) {
+              const itemSpecsResult = await itemSpecsResponse.json();
+              if (itemSpecsResult.success && itemSpecsResult.itemSpecifications) {
+                itemSpecifications = itemSpecsResult.itemSpecifications;
+                console.log(`📋 Item specifications for job ${job.id}:`, itemSpecifications);
+              }
+            }
+          } catch (error) {
+            console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+          }
+
           const product = completeProductInfo?.product || completeProductInfo || {};
           
           // Return job with complete product information and process sequence
@@ -380,6 +417,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 { id: 3, name: 'Plate Making', sequenceOrder: 3, isRequired: true, estimatedHours: 1 }
               ]
             },
+            // Item Specifications
+            itemSpecifications: itemSpecifications || null,
             // Prepress workflow information
             prepress_status: job.prepress_status || 'PENDING',
             workflow_progress: job.workflow_progress || {
@@ -394,17 +433,36 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           };
         }));
         
-        setJobs(designerJobsWithCompleteInfo);
-        setFilteredJobs(designerJobsWithCompleteInfo);
+        // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, and REJECTED (revised from QA)
+        // Exclude: APPROVED_BY_QA, SUBMITTED_TO_QA, COMPLETED, HOD_REVIEW, PAUSED, and other statuses
+        const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'REJECTED'];
+        const excludedStatuses = ['APPROVED_BY_QA', 'SUBMITTED_TO_QA', 'COMPLETED', 'HOD_REVIEW', 'PAUSED'];
+        const filteredDesignerJobs = designerJobsWithCompleteInfo.filter((job: DesignerJob) => {
+          const jobStatus = (job.status || job.prepress_status || '').toUpperCase();
+          // Exclude explicitly excluded statuses first
+          if (excludedStatuses.includes(jobStatus)) {
+            return false;
+          }
+          // Only include allowed statuses
+          return allowedStatuses.includes(jobStatus);
+        });
         
-        // Calculate stats
+        console.log(`📊 Filtered jobs: ${filteredDesignerJobs.length} out of ${designerJobsWithCompleteInfo.length} total jobs`);
+        console.log('📊 Allowed statuses:', allowedStatuses);
+        console.log('📊 Filtered job statuses:', filteredDesignerJobs.map((j: DesignerJob) => j.status || j.prepress_status));
+        
+        setJobs(filteredDesignerJobs);
+        setFilteredJobs(filteredDesignerJobs);
+        
+        // Calculate stats based on filtered jobs only
         const jobStats = {
-          total_jobs: designerJobsWithCompleteInfo.length,
-          assigned_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'ASSIGNED').length,
-          in_progress_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'IN_PROGRESS').length,
-          completed_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'COMPLETED').length,
-          paused_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'PAUSED').length,
-          hod_review_jobs: designerJobsWithCompleteInfo.filter((job: DesignerJob) => job.status === 'HOD_REVIEW').length
+          total_jobs: filteredDesignerJobs.length,
+          assigned_jobs: filteredDesignerJobs.filter((job: DesignerJob) => (job.status === 'ASSIGNED' || job.status === 'PENDING')).length,
+          in_progress_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'IN_PROGRESS').length,
+          completed_jobs: 0, // Not showing completed jobs in designer portal
+          paused_jobs: 0, // Not showing paused jobs in designer portal
+          hod_review_jobs: 0, // Not showing HOD review jobs in designer portal
+          revised_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'REJECTED').length
         };
         setStats(jobStats);
         
@@ -971,11 +1029,10 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
                   <SelectItem value="ASSIGNED">Assigned</SelectItem>
                   <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="PAUSED">Paused</SelectItem>
-                  <SelectItem value="HOD_REVIEW">HOD Review</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="REJECTED">Revised from QA</SelectItem>
                 </SelectContent>
               </Select>
                 </div>
@@ -1275,6 +1332,72 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                 )}
                               </div>
                             </div>
+
+                            {/* Item Specifications */}
+                            {selectedJob.itemSpecifications && selectedJob.itemSpecifications.items && selectedJob.itemSpecifications.items.length > 0 && (
+                              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                                <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                  <Package className="h-4 w-4" />
+                                  Item Specifications
+                                </h4>
+                                <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                  <div className="bg-white p-2 rounded">
+                                    <span className="text-gray-600 text-xs">Total Items</span>
+                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.item_count || selectedJob.itemSpecifications.items.length}</div>
+                                  </div>
+                                  <div className="bg-white p-2 rounded">
+                                    <span className="text-gray-600 text-xs">Total Quantity</span>
+                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.total_quantity?.toLocaleString() || selectedJob.itemSpecifications.items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0).toLocaleString()}</div>
+                                  </div>
+                                  <div className="bg-white p-2 rounded">
+                                    <span className="text-gray-600 text-xs">Sizes</span>
+                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.size_variants || new Set(selectedJob.itemSpecifications.items.map((i: any) => i.size)).size}</div>
+                                  </div>
+                                  <div className="bg-white p-2 rounded">
+                                    <span className="text-gray-600 text-xs">Colors</span>
+                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.color_variants || new Set(selectedJob.itemSpecifications.items.map((i: any) => i.color)).size}</div>
+                                  </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto border rounded-lg bg-white">
+                                  <table className="w-full text-xs">
+                                    <thead className="bg-gray-100 sticky top-0">
+                                      <tr>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Item Code</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Color</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Size</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Secondary Code</th>
+                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Material</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                      {selectedJob.itemSpecifications.items.slice(0, 50).map((item: any, index: number) => (
+                                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                          <td className="px-3 py-2 font-mono text-gray-900">{item.item_code}</td>
+                                          <td className="px-3 py-2">
+                                            <Badge variant="outline" className="bg-gray-50">{item.color}</Badge>
+                                          </td>
+                                          <td className="px-3 py-2 font-medium text-gray-900">{item.size}</td>
+                                          <td className="px-3 py-2 font-semibold text-gray-900">{item.quantity?.toLocaleString() || '0'}</td>
+                                          <td className="px-3 py-2 font-mono text-gray-600">{item.secondary_code || '-'}</td>
+                                          <td className="px-3 py-2 text-gray-600">{item.material || '-'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {selectedJob.itemSpecifications.items.length > 50 && (
+                                    <div className="px-3 py-2 text-center text-xs text-gray-500 bg-gray-50">
+                                      Showing first 50 of {selectedJob.itemSpecifications.items.length} items
+                                    </div>
+                                  )}
+                                </div>
+                                {selectedJob.itemSpecifications.excel_file_name && (
+                                  <div className="mt-2 text-xs text-gray-600">
+                                    <span className="font-medium">File:</span> {selectedJob.itemSpecifications.excel_file_name}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Job Details */}
                             <div className="bg-blue-50 p-3 rounded-lg">
@@ -1631,7 +1754,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                             <div className="mt-1 p-3 bg-blue-50 rounded-lg border border-blue-200">
                               <p className="text-sm">{jobDetailsData.customer_notes}</p>
                             </div>
-                          </div>
+                           </div>
                         )}
                         {jobDetailsData.special_instructions && (
                           <div>

@@ -150,8 +150,8 @@ router.get('/', [
       'N/A' as category_name,
       'Offset' as product_type,
       m.name as material_name,
-      'As per Approved Sample/Artwork' as color_specifications,
-      'Print on Uncoated Side' as remarks
+      COALESCE(p.color_specifications, '') as color_specifications,
+      COALESCE(p.remarks, '') as remarks
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
     ${whereClause}
@@ -272,8 +272,8 @@ router.get('/:id', asyncHandler(async (req, res) => {
       'System User' as created_by_name,
       'Offset' as product_type,
       m.name as material_name,
-      'As per Approved Sample/Artwork' as color_specifications,
-      'Print on Uncoated Side' as remarks
+      COALESCE(p.color_specifications, '') as color_specifications,
+      COALESCE(p.remarks, '') as remarks
     FROM products p
     LEFT JOIN categories c ON p."categoryId" = c.id
     LEFT JOIN materials m ON p.material_id = m.id
@@ -360,8 +360,9 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
   const query = `
     INSERT INTO products (
       name, sku, brand, "categoryId", description,
-      gsm, "fscCertified", "fscLicense", "basePrice", material_id, "createdAt", "updatedAt"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      gsm, "fscCertified", "fscLicense", "basePrice", material_id, 
+      color_specifications, remarks, "createdAt", "updatedAt"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING *
   `;
 
@@ -376,7 +377,9 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
       fsc || false, // fscCertified
       fsc_claim || null, // fscLicense
       0, // basePrice default
-      finalMaterialId // material_id
+      finalMaterialId, // material_id
+      color_specifications || null, // color_specifications
+      remarks || null // remarks
     ]);
 
     const product = result.rows[0];

@@ -24,7 +24,7 @@ export const ProductMasterForm: React.FC<ProductMasterFormProps> = ({ onProductS
     material_name: 'C1S',
     gsm: 350,
     color_specifications: 'As per Approved Sample/Artwork',
-    remarks: 'Print on Uncoated Side',
+    remarks: '',
     fsc: 'Yes',
     fsc_claim: 'Recycled',
     product_type: 'Offset',

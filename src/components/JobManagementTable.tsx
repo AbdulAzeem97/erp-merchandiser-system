@@ -57,6 +57,10 @@ interface Job {
   fsc?: string;
   fsc_claim?: string;
   gsm?: number;
+  current_department?: string;
+  current_step?: string;
+  workflow_status?: string;
+  status_message?: string;
 }
 
 interface JobManagementTableProps {
@@ -76,6 +80,24 @@ const urgencyConfig = {
   'NORMAL': { color: 'bg-blue-100 text-blue-800' },
   'HIGH': { color: 'bg-orange-100 text-orange-800' },
   'URGENT': { color: 'bg-red-100 text-red-800' }
+};
+
+// Helper function to infer department from status (fallback)
+const getDepartmentFromStatus = (status: string): string | null => {
+  const statusUpper = status.toUpperCase();
+  if (statusUpper.includes('APPROVED_BY_QA') || statusUpper.includes('SUBMITTED_TO_QA') || statusUpper.includes('QA')) {
+    return 'Prepress';
+  }
+  if (statusUpper.includes('CTP') || statusUpper.includes('PLATE')) {
+    return 'Prepress';
+  }
+  if (statusUpper.includes('COMPLETED')) {
+    return 'Production';
+  }
+  if (statusUpper.includes('PENDING') || statusUpper.includes('IN_PROGRESS')) {
+    return 'Prepress'; // Default to Prepress for new jobs
+  }
+  return null;
 };
 
 export const JobManagementTable: React.FC<JobManagementTableProps> = ({ 
@@ -100,7 +122,18 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
     try {
       setIsLoading(true);
       const response = await jobsAPI.getAll();
-      setJobs(response.jobs || []);
+      const jobsData = response.jobs || [];
+      console.log('📋 Jobs loaded:', jobsData.length);
+      console.log('📋 First job sample:', jobsData[0] ? {
+        id: jobsData[0].id,
+        jobNumber: jobsData[0].jobNumber,
+        status: jobsData[0].status,
+        current_department: jobsData[0].current_department,
+        current_step: jobsData[0].current_step,
+        workflow_status: jobsData[0].workflow_status,
+        status_message: jobsData[0].status_message
+      } : 'No jobs');
+      setJobs(jobsData);
     } catch (error) {
       console.error('Error loading jobs:', error);
     } finally {
@@ -582,12 +615,19 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge 
-                        className={`${statusConfig[job.status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800'} flex items-center gap-1 w-fit`}
-                      >
-                        {getStatusIcon(job.status)}
-                        {job.status}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge 
+                          className={`${statusConfig[job.status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800'} flex items-center gap-1 w-fit`}
+                        >
+                          {getStatusIcon(job.status)}
+                          {job.status}
+                        </Badge>
+                        {(job.current_department || getDepartmentFromStatus(job.status)) && (
+                          <Badge className="bg-purple-100 text-purple-800 text-xs w-fit">
+                            {job.current_department || getDepartmentFromStatus(job.status)}
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <Badge 

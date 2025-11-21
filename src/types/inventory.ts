@@ -340,3 +340,168 @@ export interface PaginationResponse<T> {
     pages: number;
   };
 }
+
+// Material Size Types
+export interface MaterialSize {
+  id: string;
+  inventory_material_id: string;
+  size_name: string;
+  width_mm: number;
+  height_mm: number;
+  unit_cost?: number;
+  is_default: boolean;
+  is_active: boolean;
+  current_stock?: number;
+  reserved_stock?: number;
+  available_stock?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaterialWithSizes extends InventoryMaterial {
+  sizes?: MaterialSize[];
+  has_multiple_sizes: boolean;
+  default_size?: MaterialSize;
+}
+
+// Sheet Layout Types
+export interface CuttingLayout {
+  type: 'horizontal' | 'vertical' | 'smart';
+  blanksPerRow: number;
+  blanksPerColumn: number;
+  blanksPerSheet: number;
+  usedWidth: number;
+  usedHeight: number;
+  wastageWidth: number;
+  wastageHeight: number;
+  wastageArea: number;
+  wastagePercentage: number;
+  efficiencyPercentage: number;
+  gridPattern: string;
+}
+
+export interface LayoutOptions {
+  horizontal: CuttingLayout;
+  vertical: CuttingLayout;
+  smart: CuttingLayout;
+  best: CuttingLayout;
+}
+
+// Sheet Optimization Types
+export interface SheetOptimization {
+  size: {
+    id: string;
+    size_name: string;
+    width_mm: number;
+    height_mm: number;
+    unit_cost?: number;
+    available_stock: number;
+    current_stock: number;
+    reserved_stock: number;
+  };
+  layouts: LayoutOptions;
+  bestLayout: CuttingLayout;
+  baseRequiredSheets: number;
+  totalSheets: number;
+  efficiency: number;
+  wastage: number;
+  hasStock: boolean;
+  stockShortage: number;
+}
+
+export interface OptimizationResult {
+  optimizations: SheetOptimization[];
+  best: SheetOptimization;
+  hasMultipleSizes: boolean;
+}
+
+// Production Planning Types
+export interface JobProductionPlanning {
+  id: string;
+  job_card_id: string;
+  selected_material_size_id?: string;
+  selected_sheet_size_id?: string;
+  cutting_layout_type?: 'horizontal' | 'vertical' | 'smart';
+  grid_pattern?: string;
+  blanks_per_sheet?: number;
+  efficiency_percentage?: number;
+  scrap_percentage?: number;
+  base_required_sheets?: number;
+  additional_sheets: number;
+  final_total_sheets?: number;
+  material_cost?: number;
+  wastage_justification?: string;
+  planning_status: 'PENDING' | 'PLANNED' | 'LOCKED' | 'APPLIED';
+  planned_at?: string;
+  planned_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Cost Calculation Types
+export interface CostSummary {
+  baseSheets: number;
+  additionalSheets: number;
+  totalSheets: number;
+  costPerSheet: number;
+  materialCost: number;
+  wastageCost: number;
+  totalCost: number;
+}
+
+export interface WastageValidation {
+  isValid: boolean;
+  wastagePercentage: number;
+  requiresJustification: boolean;
+  requiresConfirmation: boolean;
+  message: string;
+}
+
+// Smart Dashboard Job Types
+export interface SmartDashboardJob {
+  prepress_job_id: string;
+  job_card_id: string;
+  job_card_number: string;
+  product_name: string;
+  product_item_code: string;
+  product_type: string;
+  customer_name: string;
+  company_name: string;
+  quantity: number;
+  priority: string;
+  delivery_date: string;
+  prepress_status: string;
+  plate_generated: boolean;
+  plate_generated_at: string;
+  created_at: string;
+  material_name: string;
+  planning_status: 'PENDING' | 'PLANNED' | 'LOCKED' | 'APPLIED';
+  final_total_sheets?: number;
+  material_cost?: number;
+}
+
+// Cutting Guide Types
+export interface CuttingGuide {
+  jobNumber: string;
+  company: string;
+  product: string;
+  quantity: number;
+  sheetSize: {
+    name: string;
+    width: number;
+    height: number;
+  };
+  layout: {
+    type: string;
+    gridPattern: string;
+    blanksPerSheet: number;
+    efficiency: number;
+    scrap: number;
+  };
+  sheets: {
+    base: number;
+    additional: number;
+    total: number;
+  };
+  cost: number;
+}

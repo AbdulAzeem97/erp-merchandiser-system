@@ -31,6 +31,10 @@ import prismaAuthRoutes from './routes/prisma-auth.js';
 import ctpRoutes from './routes/ctp.js';
 import itemSpecificationsRoutes from './routes/itemSpecifications.js';
 import procurementRoutes from './routes/procurement.js';
+import workflowRoutes, { setWorkflowSocketHandler } from './routes/workflow.js';
+import cuttingRoutes from './routes/cutting.js';
+import productionRoutes from './routes/production.js';
+import smartDashboardRoutes from './routes/smartDashboard.js';
 
 // Import middleware
 import { authenticateToken } from './middleware/auth.js';
@@ -83,6 +87,9 @@ app.set('socketHandler', socketHandler);
 // Initialize enhanced job lifecycle service with socket handler
 const jobLifecycleService = new EnhancedJobLifecycleService(enhancedSocketHandler);
 setLifecycleSocketHandler(io);
+
+// Initialize workflow service with Socket.io
+setWorkflowSocketHandler(io);
 
 // Initialize enhanced prepress service with Socket.io
 initializePrepressService(io);
@@ -175,6 +182,12 @@ app.use('/api/inventory', authenticateToken, inventoryRoutes);
 // app.use('/api/production', authenticateToken, productionRoutes);
 app.use('/api/job-assignment', jobAssignmentRoutes);
 app.use('/api/job-assignment-history', authenticateToken, jobAssignmentHistoryRoutes);
+app.use('/api/workflow', workflowRoutes);
+app.use('/api/cutting', cuttingRoutes);
+// Register smart-dashboard routes BEFORE general production routes to avoid conflicts
+app.use('/api/production/smart-dashboard', authenticateToken, smartDashboardRoutes);
+console.log('✅ Smart Dashboard routes registered at /api/production/smart-dashboard');
+app.use('/api/production', productionRoutes);
 
 // NEW: Prisma-based API routes (working with correct column names)
 app.use('/api/v2', prismaApiRoutes);

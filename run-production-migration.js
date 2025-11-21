@@ -1,67 +1,57 @@
+import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
-import pool from './server/database/sqlite-config.js';
-import { seedProductionData } from './server/database/production-seed.js';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const pool = new Pool({
+  user: 'erp_user',
+  host: 'localhost',
+  database: 'erp_merchandiser',
+  password: 'DevPassword123!',
+  port: 5432,
+});
 
 async function runProductionMigration() {
-  console.log('🚀 Starting Production Module Migration...');
-  
+  const client = await pool.connect();
   try {
-    // Read and execute the production schema
-    console.log('📋 Reading production schema...');
-    const schemaPath = path.resolve('./server/database/production-schema.sql');
-    const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+    console.log('🔄 Running Production Workflow Migration...\n');
     
-    // Split SQL statements and execute them
-    console.log('🗄️ Creating production tables...');
-    const statements = schemaSql
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0);
+    const migrationPath = path.join(__dirname, 'server', 'database', 'migrations', '006_add_production_workflow.sql');
+    const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
     
-    for (const statement of statements) {
-      try {
-        pool.db.exec(statement);
-      } catch (error) {
-        // Ignore "table already exists" errors
-        if (!error.message.includes('already exists')) {
-          console.error('Error executing statement:', statement);
-          throw error;
-        }
-      }
-    }
+    await client.query(migrationSQL);
     
-    console.log('✅ Production tables created successfully!');
+    console.log('✅ Production workflow migration completed successfully!');
     
-    // Seed the production data
-    console.log('🌱 Seeding production data...');
-    await seedProductionData();
+    // Verify tables were created
+    const tablesCheck = await client.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+        AND table_name IN ('production_machines', 'production_assignments')
+      ORDER BY table_name
+    `);
     
-    console.log('🎉 Production module migration completed successfully!');
-    console.log('');
-    console.log('📋 Production Module Structure Created:');
-    console.log('  • 6 Production Departments');
-    console.log('  • 50+ Production Processes');
-    console.log('  • Role-based Access Control (Director, HOD, Supervisor, Operator, Quality Inspector)');
-    console.log('  • Equipment Management');
-    console.log('  • Material Consumption Tracking');
-    console.log('  • Quality Control System');
-    console.log('  • Production Workflow Templates');
-    console.log('  • Real-time Job Tracking');
-    console.log('  • Analytics and Reporting');
-    console.log('');
-    console.log('🔐 Default Production Roles:');
-    console.log('  • DIRECTOR: Full system access');
-    console.log('  • HOD: Department-level access');
-    console.log('  • SUPERVISOR: Team-level management');
-    console.log('  • OPERATOR: Job execution access');
-    console.log('  • QUALITY_INSPECTOR: Quality control access');
+    console.log('\n📋 Created Tables:');
+    tablesCheck.rows.forEach(row => {
+      console.log(`  ✅ ${row.table_name}`);
+    });
+    
+    // Check machine count
+    const machineCount = await client.query('SELECT COUNT(*) as count FROM production_machines');
+    console.log(`\n📊 Production Machines: ${machineCount.rows[0].count}`);
     
   } catch (error) {
-    console.error('❌ Migration failed:', error);
+    console.error('❌ Migration failed:', error.message);
+    console.error(error.stack);
     process.exit(1);
+  } finally {
+    client.release();
+    await pool.end();
   }
 }
 
-// Run the migration
 runProductionMigration();

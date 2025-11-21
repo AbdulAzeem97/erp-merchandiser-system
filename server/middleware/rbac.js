@@ -3,16 +3,20 @@ import dbAdapter from '../database/adapter.js';
 
 // Role hierarchy and permissions
 const ROLE_HIERARCHY = {
-  ADMIN: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS', 'DESIGNER', 'MERCHANDISER', 'QA', 'QA_PREPRESS', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER'],
+  ADMIN: ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'HOD_PREPRESS', 'HOD_CUTTING', 'HOD_PRODUCTION', 'DESIGNER', 'MERCHANDISER', 'QA', 'QA_PREPRESS', 'INVENTORY_MANAGER', 'PROCUREMENT_MANAGER', 'CUTTING_LABOR', 'PRODUCTION_OPERATOR'],
   HEAD_OF_MERCHANDISER: ['HEAD_OF_MERCHANDISER', 'MERCHANDISER'],
-  HEAD_OF_PRODUCTION: ['HEAD_OF_PRODUCTION', 'HOD_PREPRESS', 'DESIGNER', 'QA', 'QA_PREPRESS'],
+  HEAD_OF_PRODUCTION: ['HEAD_OF_PRODUCTION', 'HOD_PREPRESS', 'HOD_CUTTING', 'HOD_PRODUCTION', 'DESIGNER', 'QA', 'QA_PREPRESS', 'CUTTING_LABOR', 'PRODUCTION_OPERATOR'],
   HOD_PREPRESS: ['HOD_PREPRESS', 'DESIGNER'],
+  HOD_CUTTING: ['HOD_CUTTING', 'CUTTING_LABOR'],
+  HOD_PRODUCTION: ['HOD_PRODUCTION', 'PRODUCTION_OPERATOR'],
   DESIGNER: ['DESIGNER'],
   MERCHANDISER: ['MERCHANDISER'],
   QA: ['QA'],
   QA_PREPRESS: ['QA_PREPRESS'],
   INVENTORY_MANAGER: ['INVENTORY_MANAGER'],
-  PROCUREMENT_MANAGER: ['PROCUREMENT_MANAGER']
+  PROCUREMENT_MANAGER: ['PROCUREMENT_MANAGER'],
+  CUTTING_LABOR: ['CUTTING_LABOR'],
+  PRODUCTION_OPERATOR: ['PRODUCTION_OPERATOR']
 };
 
 const PERMISSIONS = {
@@ -163,23 +167,41 @@ export const requireRole = (allowedRoles) => {
 };
 
 /**
- * Middleware to require specific permissions
+ * Middleware to require specific permissions or roles
+ * Can accept either a permission string or an array of role strings
  */
-export const requirePermission = (permission) => {
+export const requirePermission = (permissionOrRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
     }
 
     const userRole = req.user.role;
-    const allowedRoles = PERMISSIONS[permission];
+    
+    // If it's an array, treat as role list
+    if (Array.isArray(permissionOrRoles)) {
+      const allowedRoles = permissionOrRoles;
+      const hasPermission = allowedRoles.some(role => {
+        return ROLE_HIERARCHY[userRole] && ROLE_HIERARCHY[userRole].includes(role);
+      }) || allowedRoles.includes(userRole) || userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
-    if (!allowedRoles || !allowedRoles.includes(userRole)) {
-      return res.status(403).json({ 
-        error: 'Insufficient permissions',
-        required: permission,
-        current: userRole
-      });
+      if (!hasPermission) {
+        return res.status(403).json({ 
+          error: 'Insufficient permissions',
+          required: allowedRoles,
+          current: userRole
+        });
+      }
+    } else {
+      // Treat as permission string
+      const allowedRoles = PERMISSIONS[permissionOrRoles];
+      if (!allowedRoles || !allowedRoles.includes(userRole)) {
+        return res.status(403).json({ 
+          error: 'Insufficient permissions',
+          required: permissionOrRoles,
+          current: userRole
+        });
+      }
     }
 
     next();

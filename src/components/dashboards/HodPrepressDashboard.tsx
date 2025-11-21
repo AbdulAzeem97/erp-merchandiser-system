@@ -51,10 +51,12 @@ import {
   RefreshCw,
   Layers,
   MonitorSpeaker,
-  ExternalLink
+  ExternalLink,
+  XCircle
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';
+import { ItemSpecificationsDisplay } from '../ui/ItemSpecificationsDisplay';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -181,6 +183,25 @@ interface HODJob {
     currentStage: string;
     progress: number;
   };
+  // Item Specifications
+  itemSpecifications?: {
+    id: string;
+    excel_file_name: string;
+    item_count: number;
+    total_quantity: number;
+    size_variants: number;
+    color_variants: number;
+    items: Array<{
+      item_code: string;
+      color: string;
+      size: string;
+      quantity: number;
+      secondary_code?: string;
+      decimal_value?: number;
+      material?: string;
+    }>;
+    excel_file_link?: string;
+  };
 }
 
 interface Designer {
@@ -292,7 +313,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [prepressJobs, setPrepressJobs] = useState<HODJob[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<HODJob[]>([]);
   const [designers, setDesigners] = useState<Designer[]>([]);
-  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all'); // Show all jobs by default for HOD
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [selectedDesigner, setSelectedDesigner] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -309,12 +330,54 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
   const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
   const [markedItems, setMarkedItems] = useState<Set<number>>(new Set());
+  const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+  const [selectedJobForStatusUpdate, setSelectedJobForStatusUpdate] = useState<HODJob | null>(null);
+  const [newStatus, setNewStatus] = useState('');
+  const [statusNotes, setStatusNotes] = useState('');
+  const [isDesignUploadDialogOpen, setIsDesignUploadDialogOpen] = useState(false);
+  const [finalDesignLink, setFinalDesignLink] = useState('');
+  const [isItemSpecsModalOpen, setIsItemSpecsModalOpen] = useState(false);
+  const [selectedJobForItemSpecs, setSelectedJobForItemSpecs] = useState<HODJob | null>(null);
+  const [isProcessSequenceViewModalOpen, setIsProcessSequenceViewModalOpen] = useState(false);
+  const [selectedJobForProcessView, setSelectedJobForProcessView] = useState<HODJob | null>(null);
+  const [ctpMachines, setCtpMachines] = useState<Array<{id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string}>>([]);
+  const [isPlateInfoDialogOpen, setIsPlateInfoDialogOpen] = useState(false);
+  const [selectedJobForPlateInfo, setSelectedJobForPlateInfo] = useState<HODJob | null>(null);
+  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{machineId: string; plateCount: number | ''}>>([{machineId: '', plateCount: ''}]);
+  const [machineSearchTerm, setMachineSearchTerm] = useState<string>('');
+
+  // Load CTP machines
+  const loadCTPMachines = async () => {
+    try {
+      console.log('🔄 Loading CTP machines...');
+      const machinesResponse = await jobsAPI.getCTPMachines();
+      console.log('📦 CTP machines response:', machinesResponse);
+      if (machinesResponse.success && machinesResponse.machines) {
+        const machinesWithStringIds = machinesResponse.machines.map((m: any) => ({
+          ...m,
+          id: String(m.id) // Ensure ID is string for consistency
+        }));
+        setCtpMachines(machinesWithStringIds);
+        console.log('✅ CTP machines loaded:', machinesWithStringIds);
+      } else {
+        console.warn('⚠️ No machines in response:', machinesResponse);
+      }
+    } catch (error) {
+      console.error('❌ Error loading CTP machines:', error);
+      toast.error('Failed to load CTP machines');
+    }
+  };
 
   // Load all jobs and designers
   const loadHODData = async () => {
     setLoading(true);
     try {
       console.log('🔄 Loading HOD data...');
+      
+      // Load CTP machines if not already loaded
+      if (ctpMachines.length === 0) {
+        await loadCTPMachines();
+      }
       
       // Load all jobs with complete details
       const jobsResponse = await jobsAPI.getAll();
@@ -358,6 +421,33 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             }
           } catch (error) {
             console.log('Could not fetch complete product info for job:', job.jobNumber);
+          }
+
+          // Fetch item specifications for this job
+          let itemSpecifications = null;
+          try {
+            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+              }
+            });
+            if (itemSpecsResponse.ok) {
+              const itemSpecsResult = await itemSpecsResponse.json();
+              if (itemSpecsResult.success && itemSpecsResult.itemSpecifications) {
+                itemSpecifications = itemSpecsResult.itemSpecifications;
+                console.log(`📋 Item specifications for job ${job.id}:`, itemSpecifications);
+              }
+            } else if (itemSpecsResponse.status === 404) {
+              // Job doesn't have item specifications - this is normal, don't log as error
+              // Silently continue without item specifications
+            } else {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}: Status ${itemSpecsResponse.status}`);
+            }
+          } catch (error) {
+            // Only log non-404 errors
+            if (error instanceof TypeError && !error.message.includes('404')) {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+            }
           }
 
           const product = completeProductInfo?.product || completeProductInfo || {};
@@ -420,7 +510,22 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               ],
               currentStage: 'Designing',
               progress: 0
-            }
+            },
+            // Item Specifications
+            itemSpecifications: itemSpecifications || null,
+            // Plate and Machine Information (from job data if available)
+            required_plate_count: job.required_plate_count || undefined,
+            ctp_machine_id: job.ctp_machine_id || undefined,
+            ctp_machine: (job.ctp_machine_id && job.ctp_machine_name) ? {
+              id: job.ctp_machine_id,
+              machine_code: job.ctp_machine_code || '',
+              machine_name: job.ctp_machine_name || '',
+              machine_type: job.ctp_machine_type || 'CTP',
+              manufacturer: job.ctp_machine_manufacturer,
+              model: job.ctp_machine_model,
+              location: job.ctp_machine_location,
+              max_plate_size: job.ctp_machine_max_plate_size
+            } : undefined
           };
         }));
         
@@ -751,10 +856,32 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       const job = prepressJobs.find(j => j.id === jobId);
       if (!job) return;
 
-      console.log(`🚀 HOD starting job ${job.job_card_id}`);
+      // Get current HOD user info
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const hodUserId = userData.id;
+      const hodUserName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'HOD Prepress';
+
+      console.log(`🚀 HOD starting job ${job.job_card_id} - HOD User ID: ${hodUserId}`);
       
-      // Update job status in backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+      // First, assign HOD as the designer
+      const assignResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/assign`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify({
+          assigned_designer_id: hodUserId,
+          notes: 'HOD assigned themselves as designer and started working on the job'
+        })
+      });
+
+      if (!assignResponse.ok) {
+        throw new Error('Failed to assign HOD as designer');
+      }
+
+      // Then update job status to IN_PROGRESS
+      const statusResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -766,7 +893,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         })
       });
 
-      if (response.ok) {
+      if (statusResponse.ok) {
         // Update local state
         setPrepressJobs(prev => 
           prev.map(job => 
@@ -775,8 +902,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
               progress: 10,
-              assigned_designer: 'HOD (Self)',
-              assigned_designer_id: 'hod'
+              assigned_designer: hodUserName,
+              assigned_designer_id: hodUserId.toString()
             } : job
           )
         );
@@ -788,8 +915,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
               progress: 10,
-              assigned_designer: 'HOD (Self)',
-              assigned_designer_id: 'hod'
+              assigned_designer: hodUserName,
+              assigned_designer_id: hodUserId.toString()
             } : job
           )
         );
@@ -802,17 +929,226 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             jobId: jobId,
             jobCardId: job.job_card_id,
             status: 'IN_PROGRESS',
+            assignedDesignerId: hodUserId,
+            assignedDesignerName: hodUserName,
             updatedBy: 'HOD',
-            message: `HOD started working on job ${job.job_card_id}`
+            message: `HOD (${hodUserName}) started working on job ${job.job_card_id}`
+          });
+          
+          socket.emit('job_assigned', {
+            jobId: jobId,
+            jobCardId: job.job_card_id,
+            designerId: hodUserId,
+            designerName: hodUserName,
+            assignedBy: 'HOD',
+            message: `Job ${job.job_card_id} assigned to HOD (${hodUserName})`
           });
         }
+        
+        // Reload data to get updated info from server
+        loadHODData();
       } else {
-        throw new Error('Failed to start job');
+        throw new Error('Failed to update job status');
       }
     } catch (error) {
       console.error('Error starting job as HOD:', error);
       toast.error('Failed to start job');
     }
+  };
+
+  const updateJobStatus = async (jobId: string, status: string, notes: string = '', designLink: string = '') => {
+    try {
+      setLoading(true);
+      const job = prepressJobs.find(j => j.id === jobId);
+      if (!job) return;
+
+      // For SUBMITTED_TO_QA, use the dedicated submit-to-qa endpoint (same as designer)
+      if (status === 'SUBMITTED_TO_QA') {
+        if (!designLink.trim()) {
+          toast.error('Final design link is required to submit to QA');
+          setLoading(false);
+          return;
+        }
+
+        const submitResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${jobId}/submit-to-qa`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+          },
+          body: JSON.stringify({
+            finalDesignLink: designLink.trim(),
+            status: 'SUBMITTED_TO_QA',
+            notes: notes || 'Submitted to QA by HOD'
+          })
+        });
+
+        if (submitResponse.ok) {
+          toast.success('Job submitted to QA successfully! 🎨');
+          
+          // Update local state
+          setPrepressJobs(prev => 
+            prev.map(job => 
+              job.id === jobId ? { 
+                ...job, 
+                status: 'SUBMITTED_TO_QA',
+                final_design_link: designLink.trim(),
+                submitted_at: new Date().toISOString(),
+                submission_notes: notes
+              } : job
+            )
+          );
+          
+          setFilteredJobs(prev => 
+            prev.map(job => 
+              job.id === jobId ? { 
+                ...job, 
+                status: 'SUBMITTED_TO_QA',
+                final_design_link: designLink.trim(),
+                submitted_at: new Date().toISOString(),
+                submission_notes: notes
+              } : job
+            )
+          );
+          
+          // Emit real-time update
+          if (socket) {
+            socket.emit('job_status_update', {
+              jobId: jobId,
+              jobCardId: job.job_card_id,
+              status: 'SUBMITTED_TO_QA',
+              updatedBy: 'HOD',
+              message: `Job ${job.job_card_id} submitted to QA by HOD`
+            });
+          }
+          
+          // Close dialogs and reload data
+          setIsStatusDialogOpen(false);
+          setIsDesignUploadDialogOpen(false);
+          setSelectedJobForStatusUpdate(null);
+          setNewStatus('');
+          setStatusNotes('');
+          setFinalDesignLink('');
+          loadHODData();
+          setLoading(false);
+          return;
+        } else {
+          const errorData = await submitResponse.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to submit to QA');
+        }
+      }
+
+      // For other statuses, use the regular status update endpoint
+      // Prepare request body
+      const requestBody: any = {
+        status: status,
+        notes: notes || `Status updated to ${status} by HOD`
+      };
+
+      // Add final design link if provided (for COMPLETED status)
+      if (designLink.trim()) {
+        requestBody.finalDesignLink = designLink.trim();
+      }
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (response.ok) {
+        // Update local state
+        setPrepressJobs(prev => 
+          prev.map(job => 
+            job.id === jobId ? { 
+              ...job, 
+              status: status,
+              final_design_link: designLink.trim() || job.final_design_link,
+              ...(status === 'IN_PROGRESS' && !job.started_at ? { started_at: new Date().toISOString() } : {}),
+              ...(status === 'COMPLETED' ? { completed_at: new Date().toISOString() } : {})
+            } : job
+          )
+        );
+        
+        setFilteredJobs(prev => 
+          prev.map(job => 
+            job.id === jobId ? { 
+              ...job, 
+              status: status,
+              final_design_link: designLink.trim() || job.final_design_link,
+              ...(status === 'IN_PROGRESS' && !job.started_at ? { started_at: new Date().toISOString() } : {}),
+              ...(status === 'COMPLETED' ? { completed_at: new Date().toISOString() } : {})
+            } : job
+          )
+        );
+        
+        toast.success(`Job status updated to ${status.replace('_', ' ')}`);
+        
+        // Emit real-time update
+        if (socket) {
+          socket.emit('job_status_update', {
+            jobId: jobId,
+            jobCardId: job.job_card_id,
+            status: status,
+            updatedBy: 'HOD',
+            message: `Job ${job.job_card_id} status updated to ${status} by HOD`
+          });
+        }
+        
+        // Close dialogs and reload data
+        setIsStatusDialogOpen(false);
+        setIsDesignUploadDialogOpen(false);
+        setSelectedJobForStatusUpdate(null);
+        setNewStatus('');
+        setStatusNotes('');
+        setFinalDesignLink('');
+        loadHODData();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update job status');
+      }
+    } catch (error) {
+      console.error('Error updating job status:', error);
+      toast.error('Failed to update job status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitWithDesign = async () => {
+    if (!selectedJobForStatusUpdate) {
+      toast.error('No job selected');
+      return;
+    }
+
+    if (!finalDesignLink.trim()) {
+      toast.error('Please provide a final design link');
+      return;
+    }
+
+    if (!newStatus) {
+      toast.error('Status is required');
+      return;
+    }
+
+    // Update job status with design link
+    await updateJobStatus(
+      selectedJobForStatusUpdate.id,
+      newStatus,
+      statusNotes,
+      finalDesignLink.trim()
+    );
+  };
+
+  const handleStatusUpdateClick = (job: HODJob) => {
+    setSelectedJobForStatusUpdate(job);
+    setNewStatus(job.status || '');
+    setStatusNotes('');
+    setFinalDesignLink(job.final_design_link || '');
+    setIsStatusDialogOpen(true);
   };
 
   const approveJob = async (jobId: string) => {
@@ -1233,8 +1569,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                     Filters & Search
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <Input
@@ -1356,29 +1692,29 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                           exit={{ opacity: 0, y: -20 }}
                           transition={{ delay: index * 0.05 }}
                           whileHover={{ scale: 1.02, y: -2 }}
-                          className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-xl p-6 hover:shadow-xl hover:bg-white/80 transition-all duration-300"
+                          className="bg-white/60 backdrop-blur-sm border border-gray-200/50 rounded-xl p-4 sm:p-6 hover:shadow-xl hover:bg-white/80 transition-all duration-300"
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              {/* Enhanced Compact Header */}
-                              <div className="flex items-center gap-4 mb-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-blue-100 rounded-lg">
+                          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              {/* Enhanced Compact Header - Responsive */}
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
                                     <Package className="w-4 h-4 text-blue-600" />
                                   </div>
-                                  <h3 className="font-bold text-xl text-gray-900">
+                                  <h3 className="font-bold text-lg sm:text-xl text-gray-900 truncate">
                                     {job.job_card_id}
                                   </h3>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge className={`${statusColors[job.status]} shadow-sm`}>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge className={`${statusColors[job.status]} shadow-sm text-xs`}>
                                     {job.status.replace('_', ' ')}
                                   </Badge>
-                                  <Badge className={`${priorityColors[job.priority]} shadow-sm`}>
+                                  <Badge className={`${priorityColors[job.priority]} shadow-sm text-xs`}>
                                     {job.priority}
                                   </Badge>
                                   {getDaysUntilDue(job.due_date) <= 2 && (
-                                    <Badge className="bg-red-500 text-white border-0 shadow-sm animate-pulse">
+                                    <Badge className="bg-red-500 text-white border-0 shadow-sm animate-pulse text-xs">
                                       <Zap className="w-3 h-3 mr-1" />
                                       URGENT
                                     </Badge>
@@ -1386,297 +1722,198 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                 </div>
                               </div>
                               
-                              {/* Compact Summary View */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
-                                <div>
-                                  <span className="font-medium">Product:</span> {job.product_code}
+                              {/* Compact Summary View - Responsive Grid */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm text-gray-600 mb-4">
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-500 mb-1 text-xs">Product</span>
+                                  <span className="text-gray-900">{job.product_code}</span>
                                 </div>
-                                <div>
-                                  <span className="font-medium">Customer:</span> {job.customer_name || job.company_name}
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-500 mb-1 text-xs">Customer</span>
+                                  <span className="text-gray-900 truncate">{job.customer_name || job.company_name}</span>
                                 </div>
-                                <div>
-                                  <span className="font-medium">Designer:</span> 
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-500 mb-1 text-xs">Designer</span>
                                   {job.assigned_designer ? (
-                                    <span className="ml-1 text-blue-600">{job.assigned_designer}</span>
+                                    <span className="text-blue-600 font-medium">{job.assigned_designer}</span>
                                   ) : (
-                                    <span className="ml-1 text-red-600">Unassigned</span>
+                                    <span className="text-red-600 font-medium">Unassigned</span>
                                   )}
                                 </div>
-                                <div>
-                                  <span className="font-medium">Due Date:</span> 
-                                  <span className={getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600 font-medium ml-1' : 'ml-1'}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium text-gray-500 mb-1 text-xs">Due Date</span>
+                                  <span className={getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600 font-medium' : 'text-gray-900'}>
                                     {new Date(job.due_date).toLocaleDateString()} ({getDaysUntilDue(job.due_date)}d)
                                   </span>
                                 </div>
                               </div>
 
-                              {/* Expandable Details */}
+                              {/* Expandable Details - Clean and Organized */}
                               {expandedJobId === job.id && (
                                 <motion.div
                                   initial={{ opacity: 0, height: 0 }}
                                   animate={{ opacity: 1, height: 'auto' }}
                                   exit={{ opacity: 0, height: 0 }}
-                                  className="space-y-3"
+                                  className="space-y-4 mt-4 pt-4 border-t border-gray-200"
                                 >
-                                  {/* Complete Product Details */}
-                                  <div className="bg-gray-50 p-3 rounded-lg">
-                                    <h4 className="font-medium text-gray-800 mb-2">Product Specifications</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                      <div><span className="font-medium">Name:</span> {job.product_name}</div>
-                                      <div><span className="font-medium">Brand:</span> {job.product_brand}</div>
-                                      <div><span className="font-medium">Type:</span> {job.product_type}</div>
-                                      <div><span className="font-medium">Material:</span> {job.product_material}</div>
-                                      <div><span className="font-medium">GSM:</span> {job.product_gsm} g/m²</div>
-                                      <div><span className="font-medium">Category:</span> {job.product_category}</div>
-                                      <div><span className="font-medium">FSC:</span> {job.product_fsc}</div>
-                                      <div><span className="font-medium">FSC Claim:</span> {job.product_fsc_claim}</div>
-                                      <div><span className="font-medium">Color:</span> {job.product_color}</div>
-                                  </div>
-                                    {job.product_remarks && job.product_remarks !== 'N/A' && (
-                                      <div className="mt-2 text-sm">
-                                        <span className="font-medium">Remarks:</span> {job.product_remarks}
+                                  {/* Essential Info Grid - Responsive */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                                    {/* Product Info */}
+                                    <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
+                                      <h4 className="font-semibold text-gray-800 mb-3 text-sm">Product Info</h4>
+                                      <div className="space-y-2 text-sm">
+                                        <div><span className="font-medium text-gray-600">Name:</span> <span className="text-gray-900 ml-2">{job.product_name}</span></div>
+                                        <div><span className="font-medium text-gray-600">Type:</span> <span className="text-gray-900 ml-2">{job.product_type}</span></div>
+                                        <div><span className="font-medium text-gray-600">Material:</span> <span className="text-gray-900 ml-2">{job.product_material}</span></div>
+                                        <div><span className="font-medium text-gray-600">GSM:</span> <span className="text-gray-900 ml-2">{job.product_gsm} g/m²</span></div>
+                                      </div>
+                                    </div>
+
+                                    {/* Job Details */}
+                                    <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
+                                      <h4 className="font-semibold text-gray-800 mb-3 text-sm">Job Details</h4>
+                                      <div className="space-y-2 text-sm">
+                                        <div><span className="font-medium text-gray-600">Quantity:</span> <span className="text-gray-900 ml-2">{job.quantity} units</span></div>
+                                        <div><span className="font-medium text-gray-600">PO Number:</span> <span className="text-gray-900 ml-2">{job.po_number}</span></div>
+                                        {job.customer_email && job.customer_email !== 'N/A' && (
+                                          <div><span className="font-medium text-gray-600">Email:</span> <span className="text-gray-900 ml-2">{job.customer_email}</span></div>
+                                        )}
+                                        {job.customer_phone && job.customer_phone !== 'N/A' && (
+                                          <div><span className="font-medium text-gray-600">Phone:</span> <span className="text-gray-900 ml-2">{job.customer_phone}</span></div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Google Drive Links */}
+                                    {(job.client_layout_link || job.final_design_link) && (
+                                      <div className="bg-purple-50 p-3 sm:p-4 rounded-lg">
+                                        <h4 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
+                                          <ExternalLink className="h-4 w-4" />
+                                          Design Links
+                                        </h4>
+                                        <div className="space-y-2">
+                                          {job.client_layout_link && (
+                                            <GoogleDrivePreview
+                                              url={job.client_layout_link}
+                                              label="Client Layout"
+                                              showThumbnail={true}
+                                              showPreview={false}
+                                            />
+                                          )}
+                                          {job.final_design_link && (
+                                            <GoogleDrivePreview
+                                              url={job.final_design_link}
+                                              label="Final Design"
+                                              showThumbnail={true}
+                                              showPreview={false}
+                                            />
+                                          )}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
 
-                                  {/* Google Drive Links Section */}
-                                  {(job.client_layout_link || job.final_design_link) && (
-                                    <div className="bg-blue-50 p-3 rounded-lg mt-3">
-                                      <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                                        <ExternalLink className="h-4 w-4" />
-                                        Google Drive Links
-                                      </h4>
-                                      <div className="space-y-3">
-                                        {job.client_layout_link && (
-                                          <GoogleDrivePreview
-                                            url={job.client_layout_link}
-                                            label="Client Layout"
-                                            showThumbnail={true}
-                                            showPreview={true}
-                                          />
-                                        )}
-                                        {job.final_design_link && (
-                                          <GoogleDrivePreview
-                                            url={job.final_design_link}
-                                            label="Final Design"
-                                            showThumbnail={true}
-                                            showPreview={true}
-                                          />
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Customer Information */}
-                                  <div className="bg-purple-50 p-3 rounded-lg">
-                                    <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                      <div><span className="font-medium">Name:</span> {job.customer_name || job.company_name}</div>
-                                      {job.customer_email && job.customer_email !== 'N/A' && (
-                                        <div><span className="font-medium">Email:</span> {job.customer_email}</div>
-                                      )}
-                                      {job.customer_phone && job.customer_phone !== 'N/A' && (
-                                        <div><span className="font-medium">Phone:</span> {job.customer_phone}</div>
-                                      )}
-                                      {job.customer_address && job.customer_address !== 'N/A' && (
-                                        <div className="col-span-2">
-                                          <span className="font-medium">Address:</span> {job.customer_address}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Job Details */}
-                                  <div className="bg-blue-50 p-3 rounded-lg">
-                                    <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                      <div><span className="font-medium">Quantity:</span> {job.quantity} units</div>
-                                      <div><span className="font-medium">PO Number:</span> {job.po_number}</div>
-                                      <div><span className="font-medium">Priority:</span> 
-                                        <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                                          job.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
-                                          job.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                                          'bg-green-100 text-green-800'
-                                        }`}>
-                                          {job.priority}
-                                        </span>
-                                      </div>
-                                      {job.delivery_address && job.delivery_address !== 'N/A' && (
-                                        <div className="col-span-2">
-                                          <span className="font-medium">Delivery Address:</span> {job.delivery_address}
-                                        </div>
-                                      )}
-                                      {job.special_instructions && job.special_instructions !== 'N/A' && (
-                                        <div className="col-span-2">
-                                          <span className="font-medium">Special Instructions:</span> {job.special_instructions}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Ratio Report Section */}
-                                  <div className="bg-purple-50 p-3 rounded-lg mt-3">
-                                    <div className="flex items-center justify-between mb-2">
-                                      <h4 className="font-medium text-gray-800 flex items-center gap-2">
-                                        <BarChart3 className="h-4 w-4" />
-                                        Production Ratio Report
-                                      </h4>
+                                  {/* Action Buttons - Quick Access to Details */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    {/* Item Specifications Button */}
+                                    {job.itemSpecifications && (
                                       <Button
-                                        onClick={() => loadRatioReport(job.id)}
                                         variant="outline"
                                         size="sm"
-                                        className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                                        onClick={() => {
+                                          setSelectedJobForItemSpecs(job);
+                                          setIsItemSpecsModalOpen(true);
+                                        }}
+                                        className="w-full justify-start gap-2 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-700"
                                       >
-                                        <BarChart3 className="h-3 w-3 mr-1" />
-                                        View Report
+                                        <FileText className="h-4 w-4" />
+                                        View Item Specifications
                                       </Button>
-                                    </div>
-                                    <p className="text-xs text-gray-600">
-                                      View production metrics, color details, and efficiency data for this job
-                                    </p>
+                                    )}
+
+                                    {/* Process Sequence Button */}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={async () => {
+                                        setSelectedJobForProcessView(job);
+                                        await fetchJobProcessSequence(job.id);
+                                        setIsProcessSequenceViewModalOpen(true);
+                                      }}
+                                      className="w-full justify-start gap-2 bg-white hover:bg-green-50 border-green-200 hover:border-green-300 text-green-700"
+                                    >
+                                      <Layers className="h-4 w-4" />
+                                      View Process Sequence
+                                    </Button>
+
+                                    {/* Ratio Report Button */}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => loadRatioReport(job.id)}
+                                      className="w-full justify-start gap-2 bg-white hover:bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-700"
+                                    >
+                                      <BarChart3 className="h-4 w-4" />
+                                      View Ratio Report
+                                    </Button>
+
+                                    {/* Plate & Machine Info Button */}
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedJobForPlateInfo(job);
+                                        // Initialize with existing machine if available, otherwise start with empty
+                                        if (job.ctp_machine_id && job.required_plate_count) {
+                                          setMachinePlatePairs([{
+                                            machineId: String(job.ctp_machine_id),
+                                            plateCount: job.required_plate_count
+                                          }]);
+                                        } else {
+                                          setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                                        }
+                                        setMachineSearchTerm('');
+                                        setIsPlateInfoDialogOpen(true);
+                                      }}
+                                      className="w-full justify-start gap-2 bg-white hover:bg-indigo-50 border-indigo-200 hover:border-indigo-300 text-indigo-700"
+                                    >
+                                      <MonitorSpeaker className="h-4 w-4" />
+                                      {job.required_plate_count || job.ctp_machine ? 'Update Plate Info' : 'Add Plate Info'}
+                                    </Button>
                                   </div>
 
-                                  {/* Process Sequence Display */}
-                                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                                    <div className="flex items-center justify-between mb-3">
-                                      <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
-                                      <span className="text-xs text-green-600">Product Type: {job.product_type}</span>
-                                    </div>
-                                    
-                                    {(() => {
-                                      const savedProcessSequence = jobProcessSequences[job.id];
-                                      
-                                      if (savedProcessSequence && savedProcessSequence.steps) {
-                                        // Show saved process sequence
-                                        const selectedSteps = savedProcessSequence.steps.filter((step: any) => step.isSelected);
-                                        const totalSteps = savedProcessSequence.steps.length;
-                                        
-                                        return (
-                                          <div className="space-y-2">
-                                            <div className="flex items-center justify-between text-xs">
-                                              <span className="text-green-700">
-                                                {selectedSteps.length} of {totalSteps} steps selected
-                                              </span>
-                                              {savedProcessSequence.lastUpdated && (
-                                                <span className="text-green-600">
-                                                  Updated: {new Date(savedProcessSequence.lastUpdated).toLocaleDateString()}
-                                                </span>
-                                              )}
-                                            </div>
-                                            
-                                            <div className="grid gap-1">
-                                              {savedProcessSequence.steps.map((step: any, index: number) => (
-                                                <div 
-                                                  key={step.id}
-                                                  className={`flex items-center justify-between p-2 rounded text-xs ${
-                                                    step.isSelected
-                                                      ? 'bg-green-100 border border-green-300' 
-                                                      : 'bg-gray-100 border border-gray-200'
-                                                  }`}
-                                                >
-                                                  <div className="flex items-center gap-2">
-                                                    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold ${
-                                                      step.isSelected
-                                                        ? 'bg-green-600 text-white' 
-                                                        : 'bg-gray-400 text-white'
-                                                    }`}>
-                                                      {step.order}
-                                                    </div>
-                                                    <span className={`font-medium ${step.isSelected ? 'text-green-800' : 'text-gray-500'}`}>
-                                                      {step.name}
-                                                    </span>
-                                                  </div>
-                                                  <div className="flex items-center gap-1">
-                                                    {step.isSelected && (
-                                                      <span className="px-1 py-0.5 bg-green-600 text-white text-xs rounded">
-                                                        ✓
-                                                      </span>
-                                                    )}
-                                                    {step.isCompulsory && (
-                                                      <span className="px-1 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
-                                                        Required
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                </div>
-                                              ))}
-                                            </div>
-                                            
-                                            <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
-                                              <p className="text-xs text-blue-800">
-                                                <strong>Current Configuration:</strong> This shows the saved process sequence for this job.
-                                              </p>
-                                            </div>
+                                  {/* Plate & Machine Info Display */}
+                                  {(job.required_plate_count || job.ctp_machine) && (
+                                    <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg border border-indigo-200">
+                                      <h4 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
+                                        <MonitorSpeaker className="h-4 w-4" />
+                                        Plate & Machine Information
+                                      </h4>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                        {job.required_plate_count && (
+                                          <div>
+                                            <span className="font-medium text-gray-600">Required Plates:</span>
+                                            <span className="ml-2 text-gray-900 font-semibold">{job.required_plate_count} plates</span>
                                           </div>
-                                        );
-                                      } else {
-                                        // Show default process sequence
-                                        return (
-                                          <div className="space-y-2">
-                                            <div className="text-xs text-green-600">
-                                              Default process steps for this product type. No custom configuration saved yet.
-                                            </div>
-                                            
-                                            {job.process_sequence && job.process_sequence.steps && (
-                                              <div className="grid gap-1">
-                                                {job.process_sequence.steps.map((step: any, index: number) => (
-                                                  <div 
-                                                    key={step.id}
-                                                    className="flex items-center justify-between p-2 rounded text-xs bg-blue-50 border border-blue-200"
-                                                  >
-                                                    <div className="flex items-center gap-2">
-                                                      <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold bg-blue-600 text-white">
-                                                        {step.sequenceOrder || step.order}
-                                                      </div>
-                                                      <span className="font-medium text-blue-800">
-                                                        {step.name}
-                                                      </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1">
-                                                      {step.isRequired && (
-                                                        <span className="px-1 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
-                                                          Required
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                            
-                                            <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-200">
-                                              <p className="text-xs text-yellow-800">
-                                                <strong>Default Configuration:</strong> This shows the default process sequence. 
-                                                Designer can customize it using the "Edit Process" button.
-                                              </p>
-                                            </div>
+                                        )}
+                                        {job.ctp_machine && (
+                                          <div>
+                                            <span className="font-medium text-gray-600">CTP Machine:</span>
+                                            <span className="ml-2 text-gray-900 font-semibold">{job.ctp_machine.machine_name} ({job.ctp_machine.machine_code})</span>
                                           </div>
-                                        );
-                                      }
-                                    })()}
-                                  </div>
-
-                                  {/* Prepress Workflow Status */}
-                                  {job.prepress_status && (
-                                    <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                      <PrepressWorkflowDisplay
-                                        jobCardId={job.job_card_id}
-                                        prepressStatus={job.prepress_status}
-                                        workflowProgress={job.workflow_progress}
-                                        designerName={job.assigned_designer}
-                                        startDate={job.started_at}
-                                        department="Prepress Department"
-                                        compact={true}
-                                      />
-                                </div>
-                              )}
-
-                              {job.customer_notes && (
-                                <div className="mb-2">
-                                  <span className="text-sm font-medium text-gray-700">Notes:</span>
-                                  <p className="text-sm text-gray-600">{job.customer_notes}</p>
+                                        )}
+                                      </div>
                                     </div>
                                   )}
+
+                                  {/* Special Instructions - If exists */}
+                                  {job.special_instructions && job.special_instructions !== 'N/A' && (
+                                    <div className="bg-yellow-50 p-3 sm:p-4 rounded-lg border border-yellow-200">
+                                      <h4 className="font-semibold text-gray-800 mb-2 text-sm">Special Instructions</h4>
+                                      <p className="text-sm text-gray-700">{job.special_instructions}</p>
+                                    </div>
+                                  )}
+
                                 </motion.div>
                               )}
 
@@ -1792,6 +2029,24 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                     Reject
                                   </Button>
                                 </div>
+                              )}
+
+                              {/* Status Update Button - Show for jobs assigned to HOD or IN_PROGRESS jobs */}
+                              {(job.assigned_designer_id === JSON.parse(localStorage.getItem('user') || '{}').id?.toString() || 
+                                  job.status === 'IN_PROGRESS' || 
+                                  job.status === 'ASSIGNED') && 
+                               job.status !== 'COMPLETED' && 
+                               job.status !== 'HOD_REVIEW' && (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => handleStatusUpdateClick(job)}
+                                  disabled={loading}
+                                  className="gap-2 w-full bg-white/50 hover:bg-white/80 border-gray-200 hover:border-blue-300 transition-all duration-200"
+                                >
+                                  <RefreshCw className="w-4 h-4" />
+                                  Update Status
+                                </Button>
                               )}
 
                               {job.assigned_designer && job.status !== 'COMPLETED' && job.status !== 'HOD_REVIEW' && (
@@ -2236,6 +2491,496 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   </a>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Status Update Dialog */}
+      <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Job Status</DialogTitle>
+          </DialogHeader>
+          {selectedJobForStatusUpdate && (
+            <div className="space-y-4">
+              <div>
+                <Label>Job Number</Label>
+                <p className="text-sm font-medium">{selectedJobForStatusUpdate.job_card_id}</p>
+              </div>
+              <div>
+                <Label htmlFor="status-select">New Status</Label>
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger id="status-select">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ASSIGNED">Assigned</SelectItem>
+                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                    <SelectItem value="PAUSED">Paused</SelectItem>
+                    <SelectItem value="HOD_REVIEW">Submit for HOD Review</SelectItem>
+                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                    <SelectItem value="SUBMITTED_TO_QA">Submit to QA</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="status-notes">Notes (Optional)</Label>
+                <Textarea
+                  id="status-notes"
+                  placeholder="Add any notes about this status update..."
+                  value={statusNotes}
+                  onChange={(e) => setStatusNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsStatusDialogOpen(false);
+                    setSelectedJobForStatusUpdate(null);
+                    setNewStatus('');
+                    setStatusNotes('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (newStatus && selectedJobForStatusUpdate) {
+                      // If status requires design link (COMPLETED or SUBMITTED_TO_QA), always open design upload dialog
+                      if (newStatus === 'COMPLETED' || newStatus === 'SUBMITTED_TO_QA') {
+                        // Always open design upload dialog for COMPLETED and SUBMITTED_TO_QA
+                        // This ensures design link is always provided (same as designer functionality)
+                        setIsStatusDialogOpen(false);
+                        setIsDesignUploadDialogOpen(true);
+                      } else {
+                        // For other statuses, update directly without design link requirement
+                        updateJobStatus(selectedJobForStatusUpdate.id, newStatus, statusNotes, '');
+                      }
+                    }
+                  }}
+                  disabled={!newStatus || loading}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {newStatus === 'COMPLETED' || newStatus === 'SUBMITTED_TO_QA' ? 'Continue' : 'Update Status'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Design Upload Dialog - For COMPLETED and SUBMITTED_TO_QA status */}
+      <Dialog open={isDesignUploadDialogOpen} onOpenChange={setIsDesignUploadDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {newStatus === 'COMPLETED' ? 'Complete Job' : 'Submit to QA'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedJobForStatusUpdate && (
+            <div className="space-y-4">
+              <div>
+                <Label>Job Number</Label>
+                <p className="text-sm font-medium">{selectedJobForStatusUpdate.job_card_id}</p>
+              </div>
+              
+              {/* Client Layout Link Display */}
+              {selectedJobForStatusUpdate.client_layout_link && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">Client Layout</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <a
+                      href={selectedJobForStatusUpdate.client_layout_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 flex items-center gap-1 text-sm"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      View Client Layout
+                    </a>
+                  </div>
+                </div>
+              )}
+              
+              <div>
+                <Label htmlFor="final-design-link">Final Design Link (Google Drive) *</Label>
+                <Input
+                  id="final-design-link"
+                  type="url"
+                  value={finalDesignLink}
+                  onChange={(e) => setFinalDesignLink(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/..."
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Upload your final design (PDF/AI) to Google Drive and paste the shareable link here
+                </p>
+              </div>
+              
+              <div>
+                <Label htmlFor="design-notes">Notes (Optional)</Label>
+                <Textarea
+                  id="design-notes"
+                  placeholder="Add any notes about the design..."
+                  value={statusNotes}
+                  onChange={(e) => setStatusNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsDesignUploadDialogOpen(false);
+                    setFinalDesignLink('');
+                    // Reopen status dialog
+                    setIsStatusDialogOpen(true);
+                  }}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleSubmitWithDesign}
+                  disabled={!finalDesignLink.trim() || loading}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {newStatus === 'COMPLETED' ? 'Complete Job' : 'Submit to QA'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Item Specifications Modal */}
+      <Dialog open={isItemSpecsModalOpen} onOpenChange={setIsItemSpecsModalOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Item Specifications - {selectedJobForItemSpecs?.job_card_id}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedJobForItemSpecs?.itemSpecifications && (
+            <div className="mt-4">
+              <ItemSpecificationsDisplay
+                itemSpecifications={selectedJobForItemSpecs.itemSpecifications}
+                showHeader={true}
+                compact={false}
+                maxItems={1000}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Process Sequence View Modal */}
+      <Dialog open={isProcessSequenceViewModalOpen} onOpenChange={setIsProcessSequenceViewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              Process Sequence - {selectedJobForProcessView?.job_card_id}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedJobForProcessView && (
+            <div className="mt-4">
+              {(() => {
+                const savedProcessSequence = jobProcessSequences[selectedJobForProcessView.id];
+                
+                if (savedProcessSequence && savedProcessSequence.steps) {
+                  const selectedSteps = savedProcessSequence.steps.filter((step: any) => step.isSelected);
+                  const totalSteps = savedProcessSequence.steps.length;
+                  
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                        <div>
+                          <p className="text-sm font-medium text-green-800">
+                            {selectedSteps.length} of {totalSteps} steps selected
+                          </p>
+                          <p className="text-xs text-green-600 mt-1">
+                            Product Type: {selectedJobForProcessView.product_type}
+                          </p>
+                        </div>
+                        {savedProcessSequence.lastUpdated && (
+                          <div className="text-xs text-green-600">
+                            Updated: {new Date(savedProcessSequence.lastUpdated).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {savedProcessSequence.steps.map((step: any) => (
+                          <div 
+                            key={step.id}
+                            className={`flex items-center justify-between p-4 rounded-lg border ${
+                              step.isSelected
+                                ? 'bg-green-50 border-green-300' 
+                                : 'bg-gray-50 border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${
+                                step.isSelected
+                                  ? 'bg-green-600 text-white' 
+                                  : 'bg-gray-400 text-white'
+                              }`}>
+                                {step.order}
+                              </div>
+                              <div className="flex-1">
+                                <p className={`font-medium ${step.isSelected ? 'text-green-800' : 'text-gray-500'}`}>
+                                  {step.name}
+                                </p>
+                                {step.estimatedHours && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Estimated: {step.estimatedHours} hours
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {step.isSelected && (
+                                <Badge className="bg-green-600 text-white">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  Selected
+                                </Badge>
+                              )}
+                              {step.isCompulsory && (
+                                <Badge variant="outline" className="border-blue-300 text-blue-700">
+                                  Required
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="text-center py-12">
+                      <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No Process Sequence</h3>
+                      <p className="text-gray-600 mb-4">No process sequence configured for this job.</p>
+                      <Button
+                        onClick={() => {
+                          setIsProcessSequenceViewModalOpen(false);
+                          handleEditProcessSequence(selectedJobForProcessView);
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Configure Process Sequence
+                      </Button>
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Plate & Machine Info Dialog */}
+      <Dialog open={isPlateInfoDialogOpen} onOpenChange={setIsPlateInfoDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MonitorSpeaker className="h-5 w-5" />
+              Plate & Machine Information - {selectedJobForPlateInfo?.job_card_id}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedJobForPlateInfo && (
+            <div className="space-y-4 mt-4">
+              <div>
+                <Label htmlFor="machine-search">Search CTP Machine</Label>
+                <div className="relative mt-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    id="machine-search"
+                    type="text"
+                    value={machineSearchTerm}
+                    onChange={(e) => setMachineSearchTerm(e.target.value)}
+                    placeholder="Search machines by name, code, or model..."
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>CTP Machines & Plate Counts *</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMachinePlatePairs([...machinePlatePairs, {machineId: '', plateCount: ''}]);
+                    }}
+                    className="text-xs"
+                  >
+                    <UserPlus className="w-3 h-3 mr-1" />
+                    Add Machine
+                  </Button>
+                </div>
+
+                {machinePlatePairs.map((pair, index) => {
+                  const filteredMachines = ctpMachines.filter(machine => 
+                    !machineSearchTerm || 
+                    machine.machine_name.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
+                    machine.machine_code.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
+                    (machine.model && machine.model.toLowerCase().includes(machineSearchTerm.toLowerCase())) ||
+                    (machine.manufacturer && machine.manufacturer.toLowerCase().includes(machineSearchTerm.toLowerCase()))
+                  );
+
+                  return (
+                    <div key={index} className="flex gap-2 items-start p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 space-y-2">
+                        <div>
+                          <Label htmlFor={`machine-${index}`} className="text-xs text-gray-600">
+                            CTP Machine {index + 1} *
+                          </Label>
+                          <Select 
+                            value={pair.machineId} 
+                            onValueChange={(value) => {
+                              const updated = [...machinePlatePairs];
+                              updated[index].machineId = value;
+                              setMachinePlatePairs(updated);
+                            }}
+                          >
+                            <SelectTrigger id={`machine-${index}`} className="mt-1">
+                              <SelectValue placeholder="Select CTP machine" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[300px]">
+                              {filteredMachines.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-gray-500">
+                                  {loading ? 'Loading machines...' : 'No machines available'}
+                                </div>
+                              ) : (
+                                filteredMachines.map(machine => (
+                                  <SelectItem key={machine.id} value={String(machine.id)}>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{machine.machine_name}</span>
+                                      <span className="text-xs text-gray-500">
+                                        {machine.machine_code} • {machine.manufacturer || 'N/A'} {machine.model || ''} • {machine.location || 'N/A'}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor={`plates-${index}`} className="text-xs text-gray-600">
+                            Number of Plates *
+                          </Label>
+                          <Input
+                            id={`plates-${index}`}
+                            type="number"
+                            min="0"
+                            value={pair.plateCount}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              const updated = [...machinePlatePairs];
+                              updated[index].plateCount = value === '' ? '' : parseInt(value, 10);
+                              setMachinePlatePairs(updated);
+                            }}
+                            placeholder="e.g., 6"
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                      {machinePlatePairs.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const updated = machinePlatePairs.filter((_, i) => i !== index);
+                            setMachinePlatePairs(updated);
+                          }}
+                          className="mt-6 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Add one or more CTP machines and specify the number of plates required for each machine
+              </p>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsPlateInfoDialogOpen(false);
+                    setSelectedJobForPlateInfo(null);
+                    setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                    setMachineSearchTerm('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    // Validate all pairs have both machine and plate count
+                    const invalidPairs = machinePlatePairs.filter(
+                      pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0
+                    );
+
+                    if (invalidPairs.length > 0) {
+                      toast.error('Please provide both machine and plate count for all entries');
+                      return;
+                    }
+
+                    try {
+                      setLoading(true);
+                      const machines = machinePlatePairs.map(pair => ({
+                        ctp_machine_id: Number(pair.machineId),
+                        plate_count: Number(pair.plateCount)
+                      }));
+
+                      const response = await jobsAPI.updatePlateInfo(selectedJobForPlateInfo.id, {
+                        machines: machines
+                      });
+
+                      if (response.success) {
+                        toast.success(`Plate information updated successfully for ${machines.length} machine(s)! 🎨`);
+                        
+                        // Reload data to get updated info
+                        loadHODData();
+                        
+                        // Close dialog
+                        setIsPlateInfoDialogOpen(false);
+                        setSelectedJobForPlateInfo(null);
+                        setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                        setMachineSearchTerm('');
+                      } else {
+                        throw new Error(response.error || 'Failed to update plate info');
+                      }
+                    } catch (error: any) {
+                      console.error('Error updating plate info:', error);
+                      toast.error(error.message || 'Failed to update plate information');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading || machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0)}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {loading ? 'Updating...' : 'Save Plate Info'}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

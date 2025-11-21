@@ -37,7 +37,8 @@ import {
   ShoppingCart,
   TrendingDown,
   Box,
-  ClipboardList
+  ClipboardList,
+  Scissors
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -169,35 +170,29 @@ const menuItems: MenuItem[] = [
     roles: ['ADMIN', 'CTP_OPERATOR']
   },
 
-  // Production Section
+  // Cutting Section (Standalone for Cutting Department)
+  {
+    id: 'cutting',
+    label: 'Cutting Department',
+    icon: Scissors,
+    page: 'cutting-dashboard',
+    roles: ['ADMIN', 'HOD_CUTTING']
+  },
+
+  // Production Section (Standalone for Production Department)
   {
     id: 'production',
-    label: 'Production',
+    label: 'Production Department',
     icon: Factory,
-    roles: ['ADMIN', 'HEAD_OF_PRODUCTION'],
-    children: [
-      {
-        id: 'production-dashboard',
-        label: 'Production Dashboard',
-        icon: BarChart3,
-        page: 'productionDashboard',
-        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
-      },
-      {
-        id: 'production-schedule',
-        label: 'Schedule',
-        icon: Calendar,
-        page: 'productionSchedule',
-        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
-      },
-      {
-        id: 'quality-control',
-        label: 'Quality Control',
-        icon: CheckCircle,
-        page: 'qualityControl',
-        roles: ['ADMIN', 'HEAD_OF_PRODUCTION']
-      }
-    ]
+    page: 'production-dashboard',
+    roles: ['ADMIN', 'HOD_PRODUCTION', 'PRODUCTION_OPERATOR', 'HEAD_OF_PRODUCTION']
+  },
+  {
+    id: 'smart-production-dashboard',
+    label: 'Smart Production Dashboard',
+    icon: TrendingUp,
+    page: 'smart-production-dashboard',
+    roles: ['ADMIN', 'PRODUCTION_MANAGER', 'CUTTING_HEAD', 'MERCHANDISER', 'DIRECTOR', 'FINANCE']
   },
 
   // Analytics & Reports
@@ -447,7 +442,24 @@ export const RoleBasedSidebar: React.FC<SidebarProps> = ({
     );
   };
 
-  const filteredMenuItems = menuItems.filter(item => hasAccess(item.roles));
+  // Filter menu items based on role
+  // HOD_CUTTING, CUTTING_LABOR, HOD_PRODUCTION, PRODUCTION_OPERATOR should only see their department items
+  const filteredMenuItems = (() => {
+    if (user?.role === 'HOD_CUTTING' || user?.role === 'CUTTING_LABOR') {
+      // Only show cutting department menu
+      return menuItems.filter(item => 
+        item.id === 'cutting' && hasAccess(item.roles)
+      );
+    }
+    if (user?.role === 'HOD_PRODUCTION' || user?.role === 'PRODUCTION_OPERATOR') {
+      // Only show production department menu
+      return menuItems.filter(item => 
+        item.id === 'production' && hasAccess(item.roles)
+      );
+    }
+    // For other roles, show all accessible items
+    return menuItems.filter(item => hasAccess(item.roles));
+  })();
 
   const renderMenuItem = (item: MenuItem, level = 0) => {
     if (!hasAccess(item.roles)) return null;

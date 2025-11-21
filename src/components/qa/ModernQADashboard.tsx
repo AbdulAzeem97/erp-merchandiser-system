@@ -49,6 +49,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { jobsAPI } from '@/services/api';
 import { GoogleDrivePreview } from '@/components/ui/GoogleDrivePreview';
+import { ItemSpecificationsDisplay } from '@/components/ui/ItemSpecificationsDisplay';
 import { BarChart3 } from 'lucide-react';
 
 interface RatioReport {
@@ -112,6 +113,16 @@ interface QAJob {
   fsc?: boolean;
   fscClaim?: string;
   qaNotes?: string;
+  // Plate and Machine Information
+  required_plate_count?: number;
+  ctp_machine_id?: number;
+  ctp_machine_code?: string;
+  ctp_machine_name?: string;
+  ctp_machine_type?: string;
+  ctp_machine_manufacturer?: string;
+  ctp_machine_model?: string;
+  ctp_machine_location?: string;
+  ctp_machine_max_plate_size?: string;
   // Item Specifications
   itemSpecifications?: {
     id: string;
@@ -192,9 +203,17 @@ const ModernQADashboard: React.FC = () => {
               if (itemSpecsResult.success && itemSpecsResult.itemSpecifications) {
                 itemSpecifications = itemSpecsResult.itemSpecifications;
               }
+            } else if (itemSpecsResponse.status === 404) {
+              // Job doesn't have item specifications - this is normal, don't log as error
+              // Silently continue without item specifications
+            } else {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}: Status ${itemSpecsResponse.status}`);
             }
           } catch (error) {
-            console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+            // Only log non-404 errors
+            if (error instanceof TypeError && !error.message.includes('404')) {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+            }
           }
 
           return {
@@ -223,6 +242,15 @@ const ModernQADashboard: React.FC = () => {
             fsc: job.fsc,
             fscClaim: job.fsc_claim,
             qaNotes: job.qa_notes,
+            required_plate_count: job.required_plate_count,
+            ctp_machine_id: job.ctp_machine_id,
+            ctp_machine_code: job.ctp_machine_code,
+            ctp_machine_name: job.ctp_machine_name,
+            ctp_machine_type: job.ctp_machine_type,
+            ctp_machine_manufacturer: job.ctp_machine_manufacturer,
+            ctp_machine_model: job.ctp_machine_model,
+            ctp_machine_location: job.ctp_machine_location,
+            ctp_machine_max_plate_size: job.ctp_machine_max_plate_size,
             itemSpecifications: itemSpecifications || null
           };
         }));
@@ -705,72 +733,30 @@ const ModernQADashboard: React.FC = () => {
                                     <Label className="text-gray-500">Category</Label>
                                     <p className="font-medium">{job.categoryName || 'N/A'}</p>
                                   </div>
+                                  {job.required_plate_count && (
+                                    <div>
+                                      <Label className="text-gray-500">Required Plates</Label>
+                                      <p className="font-medium text-purple-600">{job.required_plate_count}</p>
+                                    </div>
+                                  )}
+                                  {job.ctp_machine_name && (
+                                    <div>
+                                      <Label className="text-gray-500">CTP Machine</Label>
+                                      <p className="font-medium">{job.ctp_machine_name}</p>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
                               {/* Item Specifications */}
-                              {job.itemSpecifications && job.itemSpecifications.items && job.itemSpecifications.items.length > 0 && (
-                                <div className="col-span-2 space-y-4">
-                                  <h4 className="font-semibold text-gray-900 flex items-center">
-                                    <Package className="w-4 h-4 mr-2" />
-                                    Item Specifications
-                                  </h4>
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                      <Label className="text-gray-600 text-xs">Total Items</Label>
-                                      <p className="font-bold text-gray-900">{job.itemSpecifications.item_count || job.itemSpecifications.items.length}</p>
-                                    </div>
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                      <Label className="text-gray-600 text-xs">Total Quantity</Label>
-                                      <p className="font-bold text-gray-900">{job.itemSpecifications.total_quantity?.toLocaleString() || job.itemSpecifications.items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0).toLocaleString()}</p>
-                                    </div>
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                      <Label className="text-gray-600 text-xs">Sizes</Label>
-                                      <p className="font-bold text-gray-900">{job.itemSpecifications.size_variants || new Set(job.itemSpecifications.items.map((i: any) => i.size)).size}</p>
-                                    </div>
-                                    <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-                                      <Label className="text-gray-600 text-xs">Colors</Label>
-                                      <p className="font-bold text-gray-900">{job.itemSpecifications.color_variants || new Set(job.itemSpecifications.items.map((i: any) => i.color)).size}</p>
-                                    </div>
-                                  </div>
-                                  <div className="max-h-60 overflow-y-auto border rounded-lg bg-white">
-                                    <table className="w-full text-xs">
-                                      <thead className="bg-gray-100 sticky top-0">
-                                        <tr>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Item Code</th>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Color</th>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Size</th>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Secondary Code</th>
-                                          <th className="px-3 py-2 text-left font-semibold text-gray-700">Material</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-gray-200">
-                                        {job.itemSpecifications.items.slice(0, 50).map((item: any, index: number) => (
-                                          <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                            <td className="px-3 py-2 font-mono text-gray-900">{item.item_code}</td>
-                                            <td className="px-3 py-2">
-                                              <Badge variant="outline" className="bg-gray-50">{item.color}</Badge>
-                                            </td>
-                                            <td className="px-3 py-2 font-medium text-gray-900">{item.size}</td>
-                                            <td className="px-3 py-2 font-semibold text-gray-900">{item.quantity?.toLocaleString() || '0'}</td>
-                                            <td className="px-3 py-2 font-mono text-gray-600">{item.secondary_code || '-'}</td>
-                                            <td className="px-3 py-2 text-gray-600">{item.material || '-'}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                    {job.itemSpecifications.items.length > 50 && (
-                                      <div className="px-3 py-2 text-center text-xs text-gray-500 bg-gray-50">
-                                        Showing first 50 of {job.itemSpecifications.items.length} items
-                                      </div>
-                                    )}
-                                  </div>
-                                  {job.itemSpecifications.excel_file_name && (
-                                    <div className="text-xs text-gray-600">
-                                      <span className="font-medium">File:</span> {job.itemSpecifications.excel_file_name}
-                                    </div>
-                                  )}
+                              {job.itemSpecifications && (
+                                <div className="col-span-2">
+                                  <ItemSpecificationsDisplay
+                                    itemSpecifications={job.itemSpecifications}
+                                    showHeader={true}
+                                    compact={false}
+                                    maxItems={100}
+                                  />
                                 </div>
                               )}
 
@@ -919,8 +905,80 @@ const ModernQADashboard: React.FC = () => {
                         <span className="ml-1">{selectedJob.priority}</span>
                       </Badge>
                     </div>
+                    {selectedJob.required_plate_count && (
+                      <div>
+                        <Label className="text-gray-500">Required Plates</Label>
+                        <p className="font-medium text-purple-600">{selectedJob.required_plate_count}</p>
+                      </div>
+                    )}
+                    {selectedJob.ctp_machine_name && (
+                      <div>
+                        <Label className="text-gray-500">CTP Machine</Label>
+                        <p className="font-medium">{selectedJob.ctp_machine_name}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* Plate and Machine Information */}
+                {(selectedJob.required_plate_count || selectedJob.ctp_machine_name) && (
+                  <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                    <h4 className="font-semibold text-purple-900 mb-3 flex items-center">
+                      <Package className="w-4 h-4 mr-2" />
+                      Plate & Machine Information
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {selectedJob.required_plate_count && (
+                        <div>
+                          <Label className="text-gray-600">Required Plate Count</Label>
+                          <p className="font-semibold text-purple-600 text-lg">{selectedJob.required_plate_count}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_name && (
+                        <div>
+                          <Label className="text-gray-600">Machine Name</Label>
+                          <p className="font-semibold text-gray-900">{selectedJob.ctp_machine_name}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_code && (
+                        <div>
+                          <Label className="text-gray-600">Machine Code</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_code}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_type && (
+                        <div>
+                          <Label className="text-gray-600">Machine Type</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_type}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_manufacturer && (
+                        <div>
+                          <Label className="text-gray-600">Manufacturer</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_manufacturer}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_model && (
+                        <div>
+                          <Label className="text-gray-600">Model</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_model}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_location && (
+                        <div>
+                          <Label className="text-gray-600">Location</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_location}</p>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_max_plate_size && (
+                        <div>
+                          <Label className="text-gray-600">Max Plate Size</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_max_plate_size}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Previous Remarks */}
                 {selectedJob.qaNotes && (

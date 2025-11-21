@@ -57,6 +57,10 @@ interface Job {
   created_at: string;
   updated_at: string;
   attachments?: JobAttachment[];
+  current_department?: string;
+  current_step?: string;
+  workflow_status?: string;
+  status_message?: string;
 }
 
 interface JobAttachment {
@@ -196,10 +200,22 @@ const JobsModule: React.FC = () => {
         usersAPI.getByRole('DESIGNER')
       ]);
       
-      setJobs(jobsRes.data || []);
-      setProducts(productsRes.data || []);
-      setCompanies(companiesRes.data || []);
-      setDesigners(designersRes.data || []);
+      const jobsData = jobsRes.jobs || jobsRes.data || [];
+      console.log('📋 JobsModule: Loaded jobs:', jobsData.length);
+      console.log('📋 JobsModule: First job sample:', jobsData[0] ? {
+        id: jobsData[0].id,
+        job_card_id: jobsData[0].job_card_id || jobsData[0].jobNumber,
+        status: jobsData[0].status,
+        current_department: jobsData[0].current_department,
+        current_step: jobsData[0].current_step,
+        workflow_status: jobsData[0].workflow_status,
+        status_message: jobsData[0].status_message
+      } : 'No jobs');
+      
+      setJobs(jobsData);
+      setProducts(productsRes.data || productsRes.products || []);
+      setCompanies(companiesRes.data || companiesRes.companies || []);
+      setDesigners(designersRes.data || designersRes.users || []);
     } catch (error) {
       console.error('Error loading data:', error);
       toast.error('Failed to load jobs data');
@@ -372,6 +388,24 @@ const JobsModule: React.FC = () => {
       case 'low': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  // Helper function to infer department from status (fallback)
+  const getDepartmentFromStatus = (status: string): string | null => {
+    const statusUpper = status.toUpperCase();
+    if (statusUpper.includes('APPROVED_BY_QA') || statusUpper.includes('SUBMITTED_TO_QA') || statusUpper.includes('QA')) {
+      return 'Prepress';
+    }
+    if (statusUpper.includes('CTP') || statusUpper.includes('PLATE')) {
+      return 'Prepress';
+    }
+    if (statusUpper.includes('COMPLETED')) {
+      return 'Production';
+    }
+    if (statusUpper.includes('PENDING') || statusUpper.includes('IN_PROGRESS')) {
+      return 'Prepress'; // Default to Prepress for new jobs
+    }
+    return null;
   };
 
   const JobForm = ({ isEdit = false }) => (
@@ -708,9 +742,17 @@ const JobsModule: React.FC = () => {
                           <TableCell>{job.company_name || 'N/A'}</TableCell>
                           <TableCell>{job.designer_name || 'Unassigned'}</TableCell>
                           <TableCell>
-                            <Badge className={getStatusColor(job.status)}>
-                              {job.status.replace('_', ' ').toUpperCase()}
-                            </Badge>
+                            <div className="flex flex-col gap-1">
+                              <Badge className={getStatusColor(job.status)}>
+                                {job.status.replace('_', ' ').toUpperCase()}
+                              </Badge>
+                              {(job.current_department || getDepartmentFromStatus(job.status)) && (
+                                <Badge className="bg-purple-100 text-purple-800 text-xs w-fit">
+                                  <Building2 className="w-3 h-3 mr-1 inline" />
+                                  {job.current_department || getDepartmentFromStatus(job.status)}
+                                </Badge>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Badge className={getPriorityColor(job.priority)}>
@@ -796,9 +838,22 @@ const JobsModule: React.FC = () => {
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Status</Label>
-                  <Badge className={getStatusColor(selectedJob.status)}>
-                    {selectedJob.status.replace('_', ' ').toUpperCase()}
-                  </Badge>
+                  <div className="flex flex-col gap-2">
+                    <Badge className={getStatusColor(selectedJob.status)}>
+                      {selectedJob.status.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                    {selectedJob.current_department && (
+                      <Badge className="bg-purple-100 text-purple-800 w-fit">
+                        <Building2 className="w-3 h-3 mr-1 inline" />
+                        Department: {selectedJob.current_department}
+                      </Badge>
+                    )}
+                    {selectedJob.current_step && (
+                      <Badge className="bg-blue-100 text-blue-800 w-fit">
+                        Step: {selectedJob.current_step}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -846,6 +901,12 @@ const JobsModule: React.FC = () => {
                 <Label className="text-sm font-medium text-gray-500">Delivery Date</Label>
                 <p>{new Date(selectedJob.delivery_date).toLocaleDateString()}</p>
               </div>
+              {selectedJob.status_message && (
+                <div>
+                  <Label className="text-sm font-medium text-gray-500">Status Message</Label>
+                  <p className="text-sm bg-blue-50 p-3 rounded italic">{selectedJob.status_message}</p>
+                </div>
+              )}
               {selectedJob.description && (
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Description</Label>

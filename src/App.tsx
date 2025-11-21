@@ -19,6 +19,8 @@ import DesignerDashboard from "./components/designer/DesignerDashboard";
 import HODDesignerDashboard from "./components/hod/HODDesignerDashboard";
 import QADashboard from "./components/qa/QADashboard";
 import CTPDashboard from "./components/ctp/CTPDashboard";
+import CuttingDashboard from "./components/cutting/CuttingDashboard";
+import CuttingLaborView from "./components/cutting/CuttingLaborView";
 import JobManagementDashboard from "./components/jobs/JobManagementDashboard";
 import MerchandiserDashboard from "./components/dashboards/MerchandiserDashboard";
 import JobManagementModule from "./components/modules/JobManagementModule";
@@ -29,6 +31,9 @@ import JobLifecycleDemo from "./pages/JobLifecycleDemo";
 import PrepressDemo from "./pages/PrepressDemo";
 import InventoryModule from "./components/modules/InventoryModule";
 import ProductionDashboard from "./components/production/ProductionDashboard";
+import ProductionLaborView from "./components/production/ProductionLaborView";
+import SmartProductionDashboard from "./components/production/SmartProductionDashboard";
+import JobPlanningDetail from "./components/production/JobPlanningDetail";
 import InventoryDashboard from "./components/inventory/InventoryDashboard";
 import InventoryItemsManager from "./components/inventory/InventoryItemsManager";
 import InventoryTransactionsManager from "./components/inventory/InventoryTransactionsManager";
@@ -85,6 +90,8 @@ const App = () => (
             <Route path="/hod/designer/dashboard" element={<HODDesignerDashboard />} />
             <Route path="/qa/dashboard" element={<QADashboard />} />
             <Route path="/ctp/dashboard" element={<CTPDashboard onLogout={() => {}} onNavigate={() => {}} />} />
+            <Route path="/cutting/dashboard" element={<CuttingDashboard onLogout={() => {}} />} />
+            <Route path="/cutting/labor" element={<CuttingLaborView onLogout={() => {}} />} />
             <Route path="/jobs/management" element={<JobManagementDashboard />} />
             <Route path="/merchandiser/dashboard" element={<MerchandiserDashboard />} />
             
@@ -114,6 +121,9 @@ const App = () => (
             {/* Production System Routes */}
             <Route path="/production" element={<ProductionDashboard />} />
             <Route path="/production/dashboard" element={<ProductionDashboard />} />
+            <Route path="/production/labor" element={<ProductionLaborView onLogout={() => {}} />} />
+            <Route path="/production/smart-dashboard" element={<SmartProductionDashboard />} />
+            <Route path="/production/smart-dashboard/:jobId" element={<JobPlanningDetail />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

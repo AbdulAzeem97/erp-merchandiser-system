@@ -47,11 +47,15 @@ import {
   Award,
   Crown,
   Shield,
-  ExternalLink
+  ExternalLink,
+  MonitorSpeaker,
+  Layers
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';
 import ModernColorPicker from '../ui/ModernColorPicker';
+import { ItemSpecificationsDisplay } from '../ui/ItemSpecificationsDisplay';
+import ClockTimer from '@/components/ui/ClockTimer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -184,6 +188,19 @@ interface DesignerJob {
       material?: string;
     }>;
   };
+  // Plate and Machine Information
+  required_plate_count?: number;
+  ctp_machine_id?: string;
+  ctp_machine?: {
+    id: string;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+  };
 }
 
 interface DesignerStats {
@@ -251,11 +268,33 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const [user, setUser] = useState<any>(null);
   const [isSubmitToQADialogOpen, setIsSubmitToQADialogOpen] = useState(false);
   const [finalDesignLink, setFinalDesignLink] = useState('');
+  const [ctpMachines, setCtpMachines] = useState<Array<{id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string}>>([]);
+  const [isPlateInfoDialogOpen, setIsPlateInfoDialogOpen] = useState(false);
+  const [selectedJobForPlateInfo, setSelectedJobForPlateInfo] = useState<DesignerJob | null>(null);
+  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{machineId: string; plateCount: number | ''}>>([{machineId: '', plateCount: ''}]);
+  const [machineSearchTerm, setMachineSearchTerm] = useState<string>('');
+
+  // Load CTP machines
+  const loadCTPMachines = async () => {
+    try {
+      const machinesResponse = await jobsAPI.getCTPMachines();
+      if (machinesResponse.success && machinesResponse.machines) {
+        setCtpMachines(machinesResponse.machines.map((m: any) => ({
+          ...m,
+          id: String(m.id) // Ensure ID is string
+        })));
+        console.log('✅ CTP machines loaded:', machinesResponse.machines);
+      }
+    } catch (error) {
+      console.error('Error loading CTP machines:', error);
+    }
+  };
 
   // Load user data on component mount
   useEffect(() => {
     const userData = JSON.parse(localStorage.getItem('user') || '{}');
     setUser(userData);
+    loadCTPMachines();
   }, []);
 
   // Handle logout function
@@ -370,9 +409,17 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 itemSpecifications = itemSpecsResult.itemSpecifications;
                 console.log(`📋 Item specifications for job ${job.id}:`, itemSpecifications);
               }
+            } else if (itemSpecsResponse.status === 404) {
+              // Job doesn't have item specifications - this is normal, don't log as error
+              // Silently continue without item specifications
+            } else {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}: Status ${itemSpecsResponse.status}`);
             }
           } catch (error) {
-            console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+            // Only log non-404 errors
+            if (error instanceof TypeError && !error.message.includes('404')) {
+              console.warn(`⚠️ Could not fetch item specifications for job ${job.id}:`, error);
+            }
           }
 
           const product = completeProductInfo?.product || completeProductInfo || {};
@@ -433,10 +480,10 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           };
         }));
         
-        // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, and REJECTED (revised from QA)
-        // Exclude: APPROVED_BY_QA, SUBMITTED_TO_QA, COMPLETED, HOD_REVIEW, PAUSED, and other statuses
-        const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'REJECTED'];
-        const excludedStatuses = ['APPROVED_BY_QA', 'SUBMITTED_TO_QA', 'COMPLETED', 'HOD_REVIEW', 'PAUSED'];
+        // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, PAUSED, and REJECTED (revised from QA)
+        // Exclude: APPROVED_BY_QA, SUBMITTED_TO_QA, COMPLETED, HOD_REVIEW, and other statuses
+        const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'REJECTED'];
+        const excludedStatuses = ['APPROVED_BY_QA', 'SUBMITTED_TO_QA', 'COMPLETED', 'HOD_REVIEW'];
         const filteredDesignerJobs = designerJobsWithCompleteInfo.filter((job: DesignerJob) => {
           const jobStatus = (job.status || job.prepress_status || '').toUpperCase();
           // Exclude explicitly excluded statuses first
@@ -460,7 +507,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           assigned_jobs: filteredDesignerJobs.filter((job: DesignerJob) => (job.status === 'ASSIGNED' || job.status === 'PENDING')).length,
           in_progress_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'IN_PROGRESS').length,
           completed_jobs: 0, // Not showing completed jobs in designer portal
-          paused_jobs: 0, // Not showing paused jobs in designer portal
+          paused_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'PAUSED').length,
           hod_review_jobs: 0, // Not showing HOD review jobs in designer portal
           revised_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'REJECTED').length
         };
@@ -808,6 +855,42 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     const diffTime = due.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
+  };
+
+  // Calculate SLA time in minutes from process sequence
+  const getSLATimeMinutes = (job: DesignerJob): number => {
+    // Try to find "Designing" or "Prepress" step in process sequence
+    if (job.process_sequence?.steps) {
+      const designStep = job.process_sequence.steps.find(
+        step => step.name.toLowerCase().includes('design') || 
+                step.name.toLowerCase().includes('prepress')
+      );
+      if (designStep && designStep.estimatedHours) {
+        return designStep.estimatedHours * 60; // Convert hours to minutes
+      }
+    }
+    // Default SLA: 4 hours (240 minutes) for design work
+    return 240;
+  };
+
+  // Get start time for the clock (when job was assigned or started)
+  const getStartTime = (job: DesignerJob): Date => {
+    // Use assigned_at if available, otherwise use updated_at or current time as fallback
+    if (job.assigned_at) {
+      const date = new Date(job.assigned_at);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    // Try updated_at as fallback
+    if (job.updated_at) {
+      const date = new Date(job.updated_at);
+      if (!isNaN(date.getTime())) {
+        return date;
+      }
+    }
+    // Fallback to 1 hour ago to show some elapsed time
+    return new Date(Date.now() - 60 * 60 * 1000);
   };
 
   return (
@@ -1168,6 +1251,16 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         </div>
                       </div>
 
+                      {/* SLA Clock Timer - Always visible for active jobs */}
+                      <div className="flex items-center justify-center py-3 border-t border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">
+                        <ClockTimer
+                          startTime={getStartTime(job)}
+                          slaTimeMinutes={getSLATimeMinutes(job)}
+                          stageName="Design Stage"
+                          size="sm"
+                        />
+                      </div>
+
                       {/* Due Date Highlight */}
                       <div className={`flex items-center justify-between p-2 rounded ${getDaysUntilDue(job.due_date) <= 2 ? 'bg-red-50' : 'bg-gray-50'}`}>
                         <div className="flex items-center gap-1">
@@ -1180,33 +1273,47 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       </div>
 
                       {/* Quick Actions */}
-                      <div className="flex gap-2 pt-2">
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedJob(job);
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          Details
-                        </Button>
-                        {job.status === 'IN_PROGRESS' && (
+                      <div className="flex flex-col gap-2 pt-2">
+                        <div className="flex gap-2">
                           <Button
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedJob(job);
-                              setIsSubmitToQADialogOpen(true);
                             }}
+                            variant="outline"
                             size="sm"
-                            className="flex-1 bg-green-600 hover:bg-green-700"
+                            className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
                           >
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Submit
+                            <Eye className="h-3 w-3 mr-1" />
+                            Details
                           </Button>
-                        )}
+                          {job.status === 'IN_PROGRESS' && (
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedJob(job);
+                                setIsSubmitToQADialogOpen(true);
+                              }}
+                              size="sm"
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Submit
+                            </Button>
+                          )}
+                        </div>
+                        <Button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditProcessSequence(job);
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="w-full text-purple-600 border-purple-300 hover:bg-purple-50"
+                        >
+                          <Layers className="h-3 w-3 mr-1" />
+                          View Process Sequence
+                        </Button>
                       </div>
                     </div>
                   </motion.div>
@@ -1334,69 +1441,13 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                             </div>
 
                             {/* Item Specifications */}
-                            {selectedJob.itemSpecifications && selectedJob.itemSpecifications.items && selectedJob.itemSpecifications.items.length > 0 && (
-                              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                                <h4 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                  <Package className="h-4 w-4" />
-                                  Item Specifications
-                                </h4>
-                                <div className="mb-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                                  <div className="bg-white p-2 rounded">
-                                    <span className="text-gray-600 text-xs">Total Items</span>
-                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.item_count || selectedJob.itemSpecifications.items.length}</div>
-                                  </div>
-                                  <div className="bg-white p-2 rounded">
-                                    <span className="text-gray-600 text-xs">Total Quantity</span>
-                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.total_quantity?.toLocaleString() || selectedJob.itemSpecifications.items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0).toLocaleString()}</div>
-                                  </div>
-                                  <div className="bg-white p-2 rounded">
-                                    <span className="text-gray-600 text-xs">Sizes</span>
-                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.size_variants || new Set(selectedJob.itemSpecifications.items.map((i: any) => i.size)).size}</div>
-                                  </div>
-                                  <div className="bg-white p-2 rounded">
-                                    <span className="text-gray-600 text-xs">Colors</span>
-                                    <div className="font-bold text-gray-900">{selectedJob.itemSpecifications.color_variants || new Set(selectedJob.itemSpecifications.items.map((i: any) => i.color)).size}</div>
-                                  </div>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto border rounded-lg bg-white">
-                                  <table className="w-full text-xs">
-                                    <thead className="bg-gray-100 sticky top-0">
-                                      <tr>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Item Code</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Color</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Size</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Quantity</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Secondary Code</th>
-                                        <th className="px-3 py-2 text-left font-semibold text-gray-700">Material</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                      {selectedJob.itemSpecifications.items.slice(0, 50).map((item: any, index: number) => (
-                                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                          <td className="px-3 py-2 font-mono text-gray-900">{item.item_code}</td>
-                                          <td className="px-3 py-2">
-                                            <Badge variant="outline" className="bg-gray-50">{item.color}</Badge>
-                                          </td>
-                                          <td className="px-3 py-2 font-medium text-gray-900">{item.size}</td>
-                                          <td className="px-3 py-2 font-semibold text-gray-900">{item.quantity?.toLocaleString() || '0'}</td>
-                                          <td className="px-3 py-2 font-mono text-gray-600">{item.secondary_code || '-'}</td>
-                                          <td className="px-3 py-2 text-gray-600">{item.material || '-'}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                  {selectedJob.itemSpecifications.items.length > 50 && (
-                                    <div className="px-3 py-2 text-center text-xs text-gray-500 bg-gray-50">
-                                      Showing first 50 of {selectedJob.itemSpecifications.items.length} items
-                                    </div>
-                                  )}
-                                </div>
-                                {selectedJob.itemSpecifications.excel_file_name && (
-                                  <div className="mt-2 text-xs text-gray-600">
-                                    <span className="font-medium">File:</span> {selectedJob.itemSpecifications.excel_file_name}
-                                  </div>
-                                )}
-                              </div>
+                            {selectedJob.itemSpecifications && (
+                              <ItemSpecificationsDisplay
+                                itemSpecifications={selectedJob.itemSpecifications}
+                                showHeader={true}
+                                compact={false}
+                                maxItems={100}
+                              />
                             )}
 
                             {/* Job Details */}
@@ -1496,29 +1547,86 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                           </div>
                         )}
 
+              {/* Plate & Machine Info Display */}
+              {(selectedJob.required_plate_count || selectedJob.ctp_machine) && (
+                <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg border border-indigo-200 mb-4">
+                  <h4 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
+                    <MonitorSpeaker className="h-4 w-4" />
+                    Plate & Machine Information
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    {selectedJob.required_plate_count && (
+                      <div>
+                        <span className="font-medium text-gray-600">Required Plates:</span>
+                        <span className="ml-2 text-gray-900 font-semibold">{selectedJob.required_plate_count} plates</span>
+                      </div>
+                    )}
+                    {selectedJob.ctp_machine && (
+                      <div>
+                        <span className="font-medium text-gray-600">CTP Machine:</span>
+                        <span className="ml-2 text-gray-900 font-semibold">{selectedJob.ctp_machine.machine_name} ({selectedJob.ctp_machine.machine_code})</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
-                <Button
-                  onClick={() => {
-                    setIsStatusDialogOpen(true);
-                  }}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Update Status
-                </Button>
-                {selectedJob.status === 'IN_PROGRESS' && (
+              <div className="flex flex-col gap-3 pt-4 border-t">
+                <div className="flex gap-3">
                   <Button
                     onClick={() => {
-                      setIsSubmitToQADialogOpen(true);
+                      setIsStatusDialogOpen(true);
                     }}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
+                    variant="outline"
+                    className="flex-1"
                   >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Submit to QA
+                    <Edit className="h-4 w-4 mr-2" />
+                    Update Status
                   </Button>
-                )}
+                  {selectedJob.status === 'IN_PROGRESS' && (
+                    <Button
+                      onClick={() => {
+                        setIsSubmitToQADialogOpen(true);
+                      }}
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                    >
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Submit to QA
+                    </Button>
+                  )}
+                </div>
+                <Button
+                  onClick={() => {
+                    handleEditProcessSequence(selectedJob);
+                  }}
+                  variant="outline"
+                  className="w-full bg-white hover:bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-700"
+                >
+                  <Layers className="h-4 w-4 mr-2" />
+                  View Process Sequence
+                </Button>
+                <Button
+                  onClick={() => {
+                    setSelectedJobForPlateInfo(selectedJob);
+                    // Initialize with existing machine if available, otherwise start with empty
+                    if (selectedJob.ctp_machine_id && selectedJob.required_plate_count) {
+                      setMachinePlatePairs([{
+                        machineId: String(selectedJob.ctp_machine_id),
+                        plateCount: selectedJob.required_plate_count
+                      }]);
+                    } else {
+                      setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                    }
+                    setMachineSearchTerm('');
+                    setIsPlateInfoDialogOpen(true);
+                  }}
+                  variant="outline"
+                  className="w-full bg-white hover:bg-indigo-50 border-indigo-200 hover:border-indigo-300 text-indigo-700"
+                >
+                  <MonitorSpeaker className="h-4 w-4 mr-2" />
+                  {selectedJob.required_plate_count || selectedJob.ctp_machine ? 'Update Plate Info' : 'Add Plate Info'}
+                </Button>
               </div>
                       </div>
           )}
@@ -2397,6 +2505,206 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   </a>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Plate & Machine Info Dialog */}
+      <Dialog open={isPlateInfoDialogOpen} onOpenChange={setIsPlateInfoDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MonitorSpeaker className="h-5 w-5" />
+              Plate & Machine Information - {selectedJobForPlateInfo?.job_card_number || selectedJobForPlateInfo?.jobNumber || selectedJobForPlateInfo?.id}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedJobForPlateInfo && (
+            <div className="space-y-4 mt-4">
+              <div>
+                <Label htmlFor="machine-search">Search CTP Machine</Label>
+                <div className="relative mt-1">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input
+                    id="machine-search"
+                    type="text"
+                    value={machineSearchTerm}
+                    onChange={(e) => setMachineSearchTerm(e.target.value)}
+                    placeholder="Search machines by name, code, or model..."
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>CTP Machines & Plate Counts *</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMachinePlatePairs([...machinePlatePairs, {machineId: '', plateCount: ''}]);
+                    }}
+                    className="text-xs"
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Machine
+                  </Button>
+                </div>
+
+                {machinePlatePairs.map((pair, index) => {
+                  const filteredMachines = ctpMachines.filter(machine => 
+                    !machineSearchTerm || 
+                    machine.machine_name.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
+                    machine.machine_code.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
+                    (machine.model && machine.model.toLowerCase().includes(machineSearchTerm.toLowerCase())) ||
+                    (machine.manufacturer && machine.manufacturer.toLowerCase().includes(machineSearchTerm.toLowerCase()))
+                  );
+
+                  return (
+                    <div key={index} className="flex gap-2 items-start p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex-1 space-y-2">
+                        <div>
+                          <Label htmlFor={`machine-${index}`} className="text-xs text-gray-600">
+                            CTP Machine {index + 1} *
+                          </Label>
+                          <Select 
+                            value={pair.machineId} 
+                            onValueChange={(value) => {
+                              const updated = [...machinePlatePairs];
+                              updated[index].machineId = value;
+                              setMachinePlatePairs(updated);
+                            }}
+                          >
+                            <SelectTrigger id={`machine-${index}`} className="mt-1">
+                              <SelectValue placeholder="Select CTP machine" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[300px]">
+                              {filteredMachines.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-gray-500">
+                                  {isLoading ? 'Loading machines...' : 'No machines available'}
+                                </div>
+                              ) : (
+                                filteredMachines.map(machine => (
+                                  <SelectItem key={machine.id} value={machine.id}>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{machine.machine_name}</span>
+                                      <span className="text-xs text-gray-500">
+                                        {machine.machine_code} • {machine.manufacturer || 'N/A'} {machine.model || ''} • {machine.location || 'N/A'}
+                                      </span>
+                                    </div>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor={`plates-${index}`} className="text-xs text-gray-600">
+                            Number of Plates *
+                          </Label>
+                          <Input
+                            id={`plates-${index}`}
+                            type="number"
+                            min="0"
+                            value={pair.plateCount}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              const updated = [...machinePlatePairs];
+                              updated[index].plateCount = value === '' ? '' : parseInt(value, 10);
+                              setMachinePlatePairs(updated);
+                            }}
+                            placeholder="e.g., 6"
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                      {machinePlatePairs.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const updated = machinePlatePairs.filter((_, i) => i !== index);
+                            setMachinePlatePairs(updated);
+                          }}
+                          className="mt-6 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Add one or more CTP machines and specify the number of plates required for each machine
+              </p>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsPlateInfoDialogOpen(false);
+                    setSelectedJobForPlateInfo(null);
+                    setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                    setMachineSearchTerm('');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    // Validate all pairs have both machine and plate count
+                    const invalidPairs = machinePlatePairs.filter(
+                      pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0
+                    );
+
+                    if (invalidPairs.length > 0) {
+                      toast.error('Please provide both machine and plate count for all entries');
+                      return;
+                    }
+
+                    try {
+                      setIsLoading(true);
+                      const machines = machinePlatePairs.map(pair => ({
+                        ctp_machine_id: Number(pair.machineId),
+                        plate_count: Number(pair.plateCount)
+                      }));
+
+                      const response = await jobsAPI.updatePlateInfo(selectedJobForPlateInfo.id, {
+                        machines: machines
+                      });
+
+                      if (response.success) {
+                        toast.success(`Plate information updated successfully for ${machines.length} machine(s)! 🎨`);
+                        
+                        // Reload data to get updated info
+                        loadJobs();
+                        
+                        // Close dialog
+                        setIsPlateInfoDialogOpen(false);
+                        setSelectedJobForPlateInfo(null);
+                        setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                        setMachineSearchTerm('');
+                      } else {
+                        throw new Error(response.error || 'Failed to update plate info');
+                      }
+                    } catch (error: any) {
+                      console.error('Error updating plate info:', error);
+                      toast.error(error.message || 'Failed to update plate information');
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading || machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0)}
+                  className="bg-indigo-600 hover:bg-indigo-700"
+                >
+                  {isLoading ? 'Updating...' : 'Save Plate Info'}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

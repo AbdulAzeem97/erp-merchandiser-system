@@ -330,6 +330,19 @@ export const jobsAPI = {
   // Get jobs assigned to a specific designer
   getAssignedToDesigner: async (designerId: string) => {
     return await apiCall(`/jobs/assigned-to/${designerId}`);
+  },
+
+  // Get CTP machines list
+  getCTPMachines: async () => {
+    return await apiCall('/jobs/ctp/machines');
+  },
+
+  // Update plate count and machine for a job
+  updatePlateInfo: async (jobId: string, plateInfo: { required_plate_count?: number; ctp_machine_id?: string | number; machines?: Array<{ctp_machine_id: number; plate_count: number}> }) => {
+    return await apiCall(`/jobs/${jobId}/plate-info`, {
+      method: 'PUT',
+      body: JSON.stringify(plateInfo),
+    });
   }
 };
 

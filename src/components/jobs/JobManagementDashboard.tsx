@@ -80,6 +80,10 @@ interface Job {
   created_by: string;
   created_at: string;
   updated_at: string;
+  current_department?: string;
+  current_step?: string;
+  workflow_status?: string;
+  status_message?: string;
 }
 
 interface JobStats {
@@ -481,11 +485,22 @@ const JobManagementDashboard: React.FC<JobManagementDashboardProps> = ({ onLogou
                                 {getStatusIcon(job.status)}
                                 <span className="ml-1">{job.status}</span>
                               </Badge>
+                              {job.current_department && (
+                                <Badge className="bg-purple-100 text-purple-800 border-purple-300">
+                                  <Building className="w-3 h-3 mr-1" />
+                                  <span>{job.current_department}</span>
+                                </Badge>
+                              )}
                               <Badge className={priorityColors[job.priority as keyof typeof priorityColors]}>
                                 {getPriorityIcon(job.priority)}
                                 <span className="ml-1">{job.priority}</span>
                               </Badge>
                             </div>
+                            {job.status_message && (
+                              <div className="text-sm text-gray-600 mb-2 italic">
+                                {job.status_message}
+                              </div>
+                            )}
                             
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                               <div>
@@ -629,10 +644,23 @@ const JobManagementDashboard: React.FC<JobManagementDashboardProps> = ({ onLogou
                 </div>
                 <div>
                   <Label>Status</Label>
-                  <Badge className={statusColors[selectedJob.status as keyof typeof statusColors]}>
-                    {getStatusIcon(selectedJob.status)}
-                    <span className="ml-1">{selectedJob.status}</span>
-                  </Badge>
+                  <div className="flex flex-col gap-2">
+                    <Badge className={statusColors[selectedJob.status as keyof typeof statusColors]}>
+                      {getStatusIcon(selectedJob.status)}
+                      <span className="ml-1">{selectedJob.status}</span>
+                    </Badge>
+                    {selectedJob.current_department && (
+                      <Badge className="bg-purple-100 text-purple-800 border-purple-300 w-fit">
+                        <Building className="w-3 h-3 mr-1" />
+                        <span>Department: {selectedJob.current_department}</span>
+                      </Badge>
+                    )}
+                    {selectedJob.current_step && (
+                      <Badge className="bg-blue-100 text-blue-800 border-blue-300 w-fit">
+                        <span>Step: {selectedJob.current_step}</span>
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -669,6 +697,12 @@ const JobManagementDashboard: React.FC<JobManagementDashboardProps> = ({ onLogou
                 </div>
               </div>
               
+              {selectedJob.status_message && (
+                <div>
+                  <Label>Status Message</Label>
+                  <p className="text-sm bg-blue-50 p-3 rounded italic">{selectedJob.status_message}</p>
+                </div>
+              )}
               {selectedJob.description && (
                 <div>
                   <Label>Description</Label>

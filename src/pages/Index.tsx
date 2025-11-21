@@ -143,6 +143,18 @@ const Index = () => {
         } else if (user?.role === 'CTP_OPERATOR') {
           // Redirect to CTP dashboard
           setCurrentView('ctp-dashboard');
+        } else if (user?.role === 'HOD_CUTTING') {
+          // Redirect to Cutting dashboard
+          window.location.href = '/cutting/dashboard';
+          return;
+        } else if (user?.role === 'CUTTING_LABOR') {
+          // Redirect to Cutting labor view
+          window.location.href = '/cutting/labor';
+          return;
+        } else if (user?.role === 'HOD_PRODUCTION' || user?.role === 'PRODUCTION_OPERATOR') {
+          // Redirect to Production dashboard
+          window.location.href = '/production/dashboard';
+          return;
         } else if (user?.role === 'INVENTORY_MANAGER') {
           // Redirect to inventory dashboard
           window.location.href = '/inventory/dashboard';

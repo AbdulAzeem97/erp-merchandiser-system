@@ -27,6 +27,18 @@ router.get('/', asyncHandler(async (req, res) => {
     console.log('Getting jobs...');
     console.log('Query params:', req.query);
     
+    // Check if workflow columns exist
+    const columnCheck = await dbAdapter.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'job_cards' 
+      AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message')
+    `);
+    const existingColumns = columnCheck.rows.map(r => r.column_name);
+    const hasWorkflowColumns = existingColumns.length > 0;
+    
+    console.log('Workflow columns exist:', hasWorkflowColumns, existingColumns);
+    
     // Build WHERE clause based on query parameters
     const whereConditions = [];
     const queryParams = [];
@@ -46,7 +58,18 @@ router.get('/', asyncHandler(async (req, res) => {
     
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
     
-    // Enhanced query with proper joins to get complete job information
+    // Build workflow columns part conditionally
+    const workflowColumns = hasWorkflowColumns 
+      ? `jc.current_department,
+         jc.current_step,
+         jc.workflow_status,
+         jc.status_message`
+      : `NULL as current_department,
+         NULL as current_step,
+         NULL as workflow_status,
+         NULL as status_message`;
+    
+    // Enhanced query with proper joins to get complete job information including workflow data
   const jobsQuery = `
     SELECT 
       jc.*,
@@ -66,13 +89,25 @@ router.get('/', asyncHandler(async (req, res) => {
         jc.customer_address,
         u."firstName" || ' ' || u."lastName" as assigned_designer_name,
         u.email as assigned_designer_email,
-        u.phone as assigned_designer_phone
+        u.phone as assigned_designer_phone,
+        pj.required_plate_count,
+        pj.ctp_machine_id,
+        cm.machine_code as ctp_machine_code,
+        cm.machine_name as ctp_machine_name,
+        cm.machine_type as ctp_machine_type,
+        cm.manufacturer as ctp_machine_manufacturer,
+        cm.model as ctp_machine_model,
+        cm.location as ctp_machine_location,
+        cm.max_plate_size as ctp_machine_max_plate_size,
+        ${workflowColumns}
     FROM job_cards jc
       LEFT JOIN products p ON jc."productId" = p.id
       LEFT JOIN materials m ON p.material_id = m.id
       LEFT JOIN categories cat ON p."categoryId" = cat.id
       LEFT JOIN companies c ON jc."companyId" = c.id
       LEFT JOIN users u ON jc."assignedToId" = u.id
+      LEFT JOIN prepress_jobs pj ON jc.id = pj.job_card_id
+      LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
     ${whereClause}
       ORDER BY jc."createdAt" DESC
       LIMIT 20
@@ -94,9 +129,11 @@ router.get('/', asyncHandler(async (req, res) => {
     });
   } catch (error) {
     console.error('Error in jobs endpoint:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       error: 'Internal server error',
-      message: error.message
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }));
@@ -383,7 +420,48 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
 
   const job = result.rows[0];
 
-  // Create job lifecycle entry
+  // Automatically create prepress job entry (mandatory for all jobs)
+  try {
+    const PrepressService = (await import('../services/prepressService.js')).default;
+    const prepressService = new PrepressService();
+    
+    await prepressService.createPrepressJob(
+      job.id,
+      assigned_designer_id || null,
+      priority || 'MEDIUM',
+      delivery_date ? new Date(delivery_date) : null,
+      req.user?.id || 1
+    );
+    console.log(`✅ Prepress job created automatically for job ${job.id}`);
+  } catch (prepressError) {
+    // If prepress job already exists, that's okay
+    if (prepressError.message && prepressError.message.includes('already exists')) {
+      console.log('ℹ️ Prepress job already exists for this job');
+    } else {
+      console.error('⚠️ Error creating prepress job (non-critical):', prepressError);
+      // Don't fail job creation if prepress job creation fails
+    }
+  }
+
+  // Generate workflow steps from product process sequence
+  try {
+    const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
+    const workflowService = new UnifiedWorkflowService();
+    
+    // Set socket handler if available
+    const io = req.app.get('io');
+    if (io) {
+      workflowService.setSocketHandler(io);
+    }
+    
+    await workflowService.generateWorkflowFromProduct(job.id, product_id);
+    console.log(`✅ Workflow generated for job ${job.id}`);
+  } catch (workflowError) {
+    console.error('⚠️ Error generating workflow (non-critical):', workflowError);
+    // Don't fail job creation if workflow generation fails
+  }
+
+  // Create job lifecycle entry (backward compatibility)
   try {
     if (global.jobLifecycleService) {
       await global.jobLifecycleService.createJobLifecycle(job.id, req.user?.id || null);
@@ -883,11 +961,22 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         u."firstName" || ' ' || u."lastName" as created_by_name,
         d."firstName" || ' ' || d."lastName" as assigned_designer_name,
         d.email as assigned_designer_email,
-        d.phone as assigned_designer_phone
+        d.phone as assigned_designer_phone,
+        pj.required_plate_count,
+        pj.ctp_machine_id,
+        cm.machine_code as ctp_machine_code,
+        cm.machine_name as ctp_machine_name,
+        cm.machine_type as ctp_machine_type,
+        cm.manufacturer as ctp_machine_manufacturer,
+        cm.model as ctp_machine_model,
+        cm.location as ctp_machine_location,
+        cm.max_plate_size as ctp_machine_max_plate_size
       FROM job_cards jc
       LEFT JOIN companies c ON jc."companyId" = c.id
       LEFT JOIN users u ON jc."createdById" = u.id
       LEFT JOIN users d ON jc."assignedToId" = d.id
+      LEFT JOIN prepress_jobs pj ON jc.id = pj.job_card_id
+      LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
       WHERE jc."assignedToId" = $1
       ORDER BY jc."createdAt" DESC
     `;
@@ -978,7 +1067,16 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         clientLayoutLink: job.client_layout_link || '',
         finalDesignLink: job.final_design_link || '',
         createdAt: job.createdAt,
-        updatedAt: job.updatedAt
+        updatedAt: job.updatedAt,
+        required_plate_count: job.required_plate_count || null,
+        ctp_machine_id: job.ctp_machine_id || null,
+        ctp_machine_code: job.ctp_machine_code || null,
+        ctp_machine_name: job.ctp_machine_name || null,
+        ctp_machine_type: job.ctp_machine_type || null,
+        ctp_machine_manufacturer: job.ctp_machine_manufacturer || null,
+        ctp_machine_model: job.ctp_machine_model || null,
+        ctp_machine_location: job.ctp_machine_location || null,
+        ctp_machine_max_plate_size: job.ctp_machine_max_plate_size || null
       };
     }));
     
@@ -1234,13 +1332,76 @@ router.post('/:id/qa-approve',
         });
       }
       
-      // Update prepress job status if exists
+      // Update workflow step using UnifiedWorkflowService
       try {
-        await dbAdapter.query(`
-          UPDATE prepress_jobs 
-          SET status = 'APPROVED_BY_QA', updated_at = CURRENT_TIMESTAMP
+        const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
+        const workflowService = new UnifiedWorkflowService();
+        
+        // Set socket handler if available
+        const io = req.app.get('io');
+        if (io) {
+          workflowService.setSocketHandler(io);
+        }
+        
+        // Find current workflow step that needs QA approval
+        const workflowSteps = await workflowService.getJobWorkflow(id);
+        const currentStep = workflowSteps.find(step => 
+          ['submitted', 'qa_review'].includes(step.status) && step.requires_qa
+        );
+        
+        if (currentStep) {
+          await workflowService.approveStep(id, currentStep.sequence_number, req.user?.id || 1, qaNotes || '');
+          console.log(`✅ Workflow step ${currentStep.sequence_number} approved via unified workflow`);
+        } else {
+          console.log('⚠️ No workflow step found for QA approval, using legacy update');
+        }
+      } catch (workflowError) {
+        console.error('⚠️ Workflow approval failed, falling back to legacy update:', workflowError);
+      }
+      
+      // Update prepress job status if exists (backward compatibility)
+      // IMPORTANT: Only update status, preserve all other fields (required_plate_count, ctp_machine_id, etc.)
+      try {
+        // First, verify prepress job exists and log current plate/machine data
+        const prepressCheck = await dbAdapter.query(`
+          SELECT id, required_plate_count, ctp_machine_id, status
+          FROM prepress_jobs 
           WHERE job_card_id = $1
         `, [id]);
+        
+        if (prepressCheck.rows.length > 0) {
+          const prepressJob = prepressCheck.rows[0];
+          console.log('🔍 QA Approval - Prepress job data before update:', {
+            prepress_job_id: prepressJob.id,
+            required_plate_count: prepressJob.required_plate_count,
+            ctp_machine_id: prepressJob.ctp_machine_id,
+            current_status: prepressJob.status
+          });
+          
+          // Update ONLY the status, preserving all other fields
+          await dbAdapter.query(`
+            UPDATE prepress_jobs 
+            SET status = 'APPROVED_BY_QA', updated_at = CURRENT_TIMESTAMP
+            WHERE job_card_id = $1
+          `, [id]);
+          
+          // Verify data is preserved after update
+          const verifyQuery = await dbAdapter.query(`
+            SELECT id, required_plate_count, ctp_machine_id, status
+            FROM prepress_jobs 
+            WHERE job_card_id = $1
+          `, [id]);
+          
+          if (verifyQuery.rows.length > 0) {
+            const verified = verifyQuery.rows[0];
+            console.log('✅ QA Approval - Prepress job data after update (preserved):', {
+              prepress_job_id: verified.id,
+              required_plate_count: verified.required_plate_count,
+              ctp_machine_id: verified.ctp_machine_id,
+              new_status: verified.status
+            });
+          }
+        }
         
         // Log QA activity
         await dbAdapter.query(`
@@ -1303,7 +1464,34 @@ router.post('/:id/qa-reject',
         });
       }
       
-      // Update prepress job status if exists
+      // Update workflow step using UnifiedWorkflowService
+      try {
+        const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
+        const workflowService = new UnifiedWorkflowService();
+        
+        // Set socket handler if available
+        const io = req.app.get('io');
+        if (io) {
+          workflowService.setSocketHandler(io);
+        }
+        
+        // Find current workflow step that needs QA rejection
+        const workflowSteps = await workflowService.getJobWorkflow(id);
+        const currentStep = workflowSteps.find(step => 
+          ['submitted', 'qa_review'].includes(step.status) && step.requires_qa
+        );
+        
+        if (currentStep) {
+          await workflowService.rejectStep(id, currentStep.sequence_number, req.user?.id || 1, qaNotes || '');
+          console.log(`✅ Workflow step ${currentStep.sequence_number} rejected via unified workflow`);
+        } else {
+          console.log('⚠️ No workflow step found for QA rejection, using legacy update');
+        }
+      } catch (workflowError) {
+        console.error('⚠️ Workflow rejection failed, falling back to legacy update:', workflowError);
+      }
+      
+      // Update prepress job status if exists (backward compatibility)
       try {
         await dbAdapter.query(`
           UPDATE prepress_jobs 
@@ -1373,7 +1561,34 @@ router.post('/:id/submit-to-qa',
         });
       }
       
-      // Update prepress job status if exists
+      // Update workflow step using UnifiedWorkflowService
+      try {
+        const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
+        const workflowService = new UnifiedWorkflowService();
+        
+        // Set socket handler if available
+        const io = req.app.get('io');
+        if (io) {
+          workflowService.setSocketHandler(io);
+        }
+        
+        // Find current workflow step that needs to be submitted
+        const workflowSteps = await workflowService.getJobWorkflow(id);
+        const currentStep = workflowSteps.find(step => 
+          step.status === 'in_progress' && step.requires_qa
+        );
+        
+        if (currentStep) {
+          await workflowService.submitToQA(id, currentStep.sequence_number, req.user?.id || 1);
+          console.log(`✅ Workflow step ${currentStep.sequence_number} submitted to QA via unified workflow`);
+        } else {
+          console.log('⚠️ No workflow step found for submission, using legacy update');
+        }
+      } catch (workflowError) {
+        console.error('⚠️ Workflow submission failed, falling back to legacy update:', workflowError);
+      }
+      
+      // Update prepress job status if exists (backward compatibility)
       try {
         await dbAdapter.query(`
           UPDATE prepress_jobs 
@@ -1410,6 +1625,322 @@ router.post('/:id/submit-to-qa',
     }
   })
 );
+
+// Get CTP machines list
+router.get('/ctp/machines', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        id,
+        machine_code,
+        machine_name,
+        machine_type,
+        manufacturer,
+        model,
+        status,
+        location,
+        description,
+        max_plate_size,
+        is_active
+      FROM ctp_machines
+      WHERE is_active = true
+      ORDER BY machine_code ASC
+    `;
+
+    const result = await dbAdapter.query(query);
+    
+    res.json({
+      success: true,
+      machines: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching CTP machines:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch CTP machines', 
+      message: error.message 
+    });
+  }
+}));
+
+// Update plate count and machine for a job
+router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { required_plate_count, ctp_machine_id, machines } = req.body;
+    const userId = req.user?.id;
+
+    console.log(`Updating plate info for job ${id}:`, { required_plate_count, ctp_machine_id, machines });
+
+    // Validate plate count
+    if (required_plate_count !== undefined && required_plate_count !== null) {
+      if (!Number.isInteger(required_plate_count) || required_plate_count < 0) {
+        return res.status(400).json({
+          error: 'Invalid plate count',
+          message: 'Plate count must be a non-negative integer'
+        });
+      }
+    }
+
+    // Validate machine ID if provided
+    if (ctp_machine_id) {
+      const machineCheck = await dbAdapter.query(
+        'SELECT id FROM ctp_machines WHERE id = $1 AND is_active = true',
+        [ctp_machine_id]
+      );
+      
+      if (machineCheck.rows.length === 0) {
+        return res.status(400).json({
+          error: 'Invalid machine',
+          message: 'The specified CTP machine does not exist or is not active'
+        });
+      }
+    }
+
+    // Check if prepress job exists
+    const prepressJobCheck = await dbAdapter.query(
+      'SELECT id, job_card_id FROM prepress_jobs WHERE job_card_id = $1',
+      [id]
+    );
+
+    if (prepressJobCheck.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Prepress job not found',
+        message: 'No prepress job found for this job card'
+      });
+    }
+
+    const prepressJobId = prepressJobCheck.rows[0].id;
+
+    // Handle multiple machines if provided
+    if (machines && Array.isArray(machines) && machines.length > 0) {
+      // Validate all machines exist
+      const machineIds = machines.map(m => m.ctp_machine_id);
+      const machineCheck = await dbAdapter.query(
+        `SELECT id FROM ctp_machines WHERE id = ANY($1::int[]) AND is_active = true`,
+        [machineIds]
+      );
+      
+      if (machineCheck.rows.length !== machineIds.length) {
+        return res.status(400).json({
+          error: 'Invalid machine(s)',
+          message: 'One or more specified CTP machines do not exist or are not active'
+        });
+      }
+
+      // Validate plate counts
+      for (const machine of machines) {
+        if (!Number.isInteger(machine.plate_count) || machine.plate_count < 0) {
+          return res.status(400).json({
+            error: 'Invalid plate count',
+            message: `Plate count for machine ${machine.ctp_machine_id} must be a non-negative integer`
+          });
+        }
+      }
+
+      // Delete existing machine associations
+      await dbAdapter.query(
+        'DELETE FROM job_ctp_machines WHERE prepress_job_id = $1',
+        [prepressJobId]
+      );
+
+      // Insert new machine associations
+      const totalPlateCount = machines.reduce((sum, m) => sum + m.plate_count, 0);
+      for (const machine of machines) {
+        await dbAdapter.query(
+          `INSERT INTO job_ctp_machines (prepress_job_id, ctp_machine_id, plate_count, created_by, updated_by)
+           VALUES ($1, $2, $3, $4, $4)`,
+          [prepressJobId, machine.ctp_machine_id, machine.plate_count, userId]
+        );
+      }
+
+      // Update prepress_jobs with total plate count and first machine (for backward compatibility)
+      const updateQuery = `
+        UPDATE prepress_jobs
+        SET 
+          required_plate_count = $1,
+          ctp_machine_id = $2,
+          plate_machine_updated_by = $3,
+          plate_machine_updated_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = $4
+        RETURNING *
+      `;
+
+      const result = await dbAdapter.query(updateQuery, [
+        totalPlateCount,
+        machines[0].ctp_machine_id, // First machine for backward compatibility
+        userId,
+        prepressJobId
+      ]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: 'Failed to update plate info',
+          message: 'Prepress job not found'
+        });
+      }
+
+      // Get all machines for this job
+      const machinesQuery = `
+        SELECT 
+          jcm.*,
+          cm.machine_code,
+          cm.machine_name,
+          cm.machine_type,
+          cm.manufacturer,
+          cm.model,
+          cm.location,
+          cm.max_plate_size
+        FROM job_ctp_machines jcm
+        JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+        WHERE jcm.prepress_job_id = $1
+        ORDER BY jcm.created_at
+      `;
+
+      const machinesResult = await dbAdapter.query(machinesQuery, [prepressJobId]);
+      const updatedJob = result.rows[0];
+
+      // Emit real-time update
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('job_plate_info_updated', {
+          jobId: id,
+          prepressJobId: prepressJobId,
+          requiredPlateCount: totalPlateCount,
+          machines: machinesResult.rows,
+          updatedBy: req.user?.firstName + ' ' + req.user?.lastName || 'System',
+          updatedAt: updatedJob.plate_machine_updated_at
+        });
+      }
+
+      console.log('✅ Plate info updated successfully with multiple machines');
+
+      res.json({
+        success: true,
+        message: 'Plate info updated successfully',
+        job: {
+          id: updatedJob.id,
+          job_card_id: updatedJob.job_card_id,
+          required_plate_count: totalPlateCount,
+          machines: machinesResult.rows.map(m => ({
+            id: m.ctp_machine_id,
+            machine_code: m.machine_code,
+            machine_name: m.machine_name,
+            machine_type: m.machine_type,
+            manufacturer: m.manufacturer,
+            model: m.model,
+            location: m.location,
+            max_plate_size: m.max_plate_size,
+            plate_count: m.plate_count
+          })),
+          ctp_machine: machinesResult.rows.length > 0 ? {
+            id: machinesResult.rows[0].ctp_machine_id,
+            machine_code: machinesResult.rows[0].machine_code,
+            machine_name: machinesResult.rows[0].machine_name,
+            machine_type: machinesResult.rows[0].machine_type,
+            manufacturer: machinesResult.rows[0].manufacturer,
+            model: machinesResult.rows[0].model,
+            location: machinesResult.rows[0].location,
+            max_plate_size: machinesResult.rows[0].max_plate_size
+          } : null,
+          plate_machine_updated_by: updatedJob.plate_machine_updated_by,
+          plate_machine_updated_at: updatedJob.plate_machine_updated_at
+        }
+      });
+      return;
+    }
+
+    // Legacy single machine handling (for backward compatibility)
+    const updateQuery = `
+      UPDATE prepress_jobs
+      SET 
+        required_plate_count = COALESCE($1, required_plate_count),
+        ctp_machine_id = COALESCE($2, ctp_machine_id),
+        plate_machine_updated_by = $3,
+        plate_machine_updated_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+      RETURNING *
+    `;
+
+    const result = await dbAdapter.query(updateQuery, [
+      required_plate_count !== undefined ? required_plate_count : null,
+      ctp_machine_id || null,
+      userId,
+      prepressJobId
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Failed to update plate info',
+        message: 'Prepress job not found'
+      });
+    }
+
+    // Get updated job with machine details
+    const jobQuery = `
+      SELECT 
+        pj.*,
+        cm.machine_code,
+        cm.machine_name,
+        cm.machine_type,
+        cm.manufacturer,
+        cm.model,
+        cm.location,
+        cm.max_plate_size
+      FROM prepress_jobs pj
+      LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
+      WHERE pj.id = $1
+    `;
+
+    const jobResult = await dbAdapter.query(jobQuery, [prepressJobId]);
+    const updatedJob = jobResult.rows[0];
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('job_plate_info_updated', {
+        jobId: id,
+        prepressJobId: prepressJobId,
+        requiredPlateCount: updatedJob.required_plate_count,
+        ctpMachineId: updatedJob.ctp_machine_id,
+        machineName: updatedJob.machine_name,
+        updatedBy: req.user?.firstName + ' ' + req.user?.lastName || 'System',
+        updatedAt: updatedJob.plate_machine_updated_at
+      });
+    }
+
+    console.log('✅ Plate info updated successfully');
+
+    res.json({
+      success: true,
+      message: 'Plate info updated successfully',
+      job: {
+        id: updatedJob.id,
+        job_card_id: updatedJob.job_card_id,
+        required_plate_count: updatedJob.required_plate_count,
+        ctp_machine: updatedJob.ctp_machine_id ? {
+          id: updatedJob.ctp_machine_id,
+          machine_code: updatedJob.machine_code,
+          machine_name: updatedJob.machine_name,
+          machine_type: updatedJob.machine_type,
+          manufacturer: updatedJob.manufacturer,
+          model: updatedJob.model,
+          location: updatedJob.location,
+          max_plate_size: updatedJob.max_plate_size
+        } : null,
+        plate_machine_updated_by: updatedJob.plate_machine_updated_by,
+        plate_machine_updated_at: updatedJob.plate_machine_updated_at
+      }
+    });
+  } catch (error) {
+    console.error('Error updating plate info:', error);
+    res.status(500).json({
+      error: 'Failed to update plate info',
+      message: error.message
+    });
+  }
+}));
 
 export default router;
 

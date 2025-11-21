@@ -51,8 +51,7 @@ import {
   RefreshCw,
   Layers,
   MonitorSpeaker,
-  ExternalLink,
-  XCircle
+  ExternalLink
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';

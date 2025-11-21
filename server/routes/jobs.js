@@ -443,6 +443,33 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     }
   }
 
+  // Copy product process sequence selections to job
+  try {
+    // Get product's process sequence selections
+    const productSelections = await dbAdapter.query(
+      `SELECT "stepId", is_selected 
+       FROM product_step_selections 
+       WHERE "productId" = $1 AND is_selected = true`,
+      [product_id]
+    );
+
+    // Copy selections to job_process_selections
+    if (productSelections.rows.length > 0) {
+      for (const selection of productSelections.rows) {
+        await dbAdapter.query(
+          `INSERT INTO job_process_selections ("jobId", "processStepId", is_selected, "createdAt", "updatedAt")
+           VALUES ($1, $2, $3, NOW(), NOW())
+           ON CONFLICT ("jobId", "processStepId") DO NOTHING`,
+          [job.id, selection.stepId, selection.is_selected]
+        );
+      }
+      console.log(`✅ Copied ${productSelections.rows.length} process sequence selections from product to job ${job.id}`);
+    }
+  } catch (selectionError) {
+    console.error('⚠️ Error copying product process selections (non-critical):', selectionError);
+    // Don't fail job creation if copying selections fails
+  }
+
   // Generate workflow steps from product process sequence
   try {
     const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;

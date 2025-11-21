@@ -253,11 +253,21 @@ router.get('/for-job/:jobId', asyncHandler(async (req, res) => {
 
   const productId = jobResult.rows[0].productId;
 
-  // Since product_type is not stored in the database, we'll use 'Offset' as default
-  // In a real implementation, you might want to add a product_type column to the products table
-  const productType = 'Offset';
+  // Get product type from product
+  let productType = 'Offset'; // Default fallback
+  try {
+    const productResult = await dbAdapter.query(
+      'SELECT product_type FROM products WHERE id = $1',
+      [productId]
+    );
+    if (productResult.rows.length > 0 && productResult.rows[0].product_type) {
+      productType = productResult.rows[0].product_type;
+    }
+  } catch (error) {
+    console.warn('Could not fetch product_type, using default:', error);
+  }
 
-  // Get process steps with job-specific selections
+  // Get process steps with job-specific selections, falling back to product selections
   const stepsQuery = `
     SELECT
       ps.id as sequence_id,
@@ -267,15 +277,20 @@ router.get('/for-job/:jobId', asyncHandler(async (req, res) => {
       pst.name as step_name,
       pst."isQualityCheck" as is_compulsory,
       pst."stepNumber" as step_order,
-      COALESCE(jps.is_selected, pst."isQualityCheck") as is_selected
+      COALESCE(
+        jps.is_selected,
+        pss.is_selected,
+        pst."isQualityCheck"
+      ) as is_selected
     FROM process_sequences ps
     JOIN process_steps pst ON ps.id = pst."sequenceId"
     LEFT JOIN job_process_selections jps ON pst.id = jps."processStepId" AND jps."jobId" = $1
-    WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
+    LEFT JOIN product_step_selections pss ON pst.id = pss."stepId" AND pss."productId" = $2
+    WHERE (ps.name = $3 OR ps.name LIKE $3 || '%') AND ps."isActive" = true AND pst."isActive" = true
     ORDER BY pst."stepNumber" ASC
   `;
 
-  const result = await dbAdapter.query(stepsQuery, [jobId, productType]);
+  const result = await dbAdapter.query(stepsQuery, [jobId, productId, productType]);
 
   // Group the results
   const sequence = {

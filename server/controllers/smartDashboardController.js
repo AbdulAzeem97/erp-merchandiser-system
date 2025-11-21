@@ -437,7 +437,16 @@ class SmartDashboardController {
 
       console.log('🔍 getMaterialSizes called for materialId:', materialId);
 
-      const sizesData = await materialSizeService.getMaterialSizes(materialId);
+      // Convert materialId to integer
+      const materialIdInt = parseInt(materialId, 10);
+      if (isNaN(materialIdInt)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid material ID'
+        });
+      }
+
+      const sizesData = await materialSizeService.getMaterialSizes(materialIdInt);
       console.log('✅ Sizes fetched:', sizesData.sizes?.length || 0, 'sizes');
 
       if (blankWidth && blankHeight && quantity) {
@@ -489,6 +498,15 @@ class SmartDashboardController {
 
       console.log('➕ addMaterialSize called:', { materialId, size_name, width_mm, height_mm });
 
+      // Convert materialId to integer
+      const materialIdInt = parseInt(materialId, 10);
+      if (isNaN(materialIdInt)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid material ID'
+        });
+      }
+
       if (!size_name || !width_mm || !height_mm) {
         return res.status(400).json({
           success: false,
@@ -499,7 +517,7 @@ class SmartDashboardController {
       // Check if material exists
       const materialCheck = await dbAdapter.query(
         'SELECT id FROM materials WHERE id = $1',
-        [materialId]
+        [materialIdInt]
       );
 
       if (materialCheck.rows.length === 0) {
@@ -514,7 +532,7 @@ class SmartDashboardController {
       const existingCheck = await dbAdapter.query(
         `SELECT id FROM material_sizes 
          WHERE inventory_material_id = $1 AND LOWER(TRIM(size_name)) = LOWER(TRIM($2))`,
-        [materialId, size_name]
+        [materialIdInt, size_name]
       );
 
       if (existingCheck.rows.length > 0) {
@@ -528,7 +546,7 @@ class SmartDashboardController {
       // Check if this should be default (if it's the first size)
       const sizeCount = await dbAdapter.query(
         'SELECT COUNT(*) as count FROM material_sizes WHERE inventory_material_id = $1',
-        [materialId]
+        [materialIdInt]
       );
       const shouldBeDefault = parseInt(sizeCount.rows[0].count) === 0;
 
@@ -550,7 +568,7 @@ class SmartDashboardController {
       `;
 
       const result = await dbAdapter.query(insertQuery, [
-        materialId,
+        materialIdInt,
         size_name.trim(),
         parseFloat(width_mm),
         parseFloat(height_mm),
@@ -667,8 +685,17 @@ class SmartDashboardController {
         wastageJustification
       } = req.body;
 
+      // Convert jobId to integer
+      const jobIdInt = parseInt(jobId, 10);
+      if (isNaN(jobIdInt)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid job ID'
+        });
+      }
+
       console.log('💾 savePlanning called:', {
-        jobId,
+        jobId: jobIdInt,
         selectedSheetSizeId,
         baseRequiredSheets,
         additionalSheets
@@ -716,7 +743,7 @@ class SmartDashboardController {
       // Get job card ID
       const jobQuery = await dbAdapter.query(
         `SELECT job_card_id FROM prepress_jobs WHERE id = $1`,
-        [jobId]
+        [jobIdInt]
       );
 
       if (jobQuery.rows.length === 0) {

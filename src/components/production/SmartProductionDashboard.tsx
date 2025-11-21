@@ -375,7 +375,9 @@ const SmartProductionDashboard: React.FC<SmartProductionDashboardProps> = ({ onL
                                   <div className="flex justify-between">
                                     <span className="text-blue-600">Cost:</span>
                                     <span className="font-semibold">
-                                      ${job.material_cost.toFixed(2)}
+                                      ${typeof job.material_cost === 'number' 
+                                        ? job.material_cost.toFixed(2) 
+                                        : parseFloat(job.material_cost || 0).toFixed(2)}
                                     </span>
                                   </div>
                                 )}

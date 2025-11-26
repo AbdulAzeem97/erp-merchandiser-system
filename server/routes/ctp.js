@@ -90,6 +90,11 @@ router.get('/jobs', authenticateToken, asyncHandler(async (req, res) => {
         pj.created_at,
         pj.completed_at,
         pj.ctp_machine_id,
+        pj.blank_width_mm,
+        pj.blank_height_mm,
+        pj.blank_width_inches,
+        pj.blank_height_inches,
+        pj.blank_size_unit,
         cm.machine_code as ctp_machine_code,
         cm.machine_name as ctp_machine_name,
         cm.machine_type as ctp_machine_type,
@@ -115,21 +120,57 @@ router.get('/jobs', authenticateToken, asyncHandler(async (req, res) => {
     console.log(`✅ CTP: Found ${result.rows.length} jobs`);
     console.log('✅ CTP: Job statuses:', result.rows.map(j => j.status).join(', '));
     
-    // Debug: Log plate and machine info for all jobs
-    result.rows.forEach((job, index) => {
-      console.log(`🔍 CTP: Job ${index + 1} (${job.job_card_number}) plate/machine data:`, {
-        required_plate_count: job.required_plate_count,
-        ctp_machine_id: job.ctp_machine_id,
-        ctp_machine_name: job.ctp_machine_name,
-        ctp_machine_code: job.ctp_machine_code,
-        ctp_machine_type: job.ctp_machine_type,
-        ctp_machine_location: job.ctp_machine_location
-      });
-    });
+    // Enhance jobs with multiple machines
+    const jobsWithAllFields = await Promise.all(result.rows.map(async (job) => {
+      // Fetch multiple machines from job_ctp_machines
+      let machines = [];
+      try {
+        const machinesResult = await dbAdapter.query(`
+          SELECT 
+            jcm.*,
+            cm.machine_code,
+            cm.machine_name,
+            cm.machine_type,
+            cm.manufacturer,
+            cm.model,
+            cm.location,
+            cm.max_plate_size
+          FROM job_ctp_machines jcm
+          JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+          WHERE jcm.prepress_job_id = $1
+          ORDER BY jcm.created_at
+        `, [job.id]);
+        
+        machines = machinesResult.rows.map(m => ({
+          id: m.ctp_machine_id,
+          machine_code: m.machine_code,
+          machine_name: m.machine_name,
+          machine_type: m.machine_type,
+          manufacturer: m.manufacturer,
+          model: m.model,
+          location: m.location,
+          max_plate_size: m.max_plate_size,
+          plate_count: m.plate_count
+        }));
+      } catch (error) {
+        console.error(`Error fetching machines for CTP job ${job.id}:`, error);
+      }
 
-    // Ensure all fields are explicitly included in response (even if NULL)
-    // Map each job to ensure all fields are present
-    const jobsWithAllFields = result.rows.map(job => {
+      // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
+      if (machines.length === 0 && job.ctp_machine_id) {
+        machines = [{
+          id: job.ctp_machine_id,
+          machine_code: job.ctp_machine_code,
+          machine_name: job.ctp_machine_name,
+          machine_type: job.ctp_machine_type,
+          manufacturer: job.ctp_machine_manufacturer,
+          model: job.ctp_machine_model,
+          location: job.ctp_machine_location,
+          max_plate_size: job.ctp_machine_max_plate_size,
+          plate_count: job.required_plate_count || 0
+        }];
+      }
+
       const mappedJob = {
         ...job,
         // Explicitly set all plate/machine fields, converting undefined to null
@@ -142,23 +183,19 @@ router.get('/jobs', authenticateToken, asyncHandler(async (req, res) => {
         ctp_machine_manufacturer: job.ctp_machine_manufacturer !== undefined ? job.ctp_machine_manufacturer : null,
         ctp_machine_model: job.ctp_machine_model !== undefined ? job.ctp_machine_model : null,
         ctp_machine_location: job.ctp_machine_location !== undefined ? job.ctp_machine_location : null,
-        ctp_machine_max_plate_size: job.ctp_machine_max_plate_size !== undefined ? job.ctp_machine_max_plate_size : null
+        ctp_machine_max_plate_size: job.ctp_machine_max_plate_size !== undefined ? job.ctp_machine_max_plate_size : null,
+        // Multiple machines array
+        machines: machines,
+        // Blank size information
+        blank_width_mm: job.blank_width_mm || null,
+        blank_height_mm: job.blank_height_mm || null,
+        blank_width_inches: job.blank_width_inches || null,
+        blank_height_inches: job.blank_height_inches || null,
+        blank_size_unit: job.blank_size_unit || 'mm'
       };
       
-      // Debug log for first job
-      if (result.rows.indexOf(job) === 0) {
-        console.log('🔍 CTP: First job mapped data:', {
-          original_required_plate_count: job.required_plate_count,
-          mapped_required_plate_count: mappedJob.required_plate_count,
-          original_ctp_machine_id: job.ctp_machine_id,
-          mapped_ctp_machine_id: mappedJob.ctp_machine_id,
-          original_ctp_machine_name: job.ctp_machine_name,
-          mapped_ctp_machine_name: mappedJob.ctp_machine_name
-        });
-      }
-      
       return mappedJob;
-    });
+    }));
 
     res.json({
       success: true,
@@ -202,25 +239,108 @@ router.post('/jobs/:jobId/generate-plate', authenticateToken, asyncHandler(async
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Auto-complete CTP workflow step
-    try {
-      const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
-      const workflowService = new UnifiedWorkflowService();
+    // Get job_card_id from prepress_jobs
+    const jobCardResult = await dbAdapter.query(
+      'SELECT job_card_id FROM prepress_jobs WHERE id = $1',
+      [jobId]
+    );
+    
+    if (jobCardResult.rows.length > 0) {
+      const jobCardId = jobCardResult.rows[0].job_card_id;
       
-      // Get job_card_id from prepress_jobs
-      const jobCardResult = await dbAdapter.query(
-        'SELECT job_card_id FROM prepress_jobs WHERE id = $1',
-        [jobId]
-      );
+      // Update job_cards to transition to Job Planning department
+      try {
+        const columnCheck = await dbAdapter.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'job_cards' 
+          AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message')
+        `);
+        const existingColumns = columnCheck.rows.map(r => r.column_name);
+        
+        const updateFields = [];
+        const updateValues = [];
+        let paramIndex = 1;
+        
+        if (existingColumns.includes('current_department')) {
+          updateFields.push(`current_department = $${paramIndex}`);
+          updateValues.push('Job Planning');
+          paramIndex++;
+        }
+        
+        if (existingColumns.includes('current_step')) {
+          updateFields.push(`current_step = $${paramIndex}`);
+          updateValues.push('Job Planning');
+          paramIndex++;
+        }
+        
+        if (existingColumns.includes('workflow_status')) {
+          updateFields.push(`workflow_status = $${paramIndex}`);
+          updateValues.push('pending');
+          paramIndex++;
+        }
+        
+        if (existingColumns.includes('status_message')) {
+          updateFields.push(`status_message = $${paramIndex}`);
+          updateValues.push('CTP completed, ready for job planning');
+          paramIndex++;
+        }
+        
+        if (existingColumns.includes('updatedAt') || existingColumns.includes('updated_at')) {
+          const updatedAtColumn = existingColumns.includes('updatedAt') ? 'updatedAt' : 'updated_at';
+          updateFields.push(`"${updatedAtColumn}" = CURRENT_TIMESTAMP`);
+        }
+        
+        if (updateFields.length > 0) {
+          updateValues.push(jobCardId);
+          const jobCardUpdateQuery = `
+            UPDATE job_cards SET
+              ${updateFields.join(', ')}
+            WHERE id = $${paramIndex}
+            RETURNING id${existingColumns.includes('current_department') ? ', current_department' : ''}${existingColumns.includes('current_step') ? ', current_step' : ''}${existingColumns.includes('workflow_status') ? ', workflow_status' : ''}
+          `;
+          const jobCardUpdateResult = await dbAdapter.query(jobCardUpdateQuery, updateValues);
+          console.log('✅ Job card updated to Job Planning department:', {
+            job_card_id: jobCardId,
+            current_department: jobCardUpdateResult.rows[0]?.current_department,
+            current_step: jobCardUpdateResult.rows[0]?.current_step,
+            workflow_status: jobCardUpdateResult.rows[0]?.workflow_status
+          });
+        }
+      } catch (jobCardUpdateError) {
+        console.error('❌ Error updating job card:', jobCardUpdateError);
+        console.warn('⚠️ Continuing despite job card update error');
+      }
       
-      if (jobCardResult.rows.length > 0) {
-        const jobCardId = jobCardResult.rows[0].job_card_id;
+      // Auto-complete CTP workflow step and activate Job Planning step
+      try {
+        const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
+        const workflowService = new UnifiedWorkflowService();
+        
         await workflowService.autoCompleteStep(jobCardId, 'plate_generated', userId);
         console.log(`✅ CTP workflow step auto-completed for job ${jobCardId}`);
+        
+        // Activate Job Planning workflow step
+        const workflowSteps = await workflowService.getJobWorkflow(jobCardId);
+        const jobPlanningStep = workflowSteps.find(step => 
+          (step.department === 'Job Planning' || step.department === 'Production') &&
+          (step.step_name.toLowerCase().includes('planning') || step.step_name.toLowerCase().includes('job planning'))
+        );
+        
+        if (jobPlanningStep) {
+          if (jobPlanningStep.status === 'inactive' || jobPlanningStep.status === 'pending') {
+            await workflowService.startStep(jobCardId, jobPlanningStep.sequence_number, userId);
+            console.log(`✅ Job Planning workflow step activated: ${jobPlanningStep.step_name}`);
+          } else {
+            console.log(`ℹ️ Job Planning workflow step already active: ${jobPlanningStep.step_name} (${jobPlanningStep.status})`);
+          }
+        } else {
+          console.log('⚠️ No Job Planning workflow step found to activate');
+        }
+      } catch (workflowError) {
+        console.error('⚠️ Error updating workflow steps (non-critical):', workflowError);
+        // Don't fail plate generation if workflow update fails
       }
-    } catch (workflowError) {
-      console.error('⚠️ Error auto-completing workflow step (non-critical):', workflowError);
-      // Don't fail plate generation if workflow update fails
     }
 
     // TODO: Deduct plates from inventory (consumables)
@@ -244,8 +364,41 @@ router.post('/jobs/:jobId/generate-plate', authenticateToken, asyncHandler(async
 router.post('/jobs/:jobId/print-tag', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { jobId } = req.params;
+    const jobIdNum = parseInt(jobId, 10);
 
-    console.log(`🖨️ CTP: Generating plate tag for job ${jobId}`);
+    if (isNaN(jobIdNum)) {
+      return res.status(400).json({ error: 'Invalid job ID' });
+    }
+
+    console.log(`🖨️ CTP: Generating plate tag for job ${jobIdNum}`);
+
+    // Check if blank size columns exist in prepress_jobs table
+    let hasBlankSizeColumns = false;
+    try {
+      const columnCheck = await dbAdapter.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'prepress_jobs' 
+        AND column_name IN ('blank_width_mm', 'blank_height_mm', 'blank_width_inches', 'blank_height_inches', 'blank_size_unit')
+      `);
+      hasBlankSizeColumns = columnCheck.rows.length > 0;
+      console.log(`🔍 Blank size columns exist: ${hasBlankSizeColumns}`);
+    } catch (error) {
+      console.warn('⚠️ Could not check for blank size columns:', error);
+    }
+
+    // Build query with conditional blank size columns
+    const blankSizeColumns = hasBlankSizeColumns ? `
+        pj.blank_width_mm,
+        pj.blank_height_mm,
+        pj.blank_width_inches,
+        pj.blank_height_inches,
+        pj.blank_size_unit,` : `
+        NULL::DECIMAL as blank_width_mm,
+        NULL::DECIMAL as blank_height_mm,
+        NULL::DECIMAL as blank_width_inches,
+        NULL::DECIMAL as blank_height_inches,
+        NULL::VARCHAR as blank_size_unit,`;
 
     // Fetch job details
     const query = `
@@ -253,14 +406,23 @@ router.post('/jobs/:jobId/print-tag', authenticateToken, asyncHandler(async (req
         jc."jobNumber" as job_card_number,
         p.name as product_name,
         jc.quantity,
-        CONCAT(u."firstName", ' ', u."lastName") as designer_name,
+        COALESCE(
+          CASE 
+            WHEN u."firstName" IS NOT NULL AND u."lastName" IS NOT NULL 
+            THEN u."firstName" || ' ' || u."lastName"
+            WHEN u."firstName" IS NOT NULL THEN u."firstName"
+            WHEN u."lastName" IS NOT NULL THEN u."lastName"
+            ELSE 'N/A'
+          END,
+          'N/A'
+        ) as designer_name,
         COALESCE(pj.plate_count, pj.required_plate_count, 0) as plate_count,
         COALESCE(pj.required_plate_count, pj.plate_count, 0) as required_plate_count,
         'Standard' as plate_size,
         p.brand as material,
         pj.status,
         pj.completed_at,
-        pj.ctp_machine_id,
+        pj.ctp_machine_id,${blankSizeColumns}
         cm.machine_code as ctp_machine_code,
         cm.machine_name as ctp_machine_name,
         cm.machine_type as ctp_machine_type,
@@ -276,16 +438,105 @@ router.post('/jobs/:jobId/print-tag', authenticateToken, asyncHandler(async (req
       WHERE pj.id = $1
     `;
 
-    const result = await dbAdapter.query(query, [jobId]);
+    console.log(`🔍 Executing query for job ${jobIdNum}`);
+    let result;
+    try {
+      result = await dbAdapter.query(query, [jobIdNum]);
+      console.log(`✅ Query successful, found ${result.rows.length} rows`);
+    } catch (queryError) {
+      console.error('❌ SQL Query Error:', queryError);
+      console.error('❌ Query:', query);
+      console.error('❌ Parameters:', [jobIdNum]);
+      throw queryError;
+    }
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Job not found' });
     }
 
     const job = result.rows[0];
-    const tagDate = new Date().toLocaleDateString('en-GB');
 
-    // Generate thermal printer tag content
+    // Fetch all machines from job_ctp_machines
+    let machines = [];
+    try {
+      const machinesResult = await dbAdapter.query(`
+        SELECT 
+          jcm.*,
+          cm.machine_code,
+          cm.machine_name,
+          cm.machine_type,
+          cm.manufacturer,
+          cm.model,
+          cm.location,
+          cm.max_plate_size
+        FROM job_ctp_machines jcm
+        JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+        WHERE jcm.prepress_job_id = $1
+        ORDER BY jcm.created_at
+      `, [jobIdNum]);
+      
+      machines = machinesResult.rows;
+    } catch (error) {
+      console.error('Error fetching machines for print tag:', error);
+    }
+
+    // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
+    if (machines.length === 0 && job.ctp_machine_id) {
+      machines = [{
+        machine_name: job.ctp_machine_name || job.ctp_machine_code || 'N/A',
+        machine_type: job.ctp_machine_type || 'N/A',
+        location: job.ctp_machine_location || 'N/A',
+        plate_count: job.required_plate_count || job.plate_count || 0
+      }];
+    }
+
+    const tagDate = new Date().toLocaleDateString('en-GB');
+    const totalPlates = machines.reduce((sum, m) => {
+      const plateCount = typeof m.plate_count === 'number' ? m.plate_count : (parseInt(m.plate_count) || 0);
+      return sum + plateCount;
+    }, 0);
+
+    // Format blank size
+    let blankSizeText = 'N/A';
+    if (job.blank_width_mm && job.blank_height_mm) {
+      try {
+        // Convert to numbers to ensure .toFixed() works
+        const widthMm = typeof job.blank_width_mm === 'number' ? job.blank_width_mm : parseFloat(job.blank_width_mm);
+        const heightMm = typeof job.blank_height_mm === 'number' ? job.blank_height_mm : parseFloat(job.blank_height_mm);
+        const widthInches = job.blank_width_inches ? (typeof job.blank_width_inches === 'number' ? job.blank_width_inches : parseFloat(job.blank_width_inches)) : null;
+        const heightInches = job.blank_height_inches ? (typeof job.blank_height_inches === 'number' ? job.blank_height_inches : parseFloat(job.blank_height_inches)) : null;
+        
+        // Validate that we have valid numbers
+        if (!isNaN(widthMm) && !isNaN(heightMm) && widthMm > 0 && heightMm > 0) {
+          if (job.blank_size_unit === 'inches' && widthInches && heightInches && !isNaN(widthInches) && !isNaN(heightInches)) {
+            blankSizeText = `${widthInches.toFixed(2)}" × ${heightInches.toFixed(2)}" (${widthMm.toFixed(2)}mm × ${heightMm.toFixed(2)}mm)`;
+          } else {
+            const displayWidthInches = widthInches && !isNaN(widthInches) ? widthInches.toFixed(2) : (widthMm / 25.4).toFixed(2);
+            const displayHeightInches = heightInches && !isNaN(heightInches) ? heightInches.toFixed(2) : (heightMm / 25.4).toFixed(2);
+            blankSizeText = `${widthMm.toFixed(2)}mm × ${heightMm.toFixed(2)}mm (${displayWidthInches}" × ${displayHeightInches}")`;
+          }
+        }
+      } catch (error) {
+        console.error('Error formatting blank size:', error);
+        blankSizeText = 'N/A';
+      }
+    }
+
+    // Generate thermal printer tag content with all machines
+    let machinesSection = '';
+    if (machines.length > 0) {
+      machinesSection = machines.map((m, index) => {
+        const plateCount = typeof m.plate_count === 'number' ? m.plate_count : (parseInt(m.plate_count) || 0);
+        return `
+Machine ${index + 1}: ${m.machine_name || m.machine_code || 'N/A'}
+  Type: ${m.machine_type || 'N/A'}
+  Location: ${m.location || 'N/A'}
+  Plates: ${plateCount} plates`;
+      }).join('\n');
+    } else {
+      machinesSection = 'Machine: N/A\n  Plates: 0 plates';
+    }
+
     const tagContent = `
 =====================================
        ERP - PLATE TAG
@@ -295,15 +546,14 @@ Product: ${job.product_name}
 Quantity: ${job.quantity} units
 =====================================
 Designer: ${job.designer_name || 'N/A'}
-Plates: ${job.plate_count || job.required_plate_count || 0} plates
+Total Plates: ${totalPlates} plates
+Blank Size: ${blankSizeText}
 Size: ${job.plate_size || 'Standard'}
 Material: ${job.material || 'N/A'}
 =====================================
-Machine: ${job.ctp_machine_name || job.ctp_machine_code || 'N/A'}
-Machine Type: ${job.ctp_machine_type || 'N/A'}
-Location: ${job.ctp_machine_location || 'N/A'}
+${machinesSection}
 =====================================
-Status: ${job.status.replace('_', ' ')}
+Status: ${job.status ? job.status.replace('_', ' ') : 'N/A'}
 Date: ${tagDate}
 =====================================
     `.trim();
@@ -318,7 +568,23 @@ Date: ${tagDate}
 
   } catch (error) {
     console.error('❌ Error generating plate tag:', error);
-    res.status(500).json({ error: 'Failed to generate plate tag', message: error.message });
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error details:', {
+      message: error.message,
+      name: error.name,
+      code: error.code,
+      detail: error.detail,
+      hint: error.hint
+    });
+    res.status(500).json({ 
+      error: 'Failed to generate plate tag', 
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        stack: error.stack,
+        name: error.name,
+        code: error.code
+      } : undefined
+    });
   }
 }));
 

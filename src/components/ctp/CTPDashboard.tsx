@@ -57,6 +57,24 @@ interface CTPJob {
   ctp_machine_model?: string;
   ctp_machine_location?: string;
   ctp_machine_max_plate_size?: string;
+  // Multiple machines array
+  machines?: Array<{
+    id: number;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+    plate_count: number;
+  }>;
+  // Blank size information
+  blank_width_mm?: number;
+  blank_height_mm?: number;
+  blank_width_inches?: number;
+  blank_height_inches?: number;
+  blank_size_unit?: 'mm' | 'inches';
 }
 
 interface CTPDashboardProps {
@@ -452,20 +470,39 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
                             </Badge>
                           </div>
 
-                          {(job.ctp_machine_name || job.ctp_machine_code) && (
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-500">Machine:</span>
-                              <span className="font-medium text-gray-900">
-                                {job.ctp_machine_name || job.ctp_machine_code}
-                              </span>
-                            </div>
-                          )}
+                          {job.machines && job.machines.length > 0 ? (
+                            <>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-500">Machines:</span>
+                                <span className="font-medium text-gray-900">
+                                  {job.machines.length} Machine{job.machines.length > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-gray-500">Total Plates:</span>
+                                <span className="font-medium text-purple-600">
+                                  {job.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              {(job.ctp_machine_name || job.ctp_machine_code) && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-gray-500">Machine:</span>
+                                  <span className="font-medium text-gray-900">
+                                    {job.ctp_machine_name || job.ctp_machine_code}
+                                  </span>
+                                </div>
+                              )}
 
-                          {job.required_plate_count && (
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-gray-500">Required Plates:</span>
-                              <span className="font-medium text-purple-600">{job.required_plate_count}</span>
-                            </div>
+                              {job.required_plate_count && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-gray-500">Required Plates:</span>
+                                  <span className="font-medium text-purple-600">{job.required_plate_count}</span>
+                                </div>
+                              )}
+                            </>
                           )}
 
                           {/* Action Buttons */}
@@ -557,9 +594,15 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
                           <div className="flex items-center gap-3">
                             <div className="text-right mr-4">
                               <Badge className="bg-green-100 text-green-800 border-0">
-                                {job.plate_count || job.required_plate_count || 0} Plates
+                                {job.machines && job.machines.length > 0
+                                  ? job.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)
+                                  : (job.plate_count || job.required_plate_count || 0)} Plates
                               </Badge>
-                              {(job.ctp_machine_name || job.ctp_machine_code) && (
+                              {job.machines && job.machines.length > 0 ? (
+                                <p className="text-xs text-gray-600 mt-1">
+                                  {job.machines.length} Machine{job.machines.length > 1 ? 's' : ''}
+                                </p>
+                              ) : (job.ctp_machine_name || job.ctp_machine_code) && (
                                 <p className="text-xs text-gray-600 mt-1">
                                   Machine: {job.ctp_machine_name || job.ctp_machine_code}
                                 </p>
@@ -662,7 +705,9 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
                   <div>
                     <span className="text-gray-600">Number of Plates:</span>
                     <span className="ml-2 font-semibold text-purple-600 text-lg">
-                      {selectedJob.plate_count || selectedJob.required_plate_count || 0}
+                      {selectedJob.machines && selectedJob.machines.length > 0
+                        ? selectedJob.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)
+                        : (selectedJob.plate_count || selectedJob.required_plate_count || 0)}
                     </span>
                   </div>
                   {selectedJob.required_plate_count && selectedJob.required_plate_count !== selectedJob.plate_count && (
@@ -675,62 +720,118 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
               </div>
 
               {/* Machine Information */}
-              {(selectedJob.ctp_machine_id || selectedJob.ctp_machine_name || selectedJob.ctp_machine_code) && (
+              {((selectedJob.machines && selectedJob.machines.length > 0) || selectedJob.ctp_machine_id || selectedJob.ctp_machine_name || selectedJob.ctp_machine_code) && (
                 <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
                   <h4 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
                     <Printer className="h-5 w-5" />
                     CTP Machine Information
                   </h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    {selectedJob.ctp_machine_id && (
-                      <div>
-                        <span className="text-gray-600">Machine ID:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_id}</span>
+                  
+                  {/* Multiple Machines Display */}
+                  {selectedJob.machines && selectedJob.machines.length > 0 ? (
+                    <div className="space-y-3">
+                      {selectedJob.machines.map((machine, index) => (
+                        <div key={machine.id || index} className="bg-white p-3 rounded border border-blue-200">
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex-1">
+                              <div className="font-semibold text-gray-900 text-base">
+                                {machine.machine_name} ({machine.machine_code})
+                              </div>
+                              <div className="text-sm text-gray-600 mt-1">
+                                {machine.machine_type} • {machine.location || 'N/A'}
+                              </div>
+                              {machine.manufacturer && (
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {machine.manufacturer} {machine.model || ''}
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <div className="font-bold text-blue-600 text-lg">{machine.plate_count} plates</div>
+                            </div>
+                          </div>
+                          {machine.max_plate_size && (
+                            <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-blue-100">
+                              Max Plate Size: {machine.max_plate_size}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="text-sm text-gray-700 mt-3 pt-3 border-t border-blue-200 font-semibold">
+                        Total Plates: <span className="text-blue-600 text-lg">{selectedJob.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)}</span>
                       </div>
-                    )}
-                    <div>
-                      <span className="text-gray-600">Machine Name:</span>
-                      <span className="ml-2 font-semibold text-gray-900">
-                        {selectedJob.ctp_machine_name || selectedJob.ctp_machine_code || 'N/A'}
-                      </span>
                     </div>
-                    {selectedJob.ctp_machine_code && (
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {selectedJob.ctp_machine_id && (
+                        <div>
+                          <span className="text-gray-600">Machine ID:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_id}</span>
+                        </div>
+                      )}
                       <div>
-                        <span className="text-gray-600">Machine Code:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_code}</span>
+                        <span className="text-gray-600">Machine Name:</span>
+                        <span className="ml-2 font-semibold text-gray-900">
+                          {selectedJob.ctp_machine_name || selectedJob.ctp_machine_code || 'N/A'}
+                        </span>
                       </div>
-                    )}
-                    {selectedJob.ctp_machine_type && (
-                      <div>
-                        <span className="text-gray-600">Machine Type:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_type}</span>
+                      {selectedJob.ctp_machine_code && (
+                        <div>
+                          <span className="text-gray-600">Machine Code:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_code}</span>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_type && (
+                        <div>
+                          <span className="text-gray-600">Machine Type:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_type}</span>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_manufacturer && (
+                        <div>
+                          <span className="text-gray-600">Manufacturer:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_manufacturer}</span>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_model && (
+                        <div>
+                          <span className="text-gray-600">Model:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_model}</span>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_location && (
+                        <div>
+                          <span className="text-gray-600">Location:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_location}</span>
+                        </div>
+                      )}
+                      {selectedJob.ctp_machine_max_plate_size && (
+                        <div>
+                          <span className="text-gray-600">Max Plate Size:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_max_plate_size}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Blank Size Display */}
+                  {(selectedJob.blank_width_mm || selectedJob.blank_width_inches) && (
+                    <div className="mt-4 pt-4 border-t border-blue-200">
+                      <div className="text-sm font-medium text-gray-600 mb-1">Blank Size:</div>
+                      <div className="text-base text-gray-900">
+                        {selectedJob.blank_width_mm && selectedJob.blank_height_mm && (
+                          <span className="font-semibold">
+                            {selectedJob.blank_width_mm} × {selectedJob.blank_height_mm} mm
+                          </span>
+                        )}
+                        {selectedJob.blank_width_inches && selectedJob.blank_height_inches && (
+                          <span className="ml-2 text-gray-600">
+                            ({typeof selectedJob.blank_width_inches === 'number' ? selectedJob.blank_width_inches.toFixed(2) : parseFloat(selectedJob.blank_width_inches).toFixed(2)} × {typeof selectedJob.blank_height_inches === 'number' ? selectedJob.blank_height_inches.toFixed(2) : parseFloat(selectedJob.blank_height_inches).toFixed(2)} inches)
+                          </span>
+                        )}
                       </div>
-                    )}
-                    {selectedJob.ctp_machine_manufacturer && (
-                      <div>
-                        <span className="text-gray-600">Manufacturer:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_manufacturer}</span>
-                      </div>
-                    )}
-                    {selectedJob.ctp_machine_model && (
-                      <div>
-                        <span className="text-gray-600">Model:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_model}</span>
-                      </div>
-                    )}
-                    {selectedJob.ctp_machine_location && (
-                      <div>
-                        <span className="text-gray-600">Location:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_location}</span>
-                      </div>
-                    )}
-                    {selectedJob.ctp_machine_max_plate_size && (
-                      <div>
-                        <span className="text-gray-600">Max Plate Size:</span>
-                        <span className="ml-2 font-semibold text-gray-900">{selectedJob.ctp_machine_max_plate_size}</span>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
 

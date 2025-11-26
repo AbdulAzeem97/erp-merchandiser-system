@@ -50,7 +50,11 @@ interface Job {
   createdAt: string;
   deliveryDate: string;
   progress: number;
-  department: string;
+  department?: string;
+  current_department?: string;
+  workflow_status?: string;
+  current_step?: string;
+  status_message?: string;
 }
 
 interface JobStats {
@@ -169,7 +173,39 @@ export const MerchandiserDashboard: React.FC = () => {
     }
   };
 
+  // Helper function to get display status based on department and workflow_status
+  const getDisplayStatus = (job: Job): string => {
+    // If job has current_department and workflow_status, use them to determine display status
+    if (job.current_department && job.workflow_status) {
+      if (job.current_department === 'Prepress' && job.workflow_status === 'in_progress') {
+        return 'In CTP';
+      }
+      if (job.current_department === 'Job Planning' && job.workflow_status === 'pending') {
+        return 'Pending (Job Planning)';
+      }
+      if (job.current_department === 'Cutting' && job.workflow_status === 'in_progress') {
+        return 'In Progress (Cutting)';
+      }
+      if (job.current_department === 'Cutting' && job.workflow_status === 'pending') {
+        return 'Pending (Cutting)';
+      }
+    }
+    // Fallback to original status
+    return job.status;
+  };
+
   const getStatusColor = (status: string) => {
+    // Handle new status formats
+    if (status.includes('In CTP')) {
+      return 'bg-purple-100 text-purple-800 border-purple-300';
+    }
+    if (status.includes('Job Planning')) {
+      return 'bg-indigo-100 text-indigo-800 border-indigo-300';
+    }
+    if (status.includes('Cutting')) {
+      return 'bg-cyan-100 text-cyan-800 border-cyan-300';
+    }
+    
     switch (status) {
       case 'COMPLETED':
         return 'bg-green-100 text-green-800 border-green-300';
@@ -181,6 +217,8 @@ export const MerchandiserDashboard: React.FC = () => {
         return 'bg-orange-100 text-orange-800 border-orange-300';
       case 'REJECTED':
         return 'bg-red-100 text-red-800 border-red-300';
+      case 'APPROVED_BY_QA':
+        return 'bg-purple-100 text-purple-800 border-purple-300';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-300';
     }
@@ -412,8 +450,8 @@ export const MerchandiserDashboard: React.FC = () => {
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
                             <h3 className="font-semibold text-gray-900">{job.jobNumber}</h3>
-                            <Badge className={getStatusColor(job.status)}>
-                              {job.status}
+                            <Badge className={getStatusColor(getDisplayStatus(job))}>
+                              {getDisplayStatus(job)}
                             </Badge>
                             <Badge className={getPriorityColor(job.priority)}>
                               {job.priority}

@@ -15,7 +15,39 @@ class CuttingWorkflowService {
    */
   async getCuttingJobs(filters = {}) {
     try {
-      console.log('🔪 Cutting: getCuttingJobs called with filters:', filters);
+      console.log('🔪 Cutting: ========== getCuttingJobs START ==========');
+      console.log('🔪 Cutting: Filters:', JSON.stringify(filters, null, 2));
+      
+      // First, let's check what jobs have APPLIED planning
+      const appliedPlanningCheck = await dbAdapter.query(`
+        SELECT 
+          jpp.job_card_id,
+          jpp.planning_status,
+          jc.id as job_card_id_check,
+          jc."jobNumber",
+          jc.current_department,
+          jc.workflow_status,
+          jc.status,
+          CAST(jc.id AS TEXT) as job_card_id_text,
+          CAST(jpp.job_card_id AS TEXT) as planning_job_card_id_text,
+          (CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)) as ids_match
+        FROM job_production_planning jpp
+        LEFT JOIN job_cards jc ON CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)
+        WHERE jpp.planning_status = 'APPLIED'
+        ORDER BY jpp.updated_at DESC
+        LIMIT 10
+      `);
+      console.log('🔪 Cutting: Jobs with APPLIED planning:', appliedPlanningCheck.rows.length);
+      if (appliedPlanningCheck.rows.length > 0) {
+        console.log('🔪 Cutting: Sample APPLIED planning jobs:', 
+          appliedPlanningCheck.rows.map(r => ({
+            job_card_id: r.job_card_id,
+            job_number: r.jobNumber,
+            current_department: r.current_department,
+            workflow_status: r.workflow_status
+          }))
+        );
+      }
       const { status, assignedTo, dateFrom, dateTo, priority } = filters;
       
       // Comprehensive query - find jobs that are in Cutting department or have cutting assignments
@@ -73,7 +105,24 @@ class CuttingWorkflowService {
           cm.machine_name as ctp_machine_name,
           cm.machine_code as ctp_machine_code,
           cm.machine_type as ctp_machine_type,
-          cm.location as ctp_machine_location
+          cm.location as ctp_machine_location,
+          jpp.planning_status,
+          jpp.final_total_sheets,
+          jpp.cutting_layout_type,
+          jpp.grid_pattern,
+          jpp.blanks_per_sheet,
+          jpp.additional_sheets,
+          jpp.base_required_sheets,
+          jpp.selected_sheet_size_id,
+          jpp.efficiency_percentage,
+          jpp.scrap_percentage,
+          pj.blank_width_mm,
+          pj.blank_height_mm,
+          pj.blank_width_inches,
+          pj.blank_height_inches,
+          pj.blank_size_unit,
+          COALESCE(ms.width_mm, NULL) as sheet_width_mm,
+          COALESCE(ms.height_mm, NULL) as sheet_height_mm
         FROM job_cards jc
         LEFT JOIN products p ON jc."productId" = p.id
         LEFT JOIN companies c ON jc."companyId" = c.id
@@ -84,8 +133,13 @@ class CuttingWorkflowService {
         LEFT JOIN users u_by ON ca.assigned_by = u_by.id
         LEFT JOIN prepress_jobs pj ON jc.id = pj.job_card_id
         LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
-        LEFT JOIN job_production_planning jpp ON jc.id = jpp.job_card_id
-        WHERE (jc.current_department = 'Cutting' OR ca.id IS NOT NULL OR jpp.planning_status = 'APPLIED')
+        LEFT JOIN job_production_planning jpp ON CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)
+        LEFT JOIN material_sizes ms ON jpp.selected_sheet_size_id = ms.id
+        WHERE (
+          jc.current_department = 'Cutting' 
+          OR ca.id IS NOT NULL 
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+        )
       `;
 
       const params = [];
@@ -122,6 +176,25 @@ class CuttingWorkflowService {
       //   paramIndex++;
       // }
 
+      // Also try to match by jobNumber if provided in filters (for debugging)
+      if (filters.jobNumber) {
+        query = query.replace(
+          `WHERE (
+          jc.current_department = 'Cutting' 
+          OR ca.id IS NOT NULL 
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+        )`,
+          `WHERE (
+          jc.current_department = 'Cutting' 
+          OR ca.id IS NOT NULL 
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+          OR jc."jobNumber" = $${paramIndex}
+        )`
+        );
+        params.push(filters.jobNumber);
+        paramIndex++;
+      }
+
       query += ` ORDER BY jc."createdAt" DESC`;
 
       console.log('🔪 Cutting: Full query:', query);
@@ -130,16 +203,115 @@ class CuttingWorkflowService {
       try {
         const result = await dbAdapter.query(query, params);
         console.log(`🔪 Cutting: Query returned ${result.rows.length} rows`);
+        
+        // Debug: Log why each job matched the query
+        if (result.rows.length > 0) {
+          console.log('🔪 Cutting: Jobs found - analyzing match reasons:');
+          for (const job of result.rows) {
+            const matchReasons = [];
+            const matchDetails = {
+              job_id: job.id,
+              job_number: job.jobNumber,
+              current_department: job.current_department,
+              has_assignment: !!job.assignment_id,
+              planning_status: job.planning_status
+            };
+
+            if (job.current_department === 'Cutting') {
+              matchReasons.push('current_department=Cutting');
+            }
+            if (job.assignment_id) {
+              matchReasons.push(`has_cutting_assignment (id: ${job.assignment_id})`);
+            }
+            
+            // Check planning_status with type casting
+            const planningCheck = await dbAdapter.query(
+              `SELECT 
+                planning_status, 
+                job_card_id,
+                CAST(job_card_id AS TEXT) as job_card_id_text,
+                CAST($1 AS TEXT) as job_id_text
+              FROM job_production_planning 
+              WHERE CAST(job_card_id AS TEXT) = CAST($1 AS TEXT)`,
+              [job.id]
+            );
+            
+            if (planningCheck.rows.length > 0) {
+              const planning = planningCheck.rows[0];
+              matchDetails.planning_found = true;
+              matchDetails.planning_status_value = planning.planning_status;
+              matchDetails.planning_job_card_id = planning.job_card_id;
+              matchDetails.planning_job_card_id_type = typeof planning.job_card_id;
+              matchDetails.job_id_type = typeof job.id;
+              matchDetails.ids_match = String(planning.job_card_id) === String(job.id);
+              
+              if (planning.planning_status === 'APPLIED') {
+                matchReasons.push('planning_status=APPLIED');
+              } else {
+                matchReasons.push(`planning_status=${planning.planning_status} (not APPLIED)`);
+              }
+            } else {
+              matchDetails.planning_found = false;
+            }
+            
+            console.log(`  - Job ${job.jobNumber || job.id}: ${matchReasons.join(', ') || 'unknown'}`);
+            console.log(`    Match details:`, JSON.stringify(matchDetails, null, 2));
+          }
+        } else {
+          console.log('🔪 Cutting: No jobs found. Checking sample jobs with APPLIED planning...');
+          // Check jobs with APPLIED planning to see why they're not matching
+          const sampleCheck = await dbAdapter.query(`
+            SELECT 
+              jc.id,
+              jc."jobNumber",
+              jc.current_department,
+              jpp.planning_status,
+              jpp.job_card_id as planning_job_card_id,
+              CAST(jc.id AS TEXT) as job_id_text,
+              CAST(jpp.job_card_id AS TEXT) as planning_job_card_id_text,
+              (CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)) as ids_match,
+              ca.id as assignment_id
+            FROM job_production_planning jpp
+            LEFT JOIN job_cards jc ON CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)
+            LEFT JOIN cutting_assignments ca ON jc.id = ca.job_id
+            WHERE jpp.planning_status = 'APPLIED'
+            ORDER BY jpp.updated_at DESC
+            LIMIT 5
+          `);
+          if (sampleCheck.rows.length > 0) {
+            console.log('🔪 Cutting: Found jobs with APPLIED planning that are not in results:');
+            for (const sample of sampleCheck.rows) {
+              console.log(`  - Job ${sample.jobNumber || sample.id}:`, {
+                current_department: sample.current_department,
+                planning_status: sample.planning_status,
+                has_assignment: !!sample.assignment_id,
+                ids_match: sample.ids_match,
+                job_id: sample.id,
+                planning_job_card_id: sample.planning_job_card_id,
+                would_match_by_dept: sample.current_department === 'Cutting',
+                would_match_by_assignment: !!sample.assignment_id,
+                would_match_by_planning: sample.planning_status === 'APPLIED' && sample.ids_match
+              });
+            }
+          } else {
+            console.log('🔪 Cutting: No jobs found with APPLIED planning status');
+          }
+        }
+        
+        console.log('🔪 Cutting: ========== getCuttingJobs END ==========');
         return result.rows;
       } catch (queryError) {
         console.error('🔪 Cutting: Query execution error:', queryError);
         console.error('🔪 Cutting: Query that failed:', query);
+        console.error('🔪 Cutting: Query params:', params);
+        console.error('🔪 Cutting: ========== getCuttingJobs ERROR END ==========');
         throw queryError;
       }
     } catch (error) {
       console.error('❌ Error fetching cutting jobs:', error);
       console.error('❌ Error message:', error.message);
       console.error('❌ Error stack:', error.stack);
+      console.error('🔪 Cutting: ========== getCuttingJobs EXCEPTION END ==========');
       throw error;
     }
   }

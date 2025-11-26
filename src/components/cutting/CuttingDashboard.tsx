@@ -34,6 +34,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from 'sonner';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { authAPI } from '@/services/api';
+import { CuttingLayoutDisplay } from './CuttingLayoutDisplay';
 
 interface CuttingJob {
   id: string;
@@ -85,6 +87,19 @@ interface CuttingJob {
   workflow_status?: string;
   status_message?: string;
   assignment_id?: string;
+  // Job Planning Information
+  blank_width_mm?: number;
+  blank_height_mm?: number;
+  blank_width_inches?: number;
+  blank_height_inches?: number;
+  blank_size_unit?: string;
+  additional_sheets?: number;
+  base_required_sheets?: number;
+  selected_sheet_size_id?: number;
+  efficiency_percentage?: number;
+  scrap_percentage?: number;
+  sheet_width_mm?: number;
+  sheet_height_mm?: number;
 }
 
 interface CuttingDashboardProps {
@@ -381,10 +396,14 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
   };
 
   const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-    } else {
-      // Default logout behavior
+    try {
+      authAPI.logout();
+      toast.success('Logged out successfully');
+      // Redirect to login page
+      window.location.href = '/';
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Fallback: clear local storage and redirect
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
       window.location.href = '/';
@@ -721,6 +740,180 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
                             )}
                           </div>
                         </div>
+
+                        {/* Job Planning Information Section */}
+                        {(job.grid_pattern || job.cutting_layout_type || job.final_total_sheets || job.blank_width_mm || job.blank_width_inches || job.blanks_per_sheet) && (
+                          <div className="mt-4 space-y-4">
+                            {/* Visual Layout - Always show if any planning data exists */}
+                            {(job.grid_pattern || job.cutting_layout_type || job.blanks_per_sheet || job.final_total_sheets) && (
+                              <CuttingLayoutDisplay
+                                gridPattern={job.grid_pattern || undefined}
+                                cuttingLayoutType={job.cutting_layout_type || undefined}
+                                blanksPerSheet={job.blanks_per_sheet ? (typeof job.blanks_per_sheet === 'number' ? job.blanks_per_sheet : parseInt(job.blanks_per_sheet)) : undefined}
+                                efficiencyPercentage={job.efficiency_percentage ? (typeof job.efficiency_percentage === 'number' ? job.efficiency_percentage : parseFloat(job.efficiency_percentage)) : undefined}
+                                scrapPercentage={job.scrap_percentage ? (typeof job.scrap_percentage === 'number' ? job.scrap_percentage : parseFloat(job.scrap_percentage)) : undefined}
+                                blankWidth={(() => {
+                                  if (job.blank_size_unit === 'inches' && job.blank_width_inches) {
+                                    const val = typeof job.blank_width_inches === 'number' ? job.blank_width_inches : parseFloat(job.blank_width_inches);
+                                    return !isNaN(val) ? val * 25.4 : undefined;
+                                  }
+                                  if (job.blank_width_mm) {
+                                    const val = typeof job.blank_width_mm === 'number' ? job.blank_width_mm : parseFloat(job.blank_width_mm);
+                                    return !isNaN(val) ? val : undefined;
+                                  }
+                                  return undefined;
+                                })()}
+                                blankHeight={(() => {
+                                  if (job.blank_size_unit === 'inches' && job.blank_height_inches) {
+                                    const val = typeof job.blank_height_inches === 'number' ? job.blank_height_inches : parseFloat(job.blank_height_inches);
+                                    return !isNaN(val) ? val * 25.4 : undefined;
+                                  }
+                                  if (job.blank_height_mm) {
+                                    const val = typeof job.blank_height_mm === 'number' ? job.blank_height_mm : parseFloat(job.blank_height_mm);
+                                    return !isNaN(val) ? val : undefined;
+                                  }
+                                  return undefined;
+                                })()}
+                                blankSizeUnit={job.blank_size_unit || 'mm'}
+                                sheetWidth={job.sheet_width_mm ? (typeof job.sheet_width_mm === 'number' ? job.sheet_width_mm : parseFloat(job.sheet_width_mm)) : undefined}
+                                sheetHeight={job.sheet_height_mm ? (typeof job.sheet_height_mm === 'number' ? job.sheet_height_mm : parseFloat(job.sheet_height_mm)) : undefined}
+                              />
+                            )}
+
+                            {/* Blank Sheet Size and Sheet Quantities */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Blank Sheet Size */}
+                              {(job.blank_width_mm || job.blank_width_inches) && (
+                                <Card className="bg-cyan-50 border-cyan-200">
+                                  <CardHeader className="pb-3">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                      <Square className="h-4 w-4 text-cyan-600" />
+                                      Blank Sheet Size
+                                    </CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="space-y-2">
+                                      {job.blank_size_unit === 'inches' && job.blank_width_inches && job.blank_height_inches ? (
+                                        <>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">Width:</span>
+                                            <span className="font-semibold text-gray-900">
+                                              {typeof job.blank_width_inches === 'number' 
+                                                ? job.blank_width_inches.toFixed(2) 
+                                                : parseFloat(job.blank_width_inches).toFixed(2)}"
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">Height:</span>
+                                            <span className="font-semibold text-gray-900">
+                                              {typeof job.blank_height_inches === 'number' 
+                                                ? job.blank_height_inches.toFixed(2) 
+                                                : parseFloat(job.blank_height_inches).toFixed(2)}"
+                                            </span>
+                                          </div>
+                                          {job.blank_width_mm && job.blank_height_mm && (
+                                            <div className="pt-2 border-t border-cyan-200">
+                                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <span>Width:</span>
+                                                <span>{typeof job.blank_width_mm === 'number' ? job.blank_width_mm.toFixed(2) : parseFloat(job.blank_width_mm).toFixed(2)} mm</span>
+                                              </div>
+                                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <span>Height:</span>
+                                                <span>{typeof job.blank_height_mm === 'number' ? job.blank_height_mm.toFixed(2) : parseFloat(job.blank_height_mm).toFixed(2)} mm</span>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : job.blank_width_mm && job.blank_height_mm ? (
+                                        <>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">Width:</span>
+                                            <span className="font-semibold text-gray-900">
+                                              {typeof job.blank_width_mm === 'number' 
+                                                ? job.blank_width_mm.toFixed(2) 
+                                                : parseFloat(job.blank_width_mm).toFixed(2)} mm
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm text-gray-600">Height:</span>
+                                            <span className="font-semibold text-gray-900">
+                                              {typeof job.blank_height_mm === 'number' 
+                                                ? job.blank_height_mm.toFixed(2) 
+                                                : parseFloat(job.blank_height_mm).toFixed(2)} mm
+                                            </span>
+                                          </div>
+                                          {job.blank_width_inches && job.blank_height_inches && (
+                                            <div className="pt-2 border-t border-cyan-200">
+                                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <span>Width:</span>
+                                                <span>{typeof job.blank_width_inches === 'number' ? job.blank_width_inches.toFixed(2) : parseFloat(job.blank_width_inches).toFixed(2)}"</span>
+                                              </div>
+                                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <span>Height:</span>
+                                                <span>{typeof job.blank_height_inches === 'number' ? job.blank_height_inches.toFixed(2) : parseFloat(job.blank_height_inches).toFixed(2)}"</span>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </>
+                                      ) : null}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              )}
+
+                              {/* Sheet Quantities */}
+                              {(job.final_total_sheets || job.base_required_sheets || job.additional_sheets) && (
+                                <Card className="bg-emerald-50 border-emerald-200">
+                                  <CardHeader className="pb-3">
+                                    <CardTitle className="text-base flex items-center gap-2">
+                                      <Package className="h-4 w-4 text-emerald-600" />
+                                      Sheet Quantities (From Job Planning)
+                                    </CardTitle>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <div className="space-y-3">
+                                      {job.base_required_sheets !== undefined && job.base_required_sheets !== null && (
+                                        <div className="flex items-center justify-between p-2 bg-white rounded border border-emerald-100">
+                                          <span className="text-sm text-gray-600">Base Required Sheets:</span>
+                                          <span className="font-semibold text-emerald-700">
+                                            {typeof job.base_required_sheets === 'number' 
+                                              ? job.base_required_sheets.toLocaleString() 
+                                              : parseInt(job.base_required_sheets).toLocaleString()}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {job.additional_sheets !== undefined && job.additional_sheets !== null && job.additional_sheets > 0 && (
+                                        <div className="flex items-center justify-between p-2 bg-white rounded border border-emerald-100">
+                                          <span className="text-sm text-gray-600">Additional Sheets (Extra):</span>
+                                          <span className="font-semibold text-orange-700">
+                                            +{typeof job.additional_sheets === 'number' 
+                                              ? job.additional_sheets.toLocaleString() 
+                                              : parseInt(job.additional_sheets).toLocaleString()}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {job.final_total_sheets !== undefined && job.final_total_sheets !== null && (
+                                        <div className="flex items-center justify-between p-3 bg-emerald-100 rounded border-2 border-emerald-300">
+                                          <span className="text-sm font-semibold text-emerald-900">Total Sheets for Production:</span>
+                                          <span className="text-xl font-bold text-emerald-900">
+                                            {typeof job.final_total_sheets === 'number' 
+                                              ? job.final_total_sheets.toLocaleString() 
+                                              : parseInt(job.final_total_sheets).toLocaleString()}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {(!job.base_required_sheets && !job.additional_sheets && job.final_total_sheets) && (
+                                        <p className="text-xs text-gray-500 italic">
+                                          Total sheets approved for cutting
+                                        </p>
+                                      )}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Additional Information */}
                         {(job.job_notes || job.client_layout_link) && (

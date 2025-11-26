@@ -34,7 +34,8 @@ import {
   ChevronDown,
   Play,
   Pause,
-  RotateCcw
+  RotateCcw,
+  Target
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -123,6 +124,24 @@ interface QAJob {
   ctp_machine_model?: string;
   ctp_machine_location?: string;
   ctp_machine_max_plate_size?: string;
+  // Multiple machines array
+  machines?: Array<{
+    id: number;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+    plate_count: number;
+  }>;
+  // Blank Size Information
+  blank_width_mm?: number;
+  blank_height_mm?: number;
+  blank_width_inches?: number;
+  blank_height_inches?: number;
+  blank_size_unit?: 'mm' | 'inches';
   // Item Specifications
   itemSpecifications?: {
     id: string;
@@ -251,6 +270,14 @@ const ModernQADashboard: React.FC = () => {
             ctp_machine_model: job.ctp_machine_model,
             ctp_machine_location: job.ctp_machine_location,
             ctp_machine_max_plate_size: job.ctp_machine_max_plate_size,
+            // Multiple machines array
+            machines: job.machines || [],
+            // Blank Size Information
+            blank_width_mm: job.blank_width_mm,
+            blank_height_mm: job.blank_height_mm,
+            blank_width_inches: job.blank_width_inches,
+            blank_height_inches: job.blank_height_inches,
+            blank_size_unit: job.blank_size_unit || 'mm',
             itemSpecifications: itemSpecifications || null
           };
         }));
@@ -905,78 +932,166 @@ const ModernQADashboard: React.FC = () => {
                         <span className="ml-1">{selectedJob.priority}</span>
                       </Badge>
                     </div>
-                    {selectedJob.required_plate_count && (
+                    {selectedJob.machines && selectedJob.machines.length > 0 ? (
                       <div>
-                        <Label className="text-gray-500">Required Plates</Label>
-                        <p className="font-medium text-purple-600">{selectedJob.required_plate_count}</p>
+                        <Label className="text-gray-500">Total Plates</Label>
+                        <p className="font-medium text-purple-600">{selectedJob.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)}</p>
                       </div>
-                    )}
-                    {selectedJob.ctp_machine_name && (
-                      <div>
-                        <Label className="text-gray-500">CTP Machine</Label>
-                        <p className="font-medium">{selectedJob.ctp_machine_name}</p>
-                      </div>
+                    ) : (
+                      <>
+                        {selectedJob.required_plate_count && (
+                          <div>
+                            <Label className="text-gray-500">Required Plates</Label>
+                            <p className="font-medium text-purple-600">{selectedJob.required_plate_count}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_name && (
+                          <div>
+                            <Label className="text-gray-500">CTP Machine</Label>
+                            <p className="font-medium">{selectedJob.ctp_machine_name}</p>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
 
                 {/* Plate and Machine Information */}
-                {(selectedJob.required_plate_count || selectedJob.ctp_machine_name) && (
+                {((selectedJob.machines && selectedJob.machines.length > 0) || selectedJob.required_plate_count || selectedJob.ctp_machine_name) && (
                   <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
                     <h4 className="font-semibold text-purple-900 mb-3 flex items-center">
                       <Package className="w-4 h-4 mr-2" />
                       Plate & Machine Information
                     </h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      {selectedJob.required_plate_count && (
+                    
+                    {/* Multiple Machines Display */}
+                    {selectedJob.machines && selectedJob.machines.length > 0 ? (
+                      <div className="space-y-3">
+                        {selectedJob.machines.map((machine, index) => (
+                          <div key={machine.id || index} className="bg-white p-3 rounded border border-purple-200">
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1">
+                                <div className="font-semibold text-gray-900 text-base">
+                                  {machine.machine_name} ({machine.machine_code})
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  {machine.machine_type} • {machine.location || 'N/A'}
+                                </div>
+                                {machine.manufacturer && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {machine.manufacturer} {machine.model || ''}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                <div className="font-bold text-purple-600 text-lg">{machine.plate_count} plates</div>
+                              </div>
+                            </div>
+                            {machine.max_plate_size && (
+                              <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-purple-100">
+                                Max Plate Size: {machine.max_plate_size}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        <div className="text-sm text-gray-700 mt-3 pt-3 border-t border-purple-200 font-semibold">
+                          Total Plates: <span className="text-purple-600 text-lg">{selectedJob.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {selectedJob.required_plate_count && (
+                          <div>
+                            <Label className="text-gray-600">Required Plate Count</Label>
+                            <p className="font-semibold text-purple-600 text-lg">{selectedJob.required_plate_count}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_name && (
+                          <div>
+                            <Label className="text-gray-600">Machine Name</Label>
+                            <p className="font-semibold text-gray-900">{selectedJob.ctp_machine_name}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_code && (
+                          <div>
+                            <Label className="text-gray-600">Machine Code</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_code}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_type && (
+                          <div>
+                            <Label className="text-gray-600">Machine Type</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_type}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_manufacturer && (
+                          <div>
+                            <Label className="text-gray-600">Manufacturer</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_manufacturer}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_model && (
+                          <div>
+                            <Label className="text-gray-600">Model</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_model}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_location && (
+                          <div>
+                            <Label className="text-gray-600">Location</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_location}</p>
+                          </div>
+                        )}
+                        {selectedJob.ctp_machine_max_plate_size && (
+                          <div>
+                            <Label className="text-gray-600">Max Plate Size</Label>
+                            <p className="font-medium text-gray-900">{selectedJob.ctp_machine_max_plate_size}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Blank Size Information */}
+                {(selectedJob.blank_width_mm || selectedJob.blank_width_inches) && (
+                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <h4 className="font-semibold text-green-800 mb-4 flex items-center">
+                      <Target className="w-4 h-4 mr-2" />
+                      Blank Size
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      {selectedJob.blank_width_mm && selectedJob.blank_height_mm && (
                         <div>
-                          <Label className="text-gray-600">Required Plate Count</Label>
-                          <p className="font-semibold text-purple-600 text-lg">{selectedJob.required_plate_count}</p>
+                          <Label className="text-gray-600">Dimensions (mm)</Label>
+                          <p className="font-semibold text-green-700 text-lg">
+                            {selectedJob.blank_width_mm} × {selectedJob.blank_height_mm} mm
+                          </p>
                         </div>
                       )}
-                      {selectedJob.ctp_machine_name && (
+                      {selectedJob.blank_width_inches && selectedJob.blank_height_inches && (
                         <div>
-                          <Label className="text-gray-600">Machine Name</Label>
-                          <p className="font-semibold text-gray-900">{selectedJob.ctp_machine_name}</p>
+                          <Label className="text-gray-600">Dimensions (inches)</Label>
+                          <p className="font-semibold text-green-700 text-lg">
+                            {typeof selectedJob.blank_width_inches === 'number' ? selectedJob.blank_width_inches.toFixed(2) : parseFloat(selectedJob.blank_width_inches).toFixed(2)} × {typeof selectedJob.blank_height_inches === 'number' ? selectedJob.blank_height_inches.toFixed(2) : parseFloat(selectedJob.blank_height_inches).toFixed(2)} inches
+                          </p>
                         </div>
                       )}
-                      {selectedJob.ctp_machine_code && (
-                        <div>
-                          <Label className="text-gray-600">Machine Code</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_code}</p>
-                        </div>
-                      )}
-                      {selectedJob.ctp_machine_type && (
-                        <div>
-                          <Label className="text-gray-600">Machine Type</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_type}</p>
-                        </div>
-                      )}
-                      {selectedJob.ctp_machine_manufacturer && (
-                        <div>
-                          <Label className="text-gray-600">Manufacturer</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_manufacturer}</p>
-                        </div>
-                      )}
-                      {selectedJob.ctp_machine_model && (
-                        <div>
-                          <Label className="text-gray-600">Model</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_model}</p>
-                        </div>
-                      )}
-                      {selectedJob.ctp_machine_location && (
-                        <div>
-                          <Label className="text-gray-600">Location</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_location}</p>
-                        </div>
-                      )}
-                      {selectedJob.ctp_machine_max_plate_size && (
-                        <div>
-                          <Label className="text-gray-600">Max Plate Size</Label>
-                          <p className="font-medium text-gray-900">{selectedJob.ctp_machine_max_plate_size}</p>
+                      {selectedJob.blank_size_unit && (
+                        <div className="col-span-2">
+                          <Label className="text-gray-600">Input Unit</Label>
+                          <p className="font-medium text-gray-900">{selectedJob.blank_size_unit.toUpperCase()}</p>
                         </div>
                       )}
                     </div>
+                    {selectedJob.blank_width_mm && selectedJob.blank_height_mm && selectedJob.blank_width_inches && selectedJob.blank_height_inches && (
+                      <div className="mt-3 p-2 bg-white rounded border border-green-300">
+                        <p className="text-xs text-gray-600">
+                          <strong>Complete:</strong> {selectedJob.blank_width_mm} × {selectedJob.blank_height_mm} mm 
+                          ({typeof selectedJob.blank_width_inches === 'number' ? selectedJob.blank_width_inches.toFixed(2) : parseFloat(selectedJob.blank_width_inches).toFixed(2)} × {typeof selectedJob.blank_height_inches === 'number' ? selectedJob.blank_height_inches.toFixed(2) : parseFloat(selectedJob.blank_height_inches).toFixed(2)} inches)
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 

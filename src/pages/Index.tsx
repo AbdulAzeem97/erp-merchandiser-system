@@ -89,7 +89,11 @@ const Index = () => {
     setIsAuthenticated(true);
     // Check user role and redirect accordingly
     const user = authAPI.getCurrentUser();
-    if (user?.role === 'HOD_PREPRESS') {
+    if (user?.role === 'HEAD_OF_PRODUCTION') {
+      // Redirect to Smart Production Dashboard (Job Planning)
+      window.location.href = '/production/smart-dashboard';
+      return;
+    } else if (user?.role === 'HOD_PREPRESS') {
       setCurrentView('prepressHOD');
     } else if (user?.role === 'DESIGNER') {
       // Redirect to complete designer dashboard
@@ -100,6 +104,10 @@ const Index = () => {
     } else if (user?.role === 'CTP_OPERATOR') {
       // Redirect to CTP dashboard
       setCurrentView('ctp-dashboard');
+    } else if (user?.role === 'HOD_PRODUCTION' || user?.role === 'PRODUCTION_OPERATOR') {
+      // Redirect to Production dashboard
+      window.location.href = '/production/dashboard';
+      return;
     } else if (user?.role === 'INVENTORY_MANAGER') {
       // Redirect to inventory dashboard
       window.location.href = '/inventory/dashboard';
@@ -107,6 +115,14 @@ const Index = () => {
     } else if (user?.role === 'PROCUREMENT_MANAGER') {
       // Redirect to procurement dashboard
       window.location.href = '/procurement/dashboard';
+      return;
+    } else if (user?.role === 'HOD_CUTTING') {
+      // Redirect to Cutting dashboard
+      window.location.href = '/cutting/dashboard';
+      return;
+    } else if (user?.role === 'CUTTING_LABOR') {
+      // Redirect to Cutting labor view
+      window.location.href = '/cutting/labor';
       return;
     } else {
       setCurrentView('dashboard');

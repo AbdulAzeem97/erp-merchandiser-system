@@ -63,6 +63,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/login" element={<Index />} />
             {/* Role-specific dashboards */}
             <Route path="/merchandiser/head" element={<HeadOfMerchandiserDashboard />} />
             <Route path="/production/head" element={<HeadOfProductionDashboard />} />

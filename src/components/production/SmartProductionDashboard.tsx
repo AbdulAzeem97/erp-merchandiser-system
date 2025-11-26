@@ -26,6 +26,7 @@ import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '@/components/layout/MainLayout';
 import ClockTimer from '@/components/ui/ClockTimer';
 import { SmartDashboardJob } from '@/types/inventory';
+import { authAPI } from '@/services/api';
 
 interface SmartProductionDashboardProps {
   onLogout?: () => void;
@@ -55,6 +56,19 @@ const SmartProductionDashboard: React.FC<SmartProductionDashboardProps> = ({ onL
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
+
+  // Handle logout with fallback
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      // Default logout behavior
+      authAPI.logout();
+      toast.success('Logged out successfully');
+      // Redirect to login page
+      window.location.href = '/';
+    }
+  };
 
   // Load jobs
   const loadJobs = async () => {
@@ -165,7 +179,8 @@ const SmartProductionDashboard: React.FC<SmartProductionDashboardProps> = ({ onL
   return (
     <MainLayout
       currentPage="smart-production-dashboard"
-      onLogout={onLogout}
+      onLogout={handleLogout}
+      onNavigate={(page) => navigate(`/${page}`)}
       isLoading={isLoading}
     >
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">

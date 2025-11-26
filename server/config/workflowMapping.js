@@ -36,6 +36,7 @@ export const STEP_DEPARTMENT_MAPPING = {
   'Cutting': 'Cutting',
   'Die Cutting': 'Cutting',
   'Paper Cutting': 'Cutting',
+  'Press Cutting': 'Cutting',
   'Trimming': 'Cutting',
   
   // Production Finishing Department Steps

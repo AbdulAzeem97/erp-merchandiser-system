@@ -25,6 +25,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from 'sonner';
 import { MainLayout } from '@/components/layout/MainLayout';
 import ClockTimer from '@/components/ui/ClockTimer';
+import { authAPI } from '@/services/api';
 import MaterialSizeSelector from './MaterialSizeSelector';
 import { SheetSizeSelector } from './SheetSizeSelector';
 import CuttingLayoutCard from './CuttingLayoutCard';
@@ -66,6 +67,24 @@ interface JobDetails {
     efficiency_percentage: number | null;
     created_at: string | null;
   } | null;
+  blank_size?: {
+    width_mm: number | null;
+    height_mm: number | null;
+    width_inches: number | null;
+    height_inches: number | null;
+    unit: 'mm' | 'inches';
+  };
+  machines?: Array<{
+    id: number;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+    plate_count: number;
+  }>;
 }
 
 const JobPlanningDetail: React.FC = () => {
@@ -85,10 +104,23 @@ const JobPlanningDetail: React.FC = () => {
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [wastageValidation, setWastageValidation] = useState<WastageValidation | null>(null);
   const [showConfirmationDialog, setShowConfirmationDialog] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  // Removed isSaving state - no longer needed
   const [isApplying, setIsApplying] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
+
+  // Handle logout with fallback
+  const handleLogout = () => {
+    authAPI.logout();
+    toast.success('Logged out successfully');
+    // Redirect to login page
+    window.location.href = '/';
+  };
+
+  // Handle navigation
+  const handleNavigate = (page: string) => {
+    navigate(`/${page}`);
+  };
 
   // Load job details
   useEffect(() => {
@@ -96,6 +128,32 @@ const JobPlanningDetail: React.FC = () => {
       loadJobDetails();
     }
   }, [jobId]);
+
+  // Auto-populate blank size from job details when loaded
+  useEffect(() => {
+    if (jobDetails?.blank_size) {
+      const blankSize = jobDetails.blank_size;
+      // Prefer mm values, fallback to inches converted to mm
+      if (blankSize.width_mm && blankSize.height_mm) {
+        setBlankWidth(blankSize.width_mm);
+        setBlankHeight(blankSize.height_mm);
+        console.log('✅ Auto-populated blank size from job details (mm):', {
+          width: blankSize.width_mm,
+          height: blankSize.height_mm
+        });
+      } else if (blankSize.width_inches && blankSize.height_inches) {
+        // Convert inches to mm
+        setBlankWidth(blankSize.width_inches * 25.4);
+        setBlankHeight(blankSize.height_inches * 25.4);
+        console.log('✅ Auto-populated blank size from job details (inches converted to mm):', {
+          width_inches: blankSize.width_inches,
+          height_inches: blankSize.height_inches,
+          width_mm: blankSize.width_inches * 25.4,
+          height_mm: blankSize.height_inches * 25.4
+        });
+      }
+    }
+  }, [jobDetails]);
 
   const loadJobDetails = async () => {
     try {
@@ -320,32 +378,45 @@ const JobPlanningDetail: React.FC = () => {
     }
   };
 
-  const handleSavePlanning = async () => {
-    if (!selectedOptimization || !costSummary) {
-      toast.error('Please complete optimization first');
+  // Removed handleSavePlanning and savePlanning - now using direct apply
+
+  const handleApplyPlanning = async () => {
+    // Check if already applied
+    if (jobDetails?.planning && jobDetails.planning.planning_status === 'APPLIED') {
+      toast.error('Planning has already been applied');
       return;
     }
 
+    // Validate that we have optimization data
+    if (!selectedOptimization || !costSummary) {
+      toast.error('Please calculate optimization first');
+      return;
+    }
+
+    // Check wastage validation
     if (wastageValidation?.requiresJustification && !wastageJustification.trim()) {
       toast.error('Please provide wastage justification');
       return;
     }
 
+    // Show confirmation dialog if wastage is high
     if (wastageValidation?.requiresConfirmation) {
       setShowConfirmationDialog(true);
       return;
     }
 
-    await savePlanning();
+    // Proceed with save and apply
+    await applyPlanningDirectly();
   };
 
-  const savePlanning = async () => {
+  const applyPlanningDirectly = async () => {
     try {
-      setIsSaving(true);
+      setIsApplying(true);
       const token = localStorage.getItem('authToken');
       const selectedLayoutData = selectedOptimization!.layouts[selectedLayout];
 
-      const response = await fetch(
+      // First, save the planning
+      const saveResponse = await fetch(
         `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/planning`,
         {
           method: 'POST',
@@ -354,49 +425,35 @@ const JobPlanningDetail: React.FC = () => {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            selectedSheetSizeId: selectedOptimization!.size.id,
+            selectedSheetSizeId: selectedOptimization.size.id,
             cuttingLayoutType: selectedLayout,
             gridPattern: selectedLayoutData.gridPattern,
             blanksPerSheet: selectedLayoutData.blanksPerSheet,
             efficiencyPercentage: selectedLayoutData.efficiencyPercentage,
             scrapPercentage: selectedLayoutData.wastagePercentage,
-            baseRequiredSheets: jobDetails?.ratioReport?.total_sheets || selectedOptimization!.baseRequiredSheets,
+            baseRequiredSheets: jobDetails?.ratioReport?.total_sheets || selectedOptimization.baseRequiredSheets,
             additionalSheets,
             wastageJustification: wastageJustification || null
           })
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          toast.success('Planning saved successfully');
-          loadJobDetails();
-        } else {
-          toast.error('Failed to save planning');
-        }
-      } else {
-        toast.error('Failed to save planning');
+      if (!saveResponse.ok) {
+        const errorData = await saveResponse.json();
+        toast.error(errorData.error || 'Failed to save planning');
+        setIsApplying(false);
+        return;
       }
-    } catch (error) {
-      console.error('Error saving planning:', error);
-      toast.error('Error saving planning');
-    } finally {
-      setIsSaving(false);
-      setShowConfirmationDialog(false);
-    }
-  };
 
-  const handleApplyPlanning = async () => {
-    if (!jobDetails?.planning || jobDetails.planning.planning_status === 'APPLIED') {
-      toast.error('Planning must be saved and not already applied');
-      return;
-    }
+      const saveData = await saveResponse.json();
+      if (!saveData.success) {
+        toast.error('Failed to save planning');
+        setIsApplying(false);
+        return;
+      }
 
-    try {
-      setIsApplying(true);
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(
+      // Then, apply the planning
+      const applyResponse = await fetch(
         `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/apply`,
         {
           method: 'POST',
@@ -406,16 +463,16 @@ const JobPlanningDetail: React.FC = () => {
         }
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          toast.success('Planning applied successfully. Inventory deducted and workflow updated.');
+      if (applyResponse.ok) {
+        const applyData = await applyResponse.json();
+        if (applyData.success) {
+          toast.success('Planning applied successfully. Job moved to cutting department.');
           loadJobDetails();
         } else {
-          toast.error(data.error || 'Failed to apply planning');
+          toast.error(applyData.error || 'Failed to apply planning');
         }
       } else {
-        const errorData = await response.json();
+        const errorData = await applyResponse.json();
         toast.error(errorData.error || 'Failed to apply planning');
       }
     } catch (error) {
@@ -423,6 +480,7 @@ const JobPlanningDetail: React.FC = () => {
       toast.error('Error applying planning');
     } finally {
       setIsApplying(false);
+      setShowConfirmationDialog(false);
     }
   };
 
@@ -453,7 +511,11 @@ const JobPlanningDetail: React.FC = () => {
 
   if (isLoading || !jobDetails) {
     return (
-      <MainLayout currentPage="smart-production-dashboard">
+      <MainLayout 
+        currentPage="smart-production-dashboard"
+        onLogout={handleLogout}
+        onNavigate={handleNavigate}
+      >
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
@@ -477,7 +539,11 @@ const JobPlanningDetail: React.FC = () => {
   };
 
   return (
-    <MainLayout currentPage="smart-production-dashboard">
+    <MainLayout 
+      currentPage="smart-production-dashboard"
+      onLogout={handleLogout}
+      onNavigate={handleNavigate}
+    >
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         {/* Header */}
         <div className="bg-white border-b shadow-sm p-4">
@@ -501,14 +567,14 @@ const JobPlanningDetail: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {jobDetails.planning && jobDetails.planning.planning_status !== 'APPLIED' && (
+              {(!jobDetails.planning || jobDetails.planning.planning_status !== 'APPLIED') && (
                 <Button
                   onClick={handleApplyPlanning}
-                  disabled={isApplying || jobDetails.planning.planning_status === 'PENDING'}
+                  disabled={isApplying || !selectedOptimization}
                   className="bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  {isApplying ? 'Applying...' : 'Apply Planning'}
+                  {isApplying ? 'Applying Planning...' : 'Apply Planning'}
                 </Button>
               )}
               {jobDetails.planning && (
@@ -556,6 +622,53 @@ const JobPlanningDetail: React.FC = () => {
 
               {/* Blank Dimensions Input */}
               <div className="mt-6 space-y-4">
+                {/* Auto-fetched Blank Size Indicator */}
+                {jobDetails?.blank_size && (jobDetails.blank_size.width_mm || jobDetails.blank_size.width_inches) && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-green-600" />
+                      <span className="text-sm text-green-800">
+                        <strong>Auto-fetched Blank Size:</strong>{' '}
+                        {jobDetails.blank_size.width_mm && jobDetails.blank_size.height_mm ? (
+                          <span>{jobDetails.blank_size.width_mm} × {jobDetails.blank_size.height_mm} mm</span>
+                        ) : jobDetails.blank_size.width_inches && jobDetails.blank_size.height_inches ? (
+                          <span>
+                            {typeof jobDetails.blank_size.width_inches === 'number' 
+                              ? jobDetails.blank_size.width_inches.toFixed(2) 
+                              : parseFloat(jobDetails.blank_size.width_inches).toFixed(2)} × {' '}
+                            {typeof jobDetails.blank_size.height_inches === 'number' 
+                              ? jobDetails.blank_size.height_inches.toFixed(2) 
+                              : parseFloat(jobDetails.blank_size.height_inches).toFixed(2)} inches
+                          </span>
+                        ) : null}
+                        {jobDetails.blank_size.width_mm && jobDetails.blank_size.width_inches && (
+                          <span className="text-gray-600 ml-2">
+                            ({typeof jobDetails.blank_size.width_inches === 'number' 
+                              ? jobDetails.blank_size.width_inches.toFixed(2) 
+                              : parseFloat(jobDetails.blank_size.width_inches).toFixed(2)} × {' '}
+                            {jobDetails.blank_size.height_inches 
+                              ? (typeof jobDetails.blank_size.height_inches === 'number' 
+                                  ? jobDetails.blank_size.height_inches.toFixed(2) 
+                                  : parseFloat(jobDetails.blank_size.height_inches).toFixed(2))
+                              : '0.00'} inches)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {jobDetails.material_id && selectedSheetSize && blankWidth > 0 && blankHeight > 0 && (
+                      <Button
+                        onClick={calculateOptimization}
+                        disabled={isCalculating || !blankWidth || !blankHeight || !ups || !selectedSheetSize}
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <Calculator className="h-3 w-3 mr-2" />
+                        One-Click Calculate
+                      </Button>
+                    )}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
                   <div>
                     <Label htmlFor="blankWidth" className="text-sm font-medium">
@@ -571,6 +684,9 @@ const JobPlanningDetail: React.FC = () => {
                       placeholder="e.g., 100"
                       className="mt-1"
                     />
+                    {jobDetails?.blank_size && jobDetails.blank_size.width_mm && (
+                      <p className="text-xs text-green-600 mt-1">✓ Auto-filled from prepress</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="blankHeight" className="text-sm font-medium">
@@ -586,6 +702,9 @@ const JobPlanningDetail: React.FC = () => {
                       placeholder="e.g., 150"
                       className="mt-1"
                     />
+                    {jobDetails?.blank_size && jobDetails.blank_size.height_mm && (
+                      <p className="text-xs text-green-600 mt-1">✓ Auto-filled from prepress</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="ups" className="text-sm font-medium">
@@ -862,25 +981,23 @@ const JobPlanningDetail: React.FC = () => {
 
               {/* Action Buttons */}
               <div className="flex gap-4">
-                <Button
-                  onClick={handleSavePlanning}
-                  disabled={isSaving || !costSummary}
-                  className="flex-1"
-                  size="lg"
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Planning'}
-                </Button>
-                {jobDetails.planning && jobDetails.planning.planning_status !== 'APPLIED' && (
+                {(!jobDetails.planning || jobDetails.planning.planning_status !== 'APPLIED') && (
                   <Button
                     onClick={handleApplyPlanning}
-                    disabled={isApplying || jobDetails.planning.planning_status === 'PENDING'}
+                    disabled={isApplying || !costSummary || !selectedOptimization}
                     className="flex-1 bg-green-600 hover:bg-green-700"
                     size="lg"
                   >
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    {isApplying ? 'Applying...' : 'Apply Planning'}
+                    {isApplying ? 'Applying Planning...' : 'Apply Planning'}
                   </Button>
+                )}
+                {jobDetails.planning && jobDetails.planning.planning_status === 'APPLIED' && (
+                  <div className="flex-1 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
+                    <CheckCircle className="h-5 w-5 text-green-600 mx-auto mb-2" />
+                    <p className="text-green-800 font-medium">Planning Applied</p>
+                    <p className="text-sm text-green-600 mt-1">Job is ready for cutting</p>
+                  </div>
                 )}
               </div>
             </>
@@ -920,10 +1037,11 @@ const JobPlanningDetail: React.FC = () => {
                   Cancel
                 </Button>
                 <Button
-                  onClick={savePlanning}
+                  onClick={applyPlanningDirectly}
                   className="bg-red-600 hover:bg-red-700"
+                  disabled={isApplying}
                 >
-                  Confirm & Save
+                  {isApplying ? 'Applying...' : 'Confirm & Apply Planning'}
                 </Button>
               </DialogFooter>
             </DialogContent>

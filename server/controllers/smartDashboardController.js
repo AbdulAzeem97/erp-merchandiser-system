@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import materialSizeService from '../services/materialSizeService.js';
 import sheetOptimizationService from '../services/sheetOptimizationService.js';
 import costCalculationService from '../services/costCalculationService.js';
+import UnifiedWorkflowService from '../services/unifiedWorkflowService.js';
 
 class SmartDashboardController {
   /**
@@ -20,6 +21,18 @@ class SmartDashboardController {
         )
       `);
       const hasPlanningTable = tableCheck.rows[0].exists;
+
+      // Check if job_cards has current_department and workflow_status columns
+      const columnCheck = await dbAdapter.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'job_cards' 
+        AND column_name IN ('current_department', 'workflow_status', 'current_step', 'status_message')
+      `);
+      const hasDepartmentColumn = columnCheck.rows.some(r => r.column_name === 'current_department');
+      const hasWorkflowStatusColumn = columnCheck.rows.some(r => r.column_name === 'workflow_status');
+      const hasCurrentStepColumn = columnCheck.rows.some(r => r.column_name === 'current_step');
+      const hasStatusMessageColumn = columnCheck.rows.some(r => r.column_name === 'status_message');
 
       const query = `
         SELECT 
@@ -40,6 +53,10 @@ class SmartDashboardController {
           pj.created_at,
           COALESCE(p.brand, 'N/A') as material_name,
           NULL as product_material
+          ${hasDepartmentColumn ? ', jc.current_department' : ', NULL as current_department'}
+          ${hasWorkflowStatusColumn ? ', jc.workflow_status' : ', NULL as workflow_status'}
+          ${hasCurrentStepColumn ? ', jc.current_step' : ', NULL as current_step'}
+          ${hasStatusMessageColumn ? ', jc.status_message' : ', NULL as status_message'}
           ${hasPlanningTable ? `,
           jpp.planning_status,
           jpp.final_total_sheets,
@@ -53,6 +70,7 @@ class SmartDashboardController {
         LEFT JOIN companies c ON jc."companyId" = c.id
         ${hasPlanningTable ? 'LEFT JOIN job_production_planning jpp ON jc.id = jpp.job_card_id' : ''}
         WHERE COALESCE(pj.plate_generated, false) = true
+          ${hasDepartmentColumn ? "AND (jc.current_department = 'Job Planning' OR jc.current_department IS NULL)" : ''}
         ORDER BY 
           ${hasPlanningTable ? `
           CASE 
@@ -89,7 +107,11 @@ class SmartDashboardController {
           material_name: row.material_name || row.product_material,
           planning_status: row.planning_status || 'PENDING',
           final_total_sheets: row.final_total_sheets || null,
-          material_cost: row.material_cost || null
+          material_cost: row.material_cost || null,
+          current_department: row.current_department || null,
+          workflow_status: row.workflow_status || 'pending',
+          current_step: row.current_step || null,
+          status_message: row.status_message || null
         })),
         count: result.rows.length
       });
@@ -161,7 +183,12 @@ class SmartDashboardController {
         COALESCE(p.brand, 'N/A') as material_name,
         NULL as product_material,
         c.name as company_name,
-        jc.customer_name`;
+        jc.customer_name,
+        pj.blank_width_mm,
+        pj.blank_height_mm,
+        pj.blank_width_inches,
+        pj.blank_height_inches,
+        pj.blank_size_unit`;
       
       const planningColumns = hasPlanningTable ? `,
         jpp.planning_status,
@@ -378,6 +405,40 @@ class SmartDashboardController {
         created_at: job.ratio_report_created_at
       } : null;
 
+      // Fetch multiple machines from job_ctp_machines
+      let machines = [];
+      try {
+        const machinesResult = await dbAdapter.query(`
+          SELECT 
+            jcm.*,
+            cm.machine_code,
+            cm.machine_name,
+            cm.machine_type,
+            cm.manufacturer,
+            cm.model,
+            cm.location,
+            cm.max_plate_size
+          FROM job_ctp_machines jcm
+          JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+          WHERE jcm.prepress_job_id = $1
+          ORDER BY jcm.created_at
+        `, [jobIdNum]);
+        
+        machines = machinesResult.rows.map(m => ({
+          id: m.ctp_machine_id,
+          machine_code: m.machine_code,
+          machine_name: m.machine_name,
+          machine_type: m.machine_type,
+          manufacturer: m.manufacturer,
+          model: m.model,
+          location: m.location,
+          max_plate_size: m.max_plate_size,
+          plate_count: m.plate_count
+        }));
+      } catch (error) {
+        console.error('Error fetching machines for job planning:', error);
+      }
+
       res.json({
         success: true,
         job: {
@@ -400,7 +461,17 @@ class SmartDashboardController {
           },
           material_id: materialId,
           planning: planning,
-          ratioReport: ratioReport
+          ratioReport: ratioReport,
+          // Blank size information (auto-fetch for job planning)
+          blank_size: {
+            width_mm: job.blank_width_mm || null,
+            height_mm: job.blank_height_mm || null,
+            width_inches: job.blank_width_inches || null,
+            height_inches: job.blank_height_inches || null,
+            unit: job.blank_size_unit || 'mm'
+          },
+          // Multiple machines information
+          machines: machines
         }
       });
     } catch (error) {
@@ -753,7 +824,18 @@ class SmartDashboardController {
         });
       }
 
-      const jobCardId = jobQuery.rows[0].job_card_id;
+      let jobCardId = jobQuery.rows[0].job_card_id;
+      // Ensure jobCardId is an integer for consistency
+      const jobCardIdInt = parseInt(jobCardId, 10);
+      if (isNaN(jobCardIdInt)) {
+        console.error('❌ Invalid job_card_id from database:', jobCardId);
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid job card ID'
+        });
+      }
+      jobCardId = jobCardIdInt;
+      console.log('✅ Job card ID (parsed):', jobCardId, 'Type:', typeof jobCardId);
 
       // Check if planning exists
       const existingPlanning = await sheetOptimizationService.getJobPlanning(jobCardId);
@@ -1124,8 +1206,18 @@ class SmartDashboardController {
         });
       }
 
-      const jobCardId = jobQuery.rows[0].job_card_id;
-      console.log('✅ Job card ID:', jobCardId);
+      let jobCardId = jobQuery.rows[0].job_card_id;
+      // Ensure jobCardId is an integer for consistency
+      const jobCardIdInt = parseInt(jobCardId, 10);
+      if (isNaN(jobCardIdInt)) {
+        console.error('❌ Invalid job_card_id:', jobCardId);
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid job card ID'
+        });
+      }
+      jobCardId = jobCardIdInt;
+      console.log('✅ Job card ID:', jobCardId, 'Type:', typeof jobCardId);
 
       // Get planning
       const planning = await sheetOptimizationService.getJobPlanning(jobCardId);
@@ -1209,31 +1301,195 @@ class SmartDashboardController {
             planned_by = $1,
             updated_at = CURRENT_TIMESTAMP
            WHERE job_card_id = $2
-           RETURNING id`,
+           RETURNING id, planning_status, job_card_id`,
           [userId, jobCardId]
         );
         console.log('✅ Planning status updated, rows affected:', updateResult.rowCount);
 
         if (updateResult.rowCount === 0) {
-          throw new Error('Failed to update planning status - no rows affected');
+          throw new Error(`Failed to update planning status - no planning found for job_card_id: ${jobCardId}`);
         }
 
+        // Verify the update
+        const verifyPlanning = updateResult.rows[0];
+        const verifiedJobCardId = verifyPlanning.job_card_id;
+        const verifiedJobCardIdType = typeof verifiedJobCardId;
+        const jobCardIdMatches = String(verifiedJobCardId) === String(jobCardId);
+        
+        console.log('✅ Planning status verified:', {
+          planning_id: verifyPlanning.id,
+          job_card_id: verifiedJobCardId,
+          job_card_id_type: verifiedJobCardIdType,
+          expected_job_card_id: jobCardId,
+          expected_type: typeof jobCardId,
+          ids_match: jobCardIdMatches,
+          planning_status: verifyPlanning.planning_status
+        });
+        
+        if (!jobCardIdMatches) {
+          console.warn('⚠️ Job card ID mismatch in planning table:', {
+            expected: jobCardId,
+            found: verifiedJobCardId
+          });
+        }
+
+        // Check if workflow columns exist in job_cards
+        const workflowColumnsCheck = await client.query(`
+          SELECT column_name 
+          FROM information_schema.columns 
+          WHERE table_name = 'job_cards' 
+          AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message')
+        `);
+        const hasWorkflowColumns = workflowColumnsCheck.rows.length > 0;
+        console.log('📋 Workflow columns exist in job_cards:', hasWorkflowColumns, workflowColumnsCheck.rows.map(r => r.column_name));
+
         // Update job card to transition to Cutting department
+        // Always try to update, even if workflow columns don't exist (for backward compatibility)
         try {
-          await client.query(
-            `UPDATE job_cards SET
-              current_department = 'Cutting',
-              current_step = 'Job Planning Completed',
-              workflow_status = 'SMART_PLANNING_COMPLETED',
-              status_message = 'Job planning applied, ready for cutting',
-              "updatedAt" = CURRENT_TIMESTAMP
-             WHERE id = $1`,
-            [jobCardId]
-          );
-          console.log('✅ Job card updated to Cutting department');
-        } catch (jobUpdateError) {
-          console.warn('⚠️ Job card update failed (may not have these columns):', jobUpdateError.message);
-          // Continue without job card update if columns don't exist
+          // First, check which columns actually exist
+          const columnCheck = await client.query(`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'job_cards' 
+            AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message', 'status')
+          `);
+          const existingColumns = columnCheck.rows.map(r => r.column_name);
+          
+          // Build dynamic UPDATE query based on available columns
+          const updateFields = [];
+          const updateValues = [];
+          let paramIndex = 1;
+          
+          if (existingColumns.includes('current_department')) {
+            updateFields.push(`current_department = $${paramIndex}`);
+            updateValues.push('Cutting');
+            paramIndex++;
+          }
+          
+          if (existingColumns.includes('current_step')) {
+            updateFields.push(`current_step = $${paramIndex}`);
+            updateValues.push('Job Planning Completed');
+            paramIndex++;
+          }
+          
+          if (existingColumns.includes('workflow_status')) {
+            updateFields.push(`workflow_status = $${paramIndex}`);
+            updateValues.push('SMART_PLANNING_COMPLETED');
+            paramIndex++;
+          }
+          
+          if (existingColumns.includes('status_message')) {
+            updateFields.push(`status_message = $${paramIndex}`);
+            updateValues.push('Job planning applied, ready for cutting');
+            paramIndex++;
+          }
+          
+          // Always update updatedAt if it exists
+          if (existingColumns.includes('updatedAt') || existingColumns.includes('updated_at')) {
+            const updatedAtColumn = existingColumns.includes('updatedAt') ? 'updatedAt' : 'updated_at';
+            updateFields.push(`"${updatedAtColumn}" = CURRENT_TIMESTAMP`);
+          }
+          
+          if (updateFields.length > 0) {
+            updateValues.push(jobCardId); // jobCardId is the last parameter
+            const updateQuery = `
+              UPDATE job_cards SET
+                ${updateFields.join(', ')}
+               WHERE id = $${paramIndex}
+               RETURNING id${existingColumns.includes('current_department') ? ', current_department' : ''}${existingColumns.includes('current_step') ? ', current_step' : ''}${existingColumns.includes('workflow_status') ? ', workflow_status' : ''}
+            `;
+            
+            const jobCardUpdateResult = await client.query(updateQuery, updateValues);
+            
+            if (jobCardUpdateResult.rowCount === 0) {
+              console.error('❌ Job card update failed - no rows affected for job_card_id:', jobCardId);
+              throw new Error(`Failed to update job card ${jobCardId} - job not found`);
+            }
+            
+            console.log('✅ Job card updated to Cutting department:', {
+              job_card_id: jobCardId,
+              updated_columns: existingColumns,
+              current_department: jobCardUpdateResult.rows[0]?.current_department || 'N/A',
+              current_step: jobCardUpdateResult.rows[0]?.current_step || 'N/A',
+              workflow_status: jobCardUpdateResult.rows[0]?.workflow_status || 'N/A'
+            });
+          } else {
+            console.warn('⚠️ No workflow columns found in job_cards table - cannot update department');
+          }
+        } catch (jobCardUpdateError) {
+          console.error('❌ Error updating job card:', jobCardUpdateError);
+          // Don't fail the entire operation, but log the error
+          console.warn('⚠️ Continuing despite job card update error');
+        }
+
+        // Activate cutting workflow step (simplified - direct SQL only)
+        try {
+          // Check if job_workflow_steps table exists
+          const tableCheck = await client.query(`
+            SELECT EXISTS (
+              SELECT FROM information_schema.tables 
+              WHERE table_schema = 'public' 
+              AND table_name = 'job_workflow_steps'
+            )
+          `);
+          
+          if (tableCheck.rows[0].exists) {
+            // Find existing cutting step
+            const existingStep = await client.query(`
+              SELECT id, sequence_number, status
+              FROM job_workflow_steps
+              WHERE job_card_id = $1
+                AND (department = 'Cutting' OR department = 'Production')
+                AND (step_name ILIKE '%cutting%' OR step_name ILIKE '%press%')
+              LIMIT 1
+            `, [jobCardId]);
+            
+            if (existingStep.rows.length > 0) {
+              const step = existingStep.rows[0];
+              await client.query(`
+                UPDATE job_workflow_steps
+                SET 
+                  status = 'in_progress',
+                  status_message = 'Planning applied, ready for cutting',
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE id = $1
+              `, [step.id]);
+              console.log('✅ Updated existing cutting workflow step');
+            } else {
+              // Get max sequence number
+              const maxSeqResult = await client.query(`
+                SELECT COALESCE(MAX(sequence_number), 0) as max_seq
+                FROM job_workflow_steps
+                WHERE job_card_id = $1
+              `, [jobCardId]);
+              const maxSeq = maxSeqResult.rows[0].max_seq || 0;
+              
+              // Create cutting step
+              await client.query(`
+                INSERT INTO job_workflow_steps (
+                  job_card_id, sequence_number, step_name, department,
+                  status, status_message, requires_qa, updated_at, created_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT DO NOTHING
+              `, [
+                jobCardId,
+                maxSeq + 1,
+                'Press Cutting',
+                'Cutting',
+                'in_progress',
+                'Planning applied, ready for cutting',
+                false
+              ]);
+              console.log('✅ Created cutting workflow step');
+            }
+          } else {
+            console.warn('⚠️ job_workflow_steps table does not exist');
+          }
+        } catch (workflowError) {
+          console.error('❌ Error updating workflow steps:', workflowError);
+          console.warn('⚠️ Continuing despite workflow step error');
+          // Don't fail the entire operation
         }
 
         // Deduct stock from inventory if table exists

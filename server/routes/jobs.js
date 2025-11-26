@@ -90,8 +90,14 @@ router.get('/', asyncHandler(async (req, res) => {
         u."firstName" || ' ' || u."lastName" as assigned_designer_name,
         u.email as assigned_designer_email,
         u.phone as assigned_designer_phone,
+        pj.id as prepress_job_id,
         pj.required_plate_count,
         pj.ctp_machine_id,
+        pj.blank_width_mm,
+        pj.blank_height_mm,
+        pj.blank_width_inches,
+        pj.blank_height_inches,
+        pj.blank_size_unit,
         cm.machine_code as ctp_machine_code,
         cm.machine_name as ctp_machine_name,
         cm.machine_type as ctp_machine_type,
@@ -118,12 +124,76 @@ router.get('/', asyncHandler(async (req, res) => {
 
     console.log(`Found ${jobs.length} jobs`);
 
+    // Enhance jobs with multiple machines and blank size
+    const enhancedJobs = await Promise.all(jobs.map(async (job) => {
+      // Fetch multiple machines from job_ctp_machines if prepress_job exists
+      let machines = [];
+      if (job.prepress_job_id) {
+        try {
+          const machinesResult = await dbAdapter.query(`
+            SELECT 
+              jcm.*,
+              cm.machine_code,
+              cm.machine_name,
+              cm.machine_type,
+              cm.manufacturer,
+              cm.model,
+              cm.location,
+              cm.max_plate_size
+            FROM job_ctp_machines jcm
+            JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+            WHERE jcm.prepress_job_id = $1
+            ORDER BY jcm.created_at
+          `, [job.prepress_job_id]);
+          
+          machines = machinesResult.rows.map(m => ({
+            id: m.ctp_machine_id,
+            machine_code: m.machine_code,
+            machine_name: m.machine_name,
+            machine_type: m.machine_type,
+            manufacturer: m.manufacturer,
+            model: m.model,
+            location: m.location,
+            max_plate_size: m.max_plate_size,
+            plate_count: m.plate_count
+          }));
+        } catch (error) {
+          console.error(`Error fetching machines for job ${job.id}:`, error);
+        }
+      }
+
+      // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
+      if (machines.length === 0 && job.ctp_machine_id) {
+        machines = [{
+          id: job.ctp_machine_id,
+          machine_code: job.ctp_machine_code,
+          machine_name: job.ctp_machine_name,
+          machine_type: job.ctp_machine_type,
+          manufacturer: job.ctp_machine_manufacturer,
+          model: job.ctp_machine_model,
+          location: job.ctp_machine_location,
+          max_plate_size: job.ctp_machine_max_plate_size,
+          plate_count: job.required_plate_count || 0
+        }];
+      }
+
+      return {
+        ...job,
+        machines: machines,
+        blank_width_mm: job.blank_width_mm || null,
+        blank_height_mm: job.blank_height_mm || null,
+        blank_width_inches: job.blank_width_inches || null,
+        blank_height_inches: job.blank_height_inches || null,
+        blank_size_unit: job.blank_size_unit || 'mm'
+      };
+    }));
+
   res.json({
-    jobs,
+    jobs: enhancedJobs,
     pagination: {
         page: 1,
         limit: 20,
-        total: jobs.length,
+        total: enhancedJobs.length,
         pages: 1
       }
     });
@@ -989,8 +1059,14 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         d."firstName" || ' ' || d."lastName" as assigned_designer_name,
         d.email as assigned_designer_email,
         d.phone as assigned_designer_phone,
+        pj.id as prepress_job_id,
         pj.required_plate_count,
         pj.ctp_machine_id,
+        pj.blank_width_mm,
+        pj.blank_height_mm,
+        pj.blank_width_inches,
+        pj.blank_height_inches,
+        pj.blank_size_unit,
         cm.machine_code as ctp_machine_code,
         cm.machine_name as ctp_machine_name,
         cm.machine_type as ctp_machine_type,
@@ -1011,7 +1087,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
     const result = await dbAdapter.query(query, [designerId]);
     const jobs = result.rows;
     
-    // Enhance jobs with complete product data
+      // Enhance jobs with complete product data, multiple machines, and blank size
     const enhancedJobs = await Promise.all(jobs.map(async (job) => {
       let productData = {
         productCode: 'N/A',
@@ -1060,6 +1136,57 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
           console.error(`Error fetching product data for job ${job.id}:`, error);
         }
       }
+
+        // Fetch multiple machines from job_ctp_machines if prepress_job exists
+        let machines = [];
+        if (job.prepress_job_id) {
+          try {
+            const machinesResult = await dbAdapter.query(`
+              SELECT 
+                jcm.*,
+                cm.machine_code,
+                cm.machine_name,
+                cm.machine_type,
+                cm.manufacturer,
+                cm.model,
+                cm.location,
+                cm.max_plate_size
+              FROM job_ctp_machines jcm
+              JOIN ctp_machines cm ON jcm.ctp_machine_id = cm.id
+              WHERE jcm.prepress_job_id = $1
+              ORDER BY jcm.created_at
+            `, [job.prepress_job_id]);
+            
+            machines = machinesResult.rows.map(m => ({
+              id: m.ctp_machine_id,
+              machine_code: m.machine_code,
+              machine_name: m.machine_name,
+              machine_type: m.machine_type,
+              manufacturer: m.manufacturer,
+              model: m.model,
+              location: m.location,
+              max_plate_size: m.max_plate_size,
+              plate_count: m.plate_count
+            }));
+          } catch (error) {
+            console.error(`Error fetching machines for job ${job.id}:`, error);
+          }
+        }
+
+        // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
+        if (machines.length === 0 && job.ctp_machine_id) {
+          machines = [{
+            id: job.ctp_machine_id,
+            machine_code: job.ctp_machine_code,
+            machine_name: job.ctp_machine_name,
+            machine_type: job.ctp_machine_type,
+            manufacturer: job.ctp_machine_manufacturer,
+            model: job.ctp_machine_model,
+            location: job.ctp_machine_location,
+            max_plate_size: job.ctp_machine_max_plate_size,
+            plate_count: job.required_plate_count || 0
+          }];
+        }
       
       return {
         id: job.id,
@@ -1103,7 +1230,15 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         ctp_machine_manufacturer: job.ctp_machine_manufacturer || null,
         ctp_machine_model: job.ctp_machine_model || null,
         ctp_machine_location: job.ctp_machine_location || null,
-        ctp_machine_max_plate_size: job.ctp_machine_max_plate_size || null
+          ctp_machine_max_plate_size: job.ctp_machine_max_plate_size || null,
+          // Multiple machines array
+          machines: machines,
+          // Blank size information
+          blank_width_mm: job.blank_width_mm || null,
+          blank_height_mm: job.blank_height_mm || null,
+          blank_width_inches: job.blank_width_inches || null,
+          blank_height_inches: job.blank_height_inches || null,
+          blank_size_unit: job.blank_size_unit || 'mm'
       };
     }));
     
@@ -1334,23 +1469,70 @@ router.post('/:id/qa-approve',
       
       console.log('✅ QA Approving job:', id);
       
-      // Update job status to APPROVED_BY_QA
+      // Check which columns exist in job_cards table
+      const columnCheck = await dbAdapter.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'job_cards' 
+        AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message')
+      `);
+      const existingColumns = columnCheck.rows.map(r => r.column_name);
+      console.log('📋 Available columns in job_cards:', existingColumns);
+      
+      // Build dynamic update query based on available columns
+      const updateFields = [];
+      const updateValues = [];
+      let paramIndex = 1;
+      
+      updateFields.push(`status = $${paramIndex}`);
+      updateValues.push('APPROVED_BY_QA');
+      paramIndex++;
+      
+      updateFields.push(`qa_notes = $${paramIndex}`);
+      updateValues.push(qaNotes || '');
+      paramIndex++;
+      
+      updateFields.push(`qa_approved_by = $${paramIndex}`);
+      updateValues.push(req.user?.id || 1);
+      paramIndex++;
+      
+      if (existingColumns.includes('current_department')) {
+        updateFields.push(`current_department = $${paramIndex}`);
+        updateValues.push('Prepress');
+        paramIndex++;
+      }
+      
+      if (existingColumns.includes('current_step')) {
+        updateFields.push(`current_step = $${paramIndex}`);
+        updateValues.push('In CTP');
+        paramIndex++;
+      }
+      
+      if (existingColumns.includes('workflow_status')) {
+        updateFields.push(`workflow_status = $${paramIndex}`);
+        updateValues.push('in_progress');
+        paramIndex++;
+      }
+      
+      if (existingColumns.includes('status_message')) {
+        updateFields.push(`status_message = $${paramIndex}`);
+        updateValues.push('Approved by QA, ready for CTP');
+        paramIndex++;
+      }
+      
+      updateFields.push(`qa_approved_at = CURRENT_TIMESTAMP`);
+      updateFields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
+      
+      updateValues.push(id); // Last parameter for WHERE clause
+      
       const updateQuery = `
         UPDATE job_cards 
-        SET status = 'APPROVED_BY_QA', 
-            qa_notes = $1,
-            qa_approved_by = $2,
-            qa_approved_at = CURRENT_TIMESTAMP,
-            "updatedAt" = CURRENT_TIMESTAMP
-        WHERE id = $3
+        SET ${updateFields.join(', ')}
+        WHERE id = $${paramIndex}
         RETURNING *
       `;
       
-      const result = await dbAdapter.query(updateQuery, [
-        qaNotes || '',
-        req.user?.id || 1,
-        id
-      ]);
+      const result = await dbAdapter.query(updateQuery, updateValues);
       
       if (result.rows.length === 0) {
         return res.status(404).json({
@@ -1379,6 +1561,23 @@ router.post('/:id/qa-approve',
         if (currentStep) {
           await workflowService.approveStep(id, currentStep.sequence_number, req.user?.id || 1, qaNotes || '');
           console.log(`✅ Workflow step ${currentStep.sequence_number} approved via unified workflow`);
+          
+          // Activate CTP workflow step after QA approval
+          const ctpStep = workflowSteps.find(step => 
+            (step.department === 'Prepress' || step.department === 'CTP') &&
+            (step.step_name.toLowerCase().includes('ctp') || step.step_name.toLowerCase().includes('plate'))
+          );
+          
+          if (ctpStep) {
+            if (ctpStep.status === 'inactive' || ctpStep.status === 'pending') {
+              await workflowService.startStep(id, ctpStep.sequence_number, req.user?.id || 1);
+              console.log(`✅ CTP workflow step activated: ${ctpStep.step_name}`);
+            } else {
+              console.log(`ℹ️ CTP workflow step already active: ${ctpStep.step_name} (${ctpStep.status})`);
+            }
+          } else {
+            console.log('⚠️ No CTP workflow step found to activate');
+          }
         } else {
           console.log('⚠️ No workflow step found for QA approval, using legacy update');
         }
@@ -1693,10 +1892,28 @@ router.get('/ctp/machines', authenticateToken, asyncHandler(async (req, res) => 
 router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { required_plate_count, ctp_machine_id, machines } = req.body;
+    const { 
+      required_plate_count, 
+      ctp_machine_id, 
+      machines,
+      blank_width_mm,
+      blank_height_mm,
+      blank_width_inches,
+      blank_height_inches,
+      blank_size_unit
+    } = req.body;
     const userId = req.user?.id;
 
-    console.log(`Updating plate info for job ${id}:`, { required_plate_count, ctp_machine_id, machines });
+    console.log(`Updating plate info for job ${id}:`, { 
+      required_plate_count, 
+      ctp_machine_id, 
+      machines,
+      blank_width_mm,
+      blank_height_mm,
+      blank_width_inches,
+      blank_height_inches,
+      blank_size_unit
+    });
 
     // Validate plate count
     if (required_plate_count !== undefined && required_plate_count !== null) {
@@ -1721,6 +1938,67 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
           message: 'The specified CTP machine does not exist or is not active'
         });
       }
+    }
+
+    // Validate and process blank size
+    let finalBlankWidthMm = null;
+    let finalBlankHeightMm = null;
+    let finalBlankWidthInches = null;
+    let finalBlankHeightInches = null;
+    let finalBlankSizeUnit = blank_size_unit || 'mm';
+
+    // Validate unit
+    if (finalBlankSizeUnit && !['mm', 'inches'].includes(finalBlankSizeUnit)) {
+      return res.status(400).json({
+        error: 'Invalid blank size unit',
+        message: 'Blank size unit must be "mm" or "inches"'
+      });
+    }
+
+    // Process blank size with auto-conversion
+    if (blank_width_mm !== undefined && blank_width_mm !== null && 
+        blank_height_mm !== undefined && blank_height_mm !== null) {
+      // MM provided
+      const widthMm = parseFloat(blank_width_mm);
+      const heightMm = parseFloat(blank_height_mm);
+      
+      if (isNaN(widthMm) || isNaN(heightMm) || widthMm <= 0 || heightMm <= 0) {
+        return res.status(400).json({
+          error: 'Invalid blank size',
+          message: 'Blank width and height must be positive numbers'
+        });
+      }
+
+      finalBlankWidthMm = widthMm;
+      finalBlankHeightMm = heightMm;
+      finalBlankWidthInches = widthMm / 25.4;
+      finalBlankHeightInches = heightMm / 25.4;
+      finalBlankSizeUnit = 'mm';
+    } else if (blank_width_inches !== undefined && blank_width_inches !== null && 
+               blank_height_inches !== undefined && blank_height_inches !== null) {
+      // Inches provided
+      const widthInches = parseFloat(blank_width_inches);
+      const heightInches = parseFloat(blank_height_inches);
+      
+      if (isNaN(widthInches) || isNaN(heightInches) || widthInches <= 0 || heightInches <= 0) {
+        return res.status(400).json({
+          error: 'Invalid blank size',
+          message: 'Blank width and height must be positive numbers'
+        });
+      }
+
+      finalBlankWidthInches = widthInches;
+      finalBlankHeightInches = heightInches;
+      finalBlankWidthMm = widthInches * 25.4;
+      finalBlankHeightMm = heightInches * 25.4;
+      finalBlankSizeUnit = 'inches';
+    } else if (blank_width_mm !== undefined || blank_height_mm !== undefined || 
+               blank_width_inches !== undefined || blank_height_inches !== undefined) {
+      // Partial data provided - invalid
+      return res.status(400).json({
+        error: 'Invalid blank size',
+        message: 'Both width and height must be provided in the same unit'
+      });
     }
 
     // Check if prepress job exists
@@ -1780,7 +2058,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         );
       }
 
-      // Update prepress_jobs with total plate count and first machine (for backward compatibility)
+      // Update prepress_jobs with total plate count, first machine, and blank size (for backward compatibility)
       const updateQuery = `
         UPDATE prepress_jobs
         SET 
@@ -1788,8 +2066,13 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
           ctp_machine_id = $2,
           plate_machine_updated_by = $3,
           plate_machine_updated_at = CURRENT_TIMESTAMP,
+          blank_width_mm = $4,
+          blank_height_mm = $5,
+          blank_width_inches = $6,
+          blank_height_inches = $7,
+          blank_size_unit = $8,
           updated_at = CURRENT_TIMESTAMP
-        WHERE id = $4
+        WHERE id = $9
         RETURNING *
       `;
 
@@ -1797,6 +2080,11 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         totalPlateCount,
         machines[0].ctp_machine_id, // First machine for backward compatibility
         userId,
+        finalBlankWidthMm,
+        finalBlankHeightMm,
+        finalBlankWidthInches,
+        finalBlankHeightInches,
+        finalBlankSizeUnit,
         prepressJobId
       ]);
 
@@ -1870,6 +2158,11 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
             location: machinesResult.rows[0].location,
             max_plate_size: machinesResult.rows[0].max_plate_size
           } : null,
+          blank_width_mm: updatedJob.blank_width_mm,
+          blank_height_mm: updatedJob.blank_height_mm,
+          blank_width_inches: updatedJob.blank_width_inches,
+          blank_height_inches: updatedJob.blank_height_inches,
+          blank_size_unit: updatedJob.blank_size_unit,
           plate_machine_updated_by: updatedJob.plate_machine_updated_by,
           plate_machine_updated_at: updatedJob.plate_machine_updated_at
         }
@@ -1885,8 +2178,13 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         ctp_machine_id = COALESCE($2, ctp_machine_id),
         plate_machine_updated_by = $3,
         plate_machine_updated_at = CURRENT_TIMESTAMP,
+        blank_width_mm = COALESCE($4, blank_width_mm),
+        blank_height_mm = COALESCE($5, blank_height_mm),
+        blank_width_inches = COALESCE($6, blank_width_inches),
+        blank_height_inches = COALESCE($7, blank_height_inches),
+        blank_size_unit = COALESCE($8, blank_size_unit),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $4
+      WHERE id = $9
       RETURNING *
     `;
 
@@ -1894,6 +2192,11 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
       required_plate_count !== undefined ? required_plate_count : null,
       ctp_machine_id || null,
       userId,
+      finalBlankWidthMm,
+      finalBlankHeightMm,
+      finalBlankWidthInches,
+      finalBlankHeightInches,
+      finalBlankSizeUnit,
       prepressJobId
     ]);
 
@@ -1932,6 +2235,11 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         requiredPlateCount: updatedJob.required_plate_count,
         ctpMachineId: updatedJob.ctp_machine_id,
         machineName: updatedJob.machine_name,
+        blankWidthMm: updatedJob.blank_width_mm,
+        blankHeightMm: updatedJob.blank_height_mm,
+        blankWidthInches: updatedJob.blank_width_inches,
+        blankHeightInches: updatedJob.blank_height_inches,
+        blankSizeUnit: updatedJob.blank_size_unit,
         updatedBy: req.user?.firstName + ' ' + req.user?.lastName || 'System',
         updatedAt: updatedJob.plate_machine_updated_at
       });
@@ -1956,6 +2264,11 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
           location: updatedJob.location,
           max_plate_size: updatedJob.max_plate_size
         } : null,
+        blank_width_mm: updatedJob.blank_width_mm,
+        blank_height_mm: updatedJob.blank_height_mm,
+        blank_width_inches: updatedJob.blank_width_inches,
+        blank_height_inches: updatedJob.blank_height_inches,
+        blank_size_unit: updatedJob.blank_size_unit,
         plate_machine_updated_by: updatedJob.plate_machine_updated_by,
         plate_machine_updated_at: updatedJob.plate_machine_updated_at
       }

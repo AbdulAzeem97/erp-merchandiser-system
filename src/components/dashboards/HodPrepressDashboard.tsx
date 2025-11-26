@@ -201,6 +201,37 @@ interface HODJob {
     }>;
     excel_file_link?: string;
   };
+  // Plate and Machine Information
+  required_plate_count?: number;
+  ctp_machine_id?: string;
+  ctp_machine?: {
+    id: string;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+  };
+  // Multiple machines array
+  machines?: Array<{
+    id: number;
+    machine_code: string;
+    machine_name: string;
+    machine_type: string;
+    manufacturer?: string;
+    model?: string;
+    location?: string;
+    max_plate_size?: string;
+    plate_count: number;
+  }>;
+  // Blank Size Information
+  blank_width_mm?: number;
+  blank_height_mm?: number;
+  blank_width_inches?: number;
+  blank_height_inches?: number;
+  blank_size_unit?: 'mm' | 'inches';
 }
 
 interface Designer {
@@ -343,6 +374,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [isPlateInfoDialogOpen, setIsPlateInfoDialogOpen] = useState(false);
   const [selectedJobForPlateInfo, setSelectedJobForPlateInfo] = useState<HODJob | null>(null);
   const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{machineId: string; plateCount: number | ''}>>([{machineId: '', plateCount: ''}]);
+  // Blank size state
+  const [blankWidth, setBlankWidth] = useState<string>('');
+  const [blankHeight, setBlankHeight] = useState<string>('');
+  const [blankSizeUnit, setBlankSizeUnit] = useState<'mm' | 'inches'>('mm');
   const [machineSearchTerm, setMachineSearchTerm] = useState<string>('');
 
   // Load CTP machines
@@ -524,7 +559,15 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               model: job.ctp_machine_model,
               location: job.ctp_machine_location,
               max_plate_size: job.ctp_machine_max_plate_size
-            } : undefined
+            } : undefined,
+            // Multiple machines array (from job data if available)
+            machines: job.machines || [],
+            // Blank Size Information (from job data if available)
+            blank_width_mm: job.blank_width_mm || undefined,
+            blank_height_mm: job.blank_height_mm || undefined,
+            blank_width_inches: job.blank_width_inches || undefined,
+            blank_height_inches: job.blank_height_inches || undefined,
+            blank_size_unit: job.blank_size_unit || 'mm'
           };
         }));
         
@@ -1862,8 +1905,13 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                       size="sm"
                                       onClick={() => {
                                         setSelectedJobForPlateInfo(job);
-                                        // Initialize with existing machine if available, otherwise start with empty
-                                        if (job.ctp_machine_id && job.required_plate_count) {
+                                        // Initialize with existing machines if available, otherwise start with empty
+                                        if (job.machines && job.machines.length > 0) {
+                                          setMachinePlatePairs(job.machines.map(m => ({
+                                            machineId: String(m.id),
+                                            plateCount: m.plate_count || ''
+                                          })));
+                                        } else if (job.ctp_machine_id && job.required_plate_count) {
                                           setMachinePlatePairs([{
                                             machineId: String(job.ctp_machine_id),
                                             plateCount: job.required_plate_count
@@ -1871,37 +1919,98 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                         } else {
                                           setMachinePlatePairs([{machineId: '', plateCount: ''}]);
                                         }
+                                        // Initialize blank size if available
+                                        if (job.blank_width_mm && job.blank_height_mm) {
+                                          setBlankSizeUnit(job.blank_size_unit || 'mm');
+                                          if (job.blank_size_unit === 'inches' && job.blank_width_inches && job.blank_height_inches) {
+                                            setBlankWidth(job.blank_width_inches.toString());
+                                            setBlankHeight(job.blank_height_inches.toString());
+                                          } else {
+                                            setBlankWidth(job.blank_width_mm.toString());
+                                            setBlankHeight(job.blank_height_mm.toString());
+                                          }
+                                        } else {
+                                          setBlankWidth('');
+                                          setBlankHeight('');
+                                          setBlankSizeUnit('mm');
+                                        }
                                         setMachineSearchTerm('');
                                         setIsPlateInfoDialogOpen(true);
                                       }}
                                       className="w-full justify-start gap-2 bg-white hover:bg-indigo-50 border-indigo-200 hover:border-indigo-300 text-indigo-700"
                                     >
                                       <MonitorSpeaker className="h-4 w-4" />
-                                      {job.required_plate_count || job.ctp_machine ? 'Update Plate Info' : 'Add Plate Info'}
+                                      {(job.machines && job.machines.length > 0) || job.required_plate_count || job.ctp_machine ? 'Update Plate Info' : 'Add Plate Info'}
                                     </Button>
                                   </div>
 
                                   {/* Plate & Machine Info Display */}
-                                  {(job.required_plate_count || job.ctp_machine) && (
+                                  {((job.machines && job.machines.length > 0) || job.required_plate_count || job.ctp_machine) && (
                                     <div className="bg-indigo-50 p-3 sm:p-4 rounded-lg border border-indigo-200">
                                       <h4 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
                                         <MonitorSpeaker className="h-4 w-4" />
                                         Plate & Machine Information
                                       </h4>
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                        {job.required_plate_count && (
-                                          <div>
-                                            <span className="font-medium text-gray-600">Required Plates:</span>
-                                            <span className="ml-2 text-gray-900 font-semibold">{job.required_plate_count} plates</span>
+                                      
+                                      {/* Multiple Machines Display */}
+                                      {job.machines && job.machines.length > 0 ? (
+                                        <div className="space-y-2">
+                                          {job.machines.map((machine, index) => (
+                                            <div key={machine.id || index} className="bg-white p-2 rounded border border-indigo-100">
+                                              <div className="flex items-center justify-between">
+                                                <div className="flex-1">
+                                                  <div className="font-medium text-gray-900 text-sm">
+                                                    {machine.machine_name} ({machine.machine_code})
+                                                  </div>
+                                                  <div className="text-xs text-gray-600 mt-1">
+                                                    {machine.machine_type} • {machine.location || 'N/A'}
+                                                  </div>
+                                                </div>
+                                                <div className="text-right">
+                                                  <div className="font-semibold text-indigo-600">{machine.plate_count} plates</div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                          <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-indigo-200">
+                                            Total Plates: <span className="font-semibold">{job.machines.reduce((sum, m) => sum + (m.plate_count || 0), 0)}</span>
                                           </div>
-                                        )}
-                                        {job.ctp_machine && (
-                                          <div>
-                                            <span className="font-medium text-gray-600">CTP Machine:</span>
-                                            <span className="ml-2 text-gray-900 font-semibold">{job.ctp_machine.machine_name} ({job.ctp_machine.machine_code})</span>
+                                        </div>
+                                      ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                                          {job.required_plate_count && (
+                                            <div>
+                                              <span className="font-medium text-gray-600">Required Plates:</span>
+                                              <span className="ml-2 text-gray-900 font-semibold">{job.required_plate_count} plates</span>
+                                            </div>
+                                          )}
+                                          {job.ctp_machine && (
+                                            <div>
+                                              <span className="font-medium text-gray-600">CTP Machine:</span>
+                                              <span className="ml-2 text-gray-900 font-semibold">{job.ctp_machine.machine_name} ({job.ctp_machine.machine_code})</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+
+                                      {/* Blank Size Display */}
+                                      {(job.blank_width_mm || job.blank_width_inches) && (
+                                        <div className="mt-3 pt-3 border-t border-indigo-200">
+                                          <div className="text-xs font-medium text-gray-600 mb-1">Blank Size:</div>
+                                          <div className="text-sm text-gray-900">
+                                            {job.blank_width_mm && job.blank_height_mm && (
+                                              <span className="font-semibold">
+                                                {job.blank_width_mm} × {job.blank_height_mm} mm
+                                              </span>
+                                            )}
+                                            {job.blank_width_inches && job.blank_height_inches && (
+                                              <span className="ml-2 text-gray-600">
+                                                ({typeof job.blank_width_inches === 'number' ? job.blank_width_inches.toFixed(2) : parseFloat(job.blank_width_inches).toFixed(2)} × {typeof job.blank_height_inches === 'number' ? job.blank_height_inches.toFixed(2) : parseFloat(job.blank_height_inches).toFixed(2)} inches)
+                                              </span>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
 
@@ -2918,6 +3027,91 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                 Add one or more CTP machines and specify the number of plates required for each machine
               </p>
 
+              {/* Blank Size Section */}
+              <div className="border-t pt-4 mt-4">
+                <Label className="text-sm font-semibold mb-3 block">Blank Size *</Label>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label className="text-xs text-gray-600">Unit:</Label>
+                    <Select value={blankSizeUnit} onValueChange={(value: 'mm' | 'inches') => {
+                      setBlankSizeUnit(value);
+                      // Auto-convert when unit changes
+                      if (blankWidth && blankHeight) {
+                        if (value === 'mm') {
+                          // Convert from inches to mm
+                          setBlankWidth((parseFloat(blankWidth) * 25.4).toFixed(2));
+                          setBlankHeight((parseFloat(blankHeight) * 25.4).toFixed(2));
+                        } else {
+                          // Convert from mm to inches
+                          setBlankWidth((parseFloat(blankWidth) / 25.4).toFixed(2));
+                          setBlankHeight((parseFloat(blankHeight) / 25.4).toFixed(2));
+                        }
+                      }
+                    }}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mm">Millimeters (mm)</SelectItem>
+                        <SelectItem value="inches">Inches</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                      {blankSizeUnit === 'mm' ? '1 inch = 25.4 mm' : '1 mm = 0.0394 inches'}
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="blank-width" className="text-xs text-gray-600">
+                        Width ({blankSizeUnit}) *
+                      </Label>
+                      <Input
+                        id="blank-width"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={blankWidth}
+                        onChange={(e) => setBlankWidth(e.target.value)}
+                        placeholder={blankSizeUnit === 'mm' ? 'e.g., 210' : 'e.g., 8.27'}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="blank-height" className="text-xs text-gray-600">
+                        Height ({blankSizeUnit}) *
+                      </Label>
+                      <Input
+                        id="blank-height"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={blankHeight}
+                        onChange={(e) => setBlankHeight(e.target.value)}
+                        placeholder={blankSizeUnit === 'mm' ? 'e.g., 297' : 'e.g., 11.69'}
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  
+                  {blankWidth && blankHeight && (
+                    <div className="p-2 bg-blue-50 rounded text-xs text-blue-700">
+                      <strong>Preview:</strong> {blankWidth} × {blankHeight} {blankSizeUnit}
+                      {blankSizeUnit === 'mm' && (
+                        <span className="ml-2 text-gray-600">
+                          ({(parseFloat(blankWidth) / 25.4).toFixed(2)} × {(parseFloat(blankHeight) / 25.4).toFixed(2)} inches)
+                        </span>
+                      )}
+                      {blankSizeUnit === 'inches' && (
+                        <span className="ml-2 text-gray-600">
+                          ({(parseFloat(blankWidth) * 25.4).toFixed(2)} × {(parseFloat(blankHeight) * 25.4).toFixed(2)} mm)
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   variant="outline"
@@ -2926,6 +3120,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                     setSelectedJobForPlateInfo(null);
                     setMachinePlatePairs([{machineId: '', plateCount: ''}]);
                     setMachineSearchTerm('');
+                    setBlankWidth('');
+                    setBlankHeight('');
+                    setBlankSizeUnit('mm');
                   }}
                 >
                   Cancel
@@ -2942,6 +3139,12 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       return;
                     }
 
+                    // Validate blank size
+                    if (!blankWidth || !blankHeight || parseFloat(blankWidth) <= 0 || parseFloat(blankHeight) <= 0) {
+                      toast.error('Please provide valid blank width and height');
+                      return;
+                    }
+
                     try {
                       setLoading(true);
                       const machines = machinePlatePairs.map(pair => ({
@@ -2949,8 +3152,24 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         plate_count: Number(pair.plateCount)
                       }));
 
+                      // Prepare blank size data with auto-conversion
+                      const blankSizeData: any = {};
+                      if (blankSizeUnit === 'mm') {
+                        blankSizeData.blank_width_mm = parseFloat(blankWidth);
+                        blankSizeData.blank_height_mm = parseFloat(blankHeight);
+                        blankSizeData.blank_width_inches = parseFloat(blankWidth) / 25.4;
+                        blankSizeData.blank_height_inches = parseFloat(blankHeight) / 25.4;
+                      } else {
+                        blankSizeData.blank_width_inches = parseFloat(blankWidth);
+                        blankSizeData.blank_height_inches = parseFloat(blankHeight);
+                        blankSizeData.blank_width_mm = parseFloat(blankWidth) * 25.4;
+                        blankSizeData.blank_height_mm = parseFloat(blankHeight) * 25.4;
+                      }
+                      blankSizeData.blank_size_unit = blankSizeUnit;
+
                       const response = await jobsAPI.updatePlateInfo(selectedJobForPlateInfo.id, {
-                        machines: machines
+                        machines: machines,
+                        ...blankSizeData
                       });
 
                       if (response.success) {
@@ -2959,11 +3178,14 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         // Reload data to get updated info
                         loadHODData();
                         
-                        // Close dialog
+                        // Close dialog and reset form
                         setIsPlateInfoDialogOpen(false);
                         setSelectedJobForPlateInfo(null);
                         setMachinePlatePairs([{machineId: '', plateCount: ''}]);
                         setMachineSearchTerm('');
+                        setBlankWidth('');
+                        setBlankHeight('');
+                        setBlankSizeUnit('mm');
                       } else {
                         throw new Error(response.error || 'Failed to update plate info');
                       }
@@ -2974,7 +3196,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       setLoading(false);
                     }
                   }}
-                  disabled={loading || machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0)}
+                  disabled={loading || 
+                    machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0) ||
+                    !blankWidth || !blankHeight || parseFloat(blankWidth) <= 0 || parseFloat(blankHeight) <= 0}
                   className="bg-indigo-600 hover:bg-indigo-700"
                 >
                   {loading ? 'Updating...' : 'Save Plate Info'}

@@ -2,6 +2,7 @@ import express from 'express';
 import { authenticateToken, requirePermission } from '../middleware/rbac.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import CuttingWorkflowService from '../services/cuttingWorkflowService.js';
+import dbAdapter from '../database/adapter.js';
 
 const router = express.Router();
 
@@ -413,6 +414,226 @@ router.get('/assignment/:jobId', authenticateToken, asyncHandler(async (req, res
     });
   }
 }));
+
+/**
+ * GET /cutting/diagnose/:jobNumber
+ * Diagnostic endpoint to check why a job is or isn't appearing in cutting dashboard
+ * Access: HOD_CUTTING, SUPER_ADMIN
+ */
+router.get('/diagnose/:jobNumber', authenticateToken, requirePermission(['HOD_CUTTING', 'ADMIN', 'SUPER_ADMIN']), asyncHandler(async (req, res) => {
+  try {
+    const { jobNumber } = req.params;
+    console.log('🔍 Cutting Diagnostic: Checking job:', jobNumber);
+
+    // Find job by jobNumber
+    const jobCardResult = await dbAdapter.query(`
+      SELECT 
+        jc.id,
+        jc."jobNumber",
+        jc.current_department,
+        jc.current_step,
+        jc.workflow_status,
+        jc.status_message,
+        jc.status,
+        jc."createdAt",
+        jc."updatedAt"
+      FROM job_cards jc
+      WHERE jc."jobNumber" = $1
+    `, [jobNumber]);
+
+    if (jobCardResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found',
+        message: `No job found with job number: ${jobNumber}`
+      });
+    }
+
+    const jobCard = jobCardResult.rows[0];
+    const jobCardId = jobCard.id;
+
+    // Check planning status (using CAST for type consistency)
+    const planningResult = await dbAdapter.query(`
+      SELECT 
+        id,
+        job_card_id,
+        CAST(job_card_id AS TEXT) as job_card_id_text,
+        planning_status,
+        final_total_sheets,
+        cutting_layout_type,
+        grid_pattern,
+        blanks_per_sheet,
+        created_at,
+        updated_at,
+        planned_at,
+        planned_by
+      FROM job_production_planning
+      WHERE CAST(job_card_id AS TEXT) = CAST($1 AS TEXT)
+    `, [jobCardId]);
+
+    // Check cutting assignments (using CAST for type consistency)
+    const assignmentResult = await dbAdapter.query(`
+      SELECT 
+        id,
+        job_id,
+        CAST(job_id AS TEXT) as job_id_text,
+        assigned_to,
+        assigned_by,
+        status,
+        comments,
+        started_at,
+        finished_at,
+        created_at,
+        updated_at
+      FROM cutting_assignments
+      WHERE CAST(job_id AS TEXT) = CAST($1 AS TEXT)
+    `, [jobCardId]);
+
+    // Check workflow steps (using CAST for type consistency)
+    const workflowResult = await dbAdapter.query(`
+      SELECT 
+        id,
+        job_card_id,
+        CAST(job_card_id AS TEXT) as job_card_id_text,
+        step_name,
+        department,
+        status,
+        sequence_number,
+        status_message,
+        created_at,
+        updated_at
+      FROM job_workflow_steps
+      WHERE CAST(job_card_id AS TEXT) = CAST($1 AS TEXT)
+      ORDER BY sequence_number
+    `, [jobCardId]);
+
+    // Check prepress job (using CAST for type consistency)
+    const prepressResult = await dbAdapter.query(`
+      SELECT 
+        id,
+        job_card_id,
+        CAST(job_card_id AS TEXT) as job_card_id_text,
+        status,
+        plate_generated,
+        plate_generated_at
+      FROM prepress_jobs
+      WHERE CAST(job_card_id AS TEXT) = CAST($1 AS TEXT)
+    `, [jobCardId]);
+
+    // Check if job would match cutting query conditions
+    const wouldMatch = {
+      by_current_department: jobCard.current_department === 'Cutting',
+      by_assignment: assignmentResult.rows.length > 0,
+      by_planning_status: planningResult.rows.length > 0 && 
+                          planningResult.rows[0].planning_status === 'APPLIED',
+      planning_status_value: planningResult.rows.length > 0 ? planningResult.rows[0].planning_status : null,
+      job_card_id_type: typeof jobCardId,
+      planning_job_card_id_type: planningResult.rows.length > 0 ? typeof planningResult.rows[0].job_card_id : null,
+      ids_match: planningResult.rows.length > 0 ? 
+                 String(jobCardId) === String(planningResult.rows[0].job_card_id) : false
+    };
+
+    // Test the actual query
+    const testQueryResult = await dbAdapter.query(`
+      SELECT DISTINCT
+        jc.id,
+        jc."jobNumber",
+        jc.current_department,
+        jpp.planning_status,
+        ca.id as assignment_id
+      FROM job_cards jc
+      LEFT JOIN cutting_assignments ca ON jc.id = ca.job_id
+      LEFT JOIN job_production_planning jpp ON jc.id = jpp.job_card_id
+      WHERE jc."jobNumber" = $1
+        AND (
+          jc.current_department = 'Cutting' 
+          OR ca.id IS NOT NULL 
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+        )
+    `, [jobNumber]);
+
+      const diagnostic = {
+      job_card: {
+        ...jobCard,
+        id_type: typeof jobCard.id,
+        id_value: jobCard.id
+      },
+      planning: planningResult.rows.length > 0 ? {
+        ...planningResult.rows[0],
+        job_card_id_type: typeof planningResult.rows[0].job_card_id,
+        ids_match: String(planningResult.rows[0].job_card_id) === String(jobCardId)
+      } : null,
+      assignment: assignmentResult.rows.length > 0 ? {
+        ...assignmentResult.rows[0],
+        job_id_type: typeof assignmentResult.rows[0].job_id,
+        ids_match: String(assignmentResult.rows[0].job_id) === String(jobCardId)
+      } : null,
+      workflow_steps: workflowResult.rows.map(step => ({
+        ...step,
+        job_card_id_type: typeof step.job_card_id,
+        ids_match: String(step.job_card_id) === String(jobCardId)
+      })),
+      prepress_job: prepressResult.rows.length > 0 ? {
+        ...prepressResult.rows[0],
+        job_card_id_type: typeof prepressResult.rows[0].job_card_id,
+        ids_match: String(prepressResult.rows[0].job_card_id) === String(jobCardId)
+      } : null,
+      query_match_conditions: wouldMatch,
+      appears_in_query: testQueryResult.rows.length > 0,
+      query_result: testQueryResult.rows.length > 0 ? testQueryResult.rows[0] : null
+    };
+
+    console.log('🔍 Cutting Diagnostic Result:', JSON.stringify(diagnostic, null, 2));
+
+    res.json({
+      success: true,
+      jobNumber,
+      diagnostic,
+      recommendations: generateRecommendations(diagnostic)
+    });
+  } catch (error) {
+    console.error('❌ Error in diagnostic endpoint:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Diagnostic failed',
+      message: error.message,
+      stack: error.stack
+    });
+  }
+}));
+
+/**
+ * Helper function to generate recommendations based on diagnostic
+ */
+function generateRecommendations(diagnostic) {
+  const recommendations = [];
+
+  if (!diagnostic.appears_in_query) {
+    if (!diagnostic.query_match_conditions.by_current_department && 
+        !diagnostic.query_match_conditions.by_assignment && 
+        !diagnostic.query_match_conditions.by_planning_status) {
+      recommendations.push('Job does not match any cutting query conditions');
+    }
+
+    if (diagnostic.planning && diagnostic.planning.planning_status !== 'APPLIED') {
+      recommendations.push(`Planning status is "${diagnostic.planning.planning_status}" but should be "APPLIED"`);
+    }
+
+    if (!diagnostic.query_match_conditions.ids_match && diagnostic.planning) {
+      recommendations.push('Job card ID and planning job_card_id do not match - possible data type mismatch');
+    }
+
+    if (diagnostic.job_card.current_department !== 'Cutting') {
+      recommendations.push(`Current department is "${diagnostic.job_card.current_department}" but should be "Cutting"`);
+    }
+  }
+
+  if (diagnostic.planning && diagnostic.planning.planning_status === 'APPLIED' && !diagnostic.appears_in_query) {
+    recommendations.push('Planning is APPLIED but job not appearing - check query JOIN conditions');
+  }
+
+  return recommendations;
+}
 
 export default router;
 

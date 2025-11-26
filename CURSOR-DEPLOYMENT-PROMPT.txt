@@ -1,0 +1,20 @@
+Deploy ERP System to Production Server
+
+I need to deploy the ERP system to this server. The repository is cloned from GitHub and contains all necessary files.
+
+Tasks:
+1. Verify repository setup - check all files are present (migrations, scripts, docker-compose.production.yml, DEPLOYMENT-PRODUCTION.md)
+2. Setup environment - create .env file with secure passwords for PostgreSQL, Redis, and JWT secret
+3. Make scripts executable - chmod +x scripts/*.sh
+4. Check Docker installation - verify Docker and Docker Compose are installed and running
+5. Start PostgreSQL container - docker-compose -f docker-compose.production.yml up -d postgres
+6. Run schema migration - execute scripts/run-complete-migration.js to apply complete schema migration
+7. Prepare for data import - explain that I need database dumps from production server (schema-only and jobs data-only) placed in dumps/ directory
+8. Import jobs data - once dumps are available, run scripts/import-jobs-data.sh to import job data
+9. Start all services - docker-compose -f docker-compose.production.yml up -d
+10. Verify deployment - check database, backend API, and frontend are working
+
+Important: All migrations use IF NOT EXISTS so they're safe. Schema migration first, then data import. Follow DEPLOYMENT-PRODUCTION.md for details.
+
+Start by verifying repository setup and checking required files are present. Ask me for any required passwords or configuration values.
+

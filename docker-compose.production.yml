@@ -78,6 +78,31 @@ services:
     environment:
       DATABASE_URL: postgresql://erp_admin:${POSTGRES_PASSWORD:-erp_secure_2024!}@postgres:5432/erp_merchandiser
 
+  # Database Migrations Service
+  migrations:
+    image: node:18-alpine
+    container_name: erp-migrations-prod
+    working_dir: /app
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: erp_merchandiser
+      DB_USER: erp_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-erp_secure_2024!}
+      DATABASE_URL: postgresql://erp_admin:${POSTGRES_PASSWORD:-erp_secure_2024!}@postgres:5432/erp_merchandiser
+    volumes:
+      - ./server:/app/server
+      - ./scripts:/app/scripts
+      - ./dumps:/app/dumps
+    networks:
+      - erp-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "node scripts/run-complete-migration.js"
+    restart: "no"
+
   # ERP Backend Application
   backend:
     build:
@@ -97,6 +122,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./logs:/app/logs
+      - ./dumps:/app/dumps
     networks:
       - erp-network
     depends_on:
@@ -104,6 +130,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -174,6 +202,9 @@ volumes:
     driver: local
   redis_data:
     driver: local
+
+# Create dumps directory for database dumps
+# This directory should be created on the host: mkdir -p ./dumps
 
 networks:
   erp-network:

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Factory, 
@@ -34,8 +34,16 @@ import {
 } from 'recharts';
 import { useProductionKPIs, useSLACompliance, useRecentActivity, useExportToCSV } from '@/hooks/useReports';
 import { toast } from 'sonner';
+import { authAPI } from '@/services/api';
 
 const HeadOfProductionDashboard: React.FC = () => {
+  // Redirect HEAD_OF_PRODUCTION users to Smart Production Dashboard
+  useEffect(() => {
+    const user = authAPI.getCurrentUser();
+    if (user?.role === 'HEAD_OF_PRODUCTION') {
+      window.location.href = '/production/smart-dashboard';
+    }
+  }, []);
   const { data: kpis, isLoading: kpisLoading, refetch: refetchKPIs } = useProductionKPIs();
   const { data: slaCompliance, isLoading: slaLoading } = useSLACompliance();
   const { data: recentActivity, isLoading: activityLoading } = useRecentActivity(15);
@@ -81,6 +89,15 @@ const HeadOfProductionDashboard: React.FC = () => {
             <p className="text-gray-600 mt-1">Real-time production operations and process monitoring</p>
           </div>
           <div className="flex gap-3">
+            <Button 
+              onClick={() => window.location.href = '/production/smart-dashboard'} 
+              variant="default" 
+              size="sm"
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Target className="h-4 w-4 mr-2" />
+              Job Planning Dashboard
+            </Button>
             <Button onClick={handleRefresh} variant="outline" size="sm">
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh

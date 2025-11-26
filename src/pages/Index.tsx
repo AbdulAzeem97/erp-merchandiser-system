@@ -151,6 +151,10 @@ const Index = () => {
           // Redirect to Cutting labor view
           window.location.href = '/cutting/labor';
           return;
+        } else if (user?.role === 'HEAD_OF_PRODUCTION') {
+          // Redirect to Smart Production Dashboard (Job Planning)
+          window.location.href = '/production/smart-dashboard';
+          return;
         } else if (user?.role === 'HOD_PRODUCTION' || user?.role === 'PRODUCTION_OPERATOR') {
           // Redirect to Production dashboard
           window.location.href = '/production/dashboard';

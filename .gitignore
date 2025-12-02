@@ -41,3 +41,9 @@ install-postgresql.bat
 setup-postgresql.ps1
 
 /generated/prisma
+
+# Large database dump files (>100MB) - use Git LFS or external storage
+dumps/*-jobs-*.sql
+dumps/production-jobs-*.sql
+dumps/jobs-data-only-*.sql
+dumps/complete-dump-*.sql

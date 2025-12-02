@@ -135,10 +135,13 @@ class CuttingWorkflowService {
         LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
         LEFT JOIN job_production_planning jpp ON CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)
         LEFT JOIN material_sizes ms ON jpp.selected_sheet_size_id = ms.id
+        LEFT JOIN job_process_selections jps ON jc.id = jps."jobId" AND jps.is_selected = true
+        LEFT JOIN process_steps ps ON jps."processStepId" = ps.id AND ps.name ILIKE '%Paper Cutting%'
         WHERE (
           jc.current_department = 'Cutting' 
           OR ca.id IS NOT NULL 
           OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'PLANNED' AND ps.id IS NOT NULL)
         )
       `;
 
@@ -183,11 +186,13 @@ class CuttingWorkflowService {
           jc.current_department = 'Cutting' 
           OR ca.id IS NOT NULL 
           OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'PLANNED' AND ps.id IS NOT NULL)
         )`,
           `WHERE (
           jc.current_department = 'Cutting' 
           OR ca.id IS NOT NULL 
           OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'APPLIED')
+          OR (jpp.planning_status IS NOT NULL AND jpp.planning_status = 'PLANNED' AND ps.id IS NOT NULL)
           OR jc."jobNumber" = $${paramIndex}
         )`
         );
@@ -247,8 +252,27 @@ class CuttingWorkflowService {
               
               if (planning.planning_status === 'APPLIED') {
                 matchReasons.push('planning_status=APPLIED');
+              } else if (planning.planning_status === 'PLANNED') {
+                // Check if Paper Cutting is in process sequence
+                const paperCuttingCheck = await dbAdapter.query(
+                  `SELECT ps.id, ps.name
+                   FROM job_process_selections jps
+                   JOIN process_steps ps ON jps."processStepId" = ps.id
+                   WHERE jps."jobId" = $1 
+                     AND jps.is_selected = true
+                     AND ps.name ILIKE '%Paper Cutting%'`,
+                  [job.id]
+                );
+                
+                if (paperCuttingCheck.rows.length > 0) {
+                  matchReasons.push(`planning_status=PLANNED with Paper Cutting (step: ${paperCuttingCheck.rows[0].name})`);
+                  matchDetails.has_paper_cutting = true;
+                } else {
+                  matchReasons.push(`planning_status=${planning.planning_status} (no Paper Cutting in process sequence)`);
+                  matchDetails.has_paper_cutting = false;
+                }
               } else {
-                matchReasons.push(`planning_status=${planning.planning_status} (not APPLIED)`);
+                matchReasons.push(`planning_status=${planning.planning_status} (not APPLIED or PLANNED)`);
               }
             } else {
               matchDetails.planning_found = false;
@@ -258,8 +282,8 @@ class CuttingWorkflowService {
             console.log(`    Match details:`, JSON.stringify(matchDetails, null, 2));
           }
         } else {
-          console.log('🔪 Cutting: No jobs found. Checking sample jobs with APPLIED planning...');
-          // Check jobs with APPLIED planning to see why they're not matching
+          console.log('🔪 Cutting: No jobs found. Checking sample jobs with PLANNED/APPLIED planning...');
+          // Check jobs with PLANNED or APPLIED planning to see why they're not matching
           const sampleCheck = await dbAdapter.query(`
             SELECT 
               jc.id,
@@ -270,31 +294,38 @@ class CuttingWorkflowService {
               CAST(jc.id AS TEXT) as job_id_text,
               CAST(jpp.job_card_id AS TEXT) as planning_job_card_id_text,
               (CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)) as ids_match,
-              ca.id as assignment_id
+              ca.id as assignment_id,
+              ps.id as paper_cutting_step_id,
+              ps.name as paper_cutting_step_name
             FROM job_production_planning jpp
             LEFT JOIN job_cards jc ON CAST(jc.id AS TEXT) = CAST(jpp.job_card_id AS TEXT)
             LEFT JOIN cutting_assignments ca ON jc.id = ca.job_id
-            WHERE jpp.planning_status = 'APPLIED'
+            LEFT JOIN job_process_selections jps ON jc.id = jps."jobId" AND jps.is_selected = true
+            LEFT JOIN process_steps ps ON jps."processStepId" = ps.id AND ps.name ILIKE '%Paper Cutting%'
+            WHERE jpp.planning_status IN ('PLANNED', 'APPLIED')
             ORDER BY jpp.updated_at DESC
             LIMIT 5
           `);
           if (sampleCheck.rows.length > 0) {
-            console.log('🔪 Cutting: Found jobs with APPLIED planning that are not in results:');
+            console.log('🔪 Cutting: Found jobs with PLANNED/APPLIED planning that are not in results:');
             for (const sample of sampleCheck.rows) {
               console.log(`  - Job ${sample.jobNumber || sample.id}:`, {
                 current_department: sample.current_department,
                 planning_status: sample.planning_status,
                 has_assignment: !!sample.assignment_id,
+                has_paper_cutting: !!sample.paper_cutting_step_id,
+                paper_cutting_step: sample.paper_cutting_step_name,
                 ids_match: sample.ids_match,
                 job_id: sample.id,
                 planning_job_card_id: sample.planning_job_card_id,
                 would_match_by_dept: sample.current_department === 'Cutting',
                 would_match_by_assignment: !!sample.assignment_id,
-                would_match_by_planning: sample.planning_status === 'APPLIED' && sample.ids_match
+                would_match_by_applied: sample.planning_status === 'APPLIED' && sample.ids_match,
+                would_match_by_planned: sample.planning_status === 'PLANNED' && sample.ids_match && !!sample.paper_cutting_step_id
               });
             }
           } else {
-            console.log('🔪 Cutting: No jobs found with APPLIED planning status');
+            console.log('🔪 Cutting: No jobs found with PLANNED or APPLIED planning status');
           }
         }
         

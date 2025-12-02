@@ -621,6 +621,13 @@ class SmartDashboardController {
       );
       const shouldBeDefault = parseInt(sizeCount.rows[0].count) === 0;
 
+      // Ensure sequence is in sync with actual max ID (fix for duplicate key errors)
+      await dbAdapter.query(`
+        SELECT setval('material_sizes_id_seq', 
+          COALESCE((SELECT MAX(id) FROM material_sizes), 0), 
+          true)
+      `);
+
       // Insert new size
       const insertQuery = `
         INSERT INTO material_sizes (
@@ -841,6 +848,14 @@ class SmartDashboardController {
       const existingPlanning = await sheetOptimizationService.getJobPlanning(jobCardId);
       console.log('📋 Existing planning:', existingPlanning ? 'found' : 'not found');
 
+      // If planning exists and is APPLIED, prevent modification
+      if (existingPlanning && existingPlanning.planning_status === 'APPLIED') {
+        return res.status(400).json({
+          success: false,
+          error: 'Planning has already been applied and cannot be modified'
+        });
+      }
+
       // Check if base sheets came from ratio report
       let ratioReportSheets = null;
       let fromRatioReport = false;
@@ -890,45 +905,88 @@ class SmartDashboardController {
         };
       }
 
-      if (existingPlanning) {
-        // Update existing planning
-        if (existingPlanning.planning_status === 'APPLIED') {
-          return res.status(400).json({
-            success: false,
-            error: 'Planning has already been applied and cannot be modified'
-          });
-        }
-
-        // Check if ratio_report_sheets column exists
+      // Use UPSERT (INSERT ... ON CONFLICT DO UPDATE) to handle both insert and update atomically
+      // This prevents race conditions and duplicate key errors
+      // Check if ratio_report_sheets column exists
+      let hasRatioReportColumns = false;
+      try {
         const columnCheck = await dbAdapter.query(`
           SELECT column_name 
           FROM information_schema.columns 
           WHERE table_name = 'job_production_planning' 
           AND column_name = 'ratio_report_sheets'
         `);
-        const hasRatioReportColumns = columnCheck.rows.length > 0;
+        hasRatioReportColumns = columnCheck.rows.length > 0;
+        console.log('📋 Ratio report columns exist:', hasRatioReportColumns);
+      } catch (columnCheckError) {
+        console.warn('⚠️ Could not check for ratio_report_sheets column:', columnCheckError.message);
+        hasRatioReportColumns = false;
+      }
 
-        try {
-          if (hasRatioReportColumns) {
-            await dbAdapter.query(
-              `UPDATE job_production_planning SET
-                selected_sheet_size_id = $1,
-                cutting_layout_type = $2,
-                grid_pattern = $3,
-                blanks_per_sheet = $4,
-                efficiency_percentage = $5,
-                scrap_percentage = $6,
-                base_required_sheets = $7,
-                additional_sheets = $8,
-                final_total_sheets = $9,
-                material_cost = $10,
-                wastage_justification = $11,
-                ratio_report_sheets = $12,
-                from_ratio_report = $13,
-                planning_status = 'PLANNED',
-                updated_at = CURRENT_TIMESTAMP
-               WHERE job_card_id = $14`,
+      // Validate all required fields
+      if (!jobCardId || !sheetSizeIdInt || !cuttingLayoutType || !gridPattern) {
+        const missingFields = [];
+        if (!jobCardId) missingFields.push('jobCardId');
+        if (!sheetSizeIdInt) missingFields.push('sheetSizeIdInt');
+        if (!cuttingLayoutType) missingFields.push('cuttingLayoutType');
+        if (!gridPattern) missingFields.push('gridPattern');
+        return res.status(400).json({
+          success: false,
+          error: `Missing required fields: ${missingFields.join(', ')}`
+        });
+      }
+
+      console.log('📝 Preparing to upsert planning with:', {
+        jobCardId,
+        sheetSizeIdInt,
+        cuttingLayoutType,
+        gridPattern,
+        blanksPerSheet,
+        efficiencyPercentage,
+        scrapPercentage,
+        baseRequiredSheets,
+        additionalSheets: additionalSheets || 0,
+        finalTotalSheets,
+        materialCost: costData.totalCost,
+        hasRatioReportColumns,
+        ratioReportSheets,
+        fromRatioReport
+      });
+
+      let upsertResult;
+      try {
+        if (hasRatioReportColumns) {
+          console.log('📝 Using UPSERT with ratio report columns');
+          upsertResult = await dbAdapter.query(
+            `INSERT INTO job_production_planning (
+              job_card_id, selected_sheet_size_id, cutting_layout_type,
+              grid_pattern, blanks_per_sheet, efficiency_percentage, scrap_percentage,
+              base_required_sheets, additional_sheets, final_total_sheets,
+              material_cost, wastage_justification, ratio_report_sheets, from_ratio_report, planning_status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+            ON CONFLICT (job_card_id) 
+            DO UPDATE SET
+              selected_sheet_size_id = EXCLUDED.selected_sheet_size_id,
+              cutting_layout_type = EXCLUDED.cutting_layout_type,
+              grid_pattern = EXCLUDED.grid_pattern,
+              blanks_per_sheet = EXCLUDED.blanks_per_sheet,
+              efficiency_percentage = EXCLUDED.efficiency_percentage,
+              scrap_percentage = EXCLUDED.scrap_percentage,
+              base_required_sheets = EXCLUDED.base_required_sheets,
+              additional_sheets = EXCLUDED.additional_sheets,
+              final_total_sheets = EXCLUDED.final_total_sheets,
+              material_cost = EXCLUDED.material_cost,
+              wastage_justification = EXCLUDED.wastage_justification,
+              ratio_report_sheets = EXCLUDED.ratio_report_sheets,
+              from_ratio_report = EXCLUDED.from_ratio_report,
+              planning_status = CASE 
+                WHEN job_production_planning.planning_status = 'APPLIED' THEN 'APPLIED'
+                ELSE 'PLANNED'
+              END,
+              updated_at = CURRENT_TIMESTAMP
+            RETURNING *`,
             [
+              jobCardId,
               sheetSizeIdInt,
               cuttingLayoutType,
               gridPattern,
@@ -942,27 +1000,39 @@ class SmartDashboardController {
               wastageJustification || null,
               ratioReportSheets,
               fromRatioReport,
-              jobCardId
+              'PLANNED'
             ]
-            );
-          } else {
-            await dbAdapter.query(
-              `UPDATE job_production_planning SET
-                selected_sheet_size_id = $1,
-                cutting_layout_type = $2,
-                grid_pattern = $3,
-                blanks_per_sheet = $4,
-                efficiency_percentage = $5,
-                scrap_percentage = $6,
-                base_required_sheets = $7,
-                additional_sheets = $8,
-                final_total_sheets = $9,
-                material_cost = $10,
-                wastage_justification = $11,
-                planning_status = 'PLANNED',
-                updated_at = CURRENT_TIMESTAMP
-               WHERE job_card_id = $12`,
+          );
+        } else {
+          console.log('📝 Using UPSERT without ratio report columns');
+          upsertResult = await dbAdapter.query(
+            `INSERT INTO job_production_planning (
+              job_card_id, selected_sheet_size_id, cutting_layout_type,
+              grid_pattern, blanks_per_sheet, efficiency_percentage, scrap_percentage,
+              base_required_sheets, additional_sheets, final_total_sheets,
+              material_cost, wastage_justification, planning_status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (job_card_id) 
+            DO UPDATE SET
+              selected_sheet_size_id = EXCLUDED.selected_sheet_size_id,
+              cutting_layout_type = EXCLUDED.cutting_layout_type,
+              grid_pattern = EXCLUDED.grid_pattern,
+              blanks_per_sheet = EXCLUDED.blanks_per_sheet,
+              efficiency_percentage = EXCLUDED.efficiency_percentage,
+              scrap_percentage = EXCLUDED.scrap_percentage,
+              base_required_sheets = EXCLUDED.base_required_sheets,
+              additional_sheets = EXCLUDED.additional_sheets,
+              final_total_sheets = EXCLUDED.final_total_sheets,
+              material_cost = EXCLUDED.material_cost,
+              wastage_justification = EXCLUDED.wastage_justification,
+              planning_status = CASE 
+                WHEN job_production_planning.planning_status = 'APPLIED' THEN 'APPLIED'
+                ELSE 'PLANNED'
+              END,
+              updated_at = CURRENT_TIMESTAMP
+            RETURNING *`,
             [
+              jobCardId,
               sheetSizeIdInt,
               cuttingLayoutType,
               gridPattern,
@@ -974,181 +1044,55 @@ class SmartDashboardController {
               finalTotalSheets,
               costData.totalCost,
               wastageJustification || null,
-              jobCardId
+              'PLANNED'
             ]
-            );
-          }
-        } catch (updateError) {
-          console.error('❌ Error updating planning:', updateError);
-          console.error('Error details:', {
-            message: updateError.message,
-            code: updateError.code,
-            detail: updateError.detail,
-            hint: updateError.hint
+          );
+        }
+
+        if (!upsertResult || !upsertResult.rows || upsertResult.rows.length === 0) {
+          throw new Error('UPSERT query did not return a result');
+        }
+
+        const planning = upsertResult.rows[0];
+        console.log('✅ Planning saved successfully, ID:', planning.id);
+
+        // Check if planning was already APPLIED and prevent modification
+        if (planning.planning_status === 'APPLIED' && existingPlanning && existingPlanning.planning_status === 'APPLIED') {
+          return res.status(400).json({
+            success: false,
+            error: 'Planning has already been applied and cannot be modified'
           });
-          throw updateError;
         }
 
         res.json({
           success: true,
-          message: 'Planning updated successfully',
+          message: existingPlanning ? 'Planning updated successfully' : 'Planning saved successfully',
           planning: {
-            ...existingPlanning,
-            selected_sheet_size_id: sheetSizeIdInt,
-            cutting_layout_type: cuttingLayoutType,
-            grid_pattern: gridPattern,
-            blanks_per_sheet: blanksPerSheet,
-            efficiency_percentage: efficiencyPercentage,
-            scrap_percentage: scrapPercentage,
-            base_required_sheets: baseRequiredSheets,
-            additional_sheets: additionalSheets || 0,
-            final_total_sheets: finalTotalSheets,
-            material_cost: costData.totalCost,
-            wastage_justification: wastageJustification,
-            planning_status: 'PLANNED'
+            id: planning.id,
+            job_card_id: planning.job_card_id,
+            selected_sheet_size_id: planning.selected_sheet_size_id,
+            cutting_layout_type: planning.cutting_layout_type,
+            grid_pattern: planning.grid_pattern,
+            blanks_per_sheet: planning.blanks_per_sheet,
+            efficiency_percentage: parseFloat(planning.efficiency_percentage || 0),
+            scrap_percentage: parseFloat(planning.scrap_percentage || 0),
+            base_required_sheets: planning.base_required_sheets,
+            additional_sheets: planning.additional_sheets || 0,
+            final_total_sheets: planning.final_total_sheets,
+            material_cost: planning.material_cost ? parseFloat(planning.material_cost) : null,
+            wastage_justification: planning.wastage_justification,
+            planning_status: planning.planning_status
           }
         });
-      } else {
-        // Create new planning
-        // Note: id is SERIAL, so we don't need to provide it - database will auto-generate
-        // Check if ratio_report_sheets column exists
-        let hasRatioReportColumns = false;
-        try {
-          const columnCheck = await dbAdapter.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'job_production_planning' 
-            AND column_name = 'ratio_report_sheets'
-          `);
-          hasRatioReportColumns = columnCheck.rows.length > 0;
-          console.log('📋 Ratio report columns exist:', hasRatioReportColumns);
-        } catch (columnCheckError) {
-          console.warn('⚠️ Could not check for ratio_report_sheets column:', columnCheckError.message);
-          hasRatioReportColumns = false;
-        }
-
-        try {
-          // Validate all required fields before inserting
-          if (!jobCardId || !sheetSizeIdInt || !cuttingLayoutType || !gridPattern) {
-            const missingFields = [];
-            if (!jobCardId) missingFields.push('jobCardId');
-            if (!sheetSizeIdInt) missingFields.push('sheetSizeIdInt');
-            if (!cuttingLayoutType) missingFields.push('cuttingLayoutType');
-            if (!gridPattern) missingFields.push('gridPattern');
-            throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
-          }
-
-          console.log('📝 Preparing to insert planning with:', {
-            jobCardId,
-            sheetSizeIdInt,
-            cuttingLayoutType,
-            gridPattern,
-            blanksPerSheet,
-            efficiencyPercentage,
-            scrapPercentage,
-            baseRequiredSheets,
-            additionalSheets: additionalSheets || 0,
-            finalTotalSheets,
-            materialCost: costData.totalCost,
-            hasRatioReportColumns,
-            ratioReportSheets,
-            fromRatioReport
-          });
-          
-          let insertResult;
-          if (hasRatioReportColumns) {
-            console.log('📝 Using INSERT with ratio report columns');
-            insertResult = await dbAdapter.query(
-              `INSERT INTO job_production_planning (
-                job_card_id, selected_sheet_size_id, cutting_layout_type,
-                grid_pattern, blanks_per_sheet, efficiency_percentage, scrap_percentage,
-                base_required_sheets, additional_sheets, final_total_sheets,
-                material_cost, wastage_justification, ratio_report_sheets, from_ratio_report, planning_status
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-              RETURNING id`,
-              [
-                jobCardId,
-                sheetSizeIdInt,
-                cuttingLayoutType,
-                gridPattern,
-                blanksPerSheet,
-                efficiencyPercentage,
-                scrapPercentage,
-                baseRequiredSheets,
-                additionalSheets || 0,
-                finalTotalSheets,
-                costData.totalCost,
-                wastageJustification || null,
-                ratioReportSheets,
-                fromRatioReport,
-                'PLANNED'
-              ]
-            );
-          } else {
-            console.log('📝 Using INSERT without ratio report columns');
-            insertResult = await dbAdapter.query(
-              `INSERT INTO job_production_planning (
-                job_card_id, selected_sheet_size_id, cutting_layout_type,
-                grid_pattern, blanks_per_sheet, efficiency_percentage, scrap_percentage,
-                base_required_sheets, additional_sheets, final_total_sheets,
-                material_cost, wastage_justification, planning_status
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-              RETURNING id`,
-              [
-                jobCardId,
-                sheetSizeIdInt,
-                cuttingLayoutType,
-                gridPattern,
-                blanksPerSheet,
-                efficiencyPercentage,
-                scrapPercentage,
-                baseRequiredSheets,
-                additionalSheets || 0,
-                finalTotalSheets,
-                costData.totalCost,
-                wastageJustification || null,
-                'PLANNED'
-              ]
-            );
-          }
-          
-          if (!insertResult || !insertResult.rows || insertResult.rows.length === 0) {
-            throw new Error('INSERT query did not return an ID');
-          }
-          
-          console.log('✅ Planning inserted successfully, ID:', insertResult.rows[0]?.id);
-          const planningId = insertResult.rows[0].id;
-        } catch (insertError) {
-          console.error('❌ Error inserting planning:', insertError);
-          console.error('Error details:', {
-            message: insertError.message,
-            code: insertError.code,
-            detail: insertError.detail,
-            hint: insertError.hint
-          });
-          throw insertError;
-        }
-
-        res.json({
-          success: true,
-          message: 'Planning saved successfully',
-          planning: {
-            id: planningId,
-            job_card_id: jobCardId,
-            selected_sheet_size_id: sheetSizeIdInt,
-            cutting_layout_type: cuttingLayoutType,
-            grid_pattern: gridPattern,
-            blanks_per_sheet: blanksPerSheet,
-            efficiency_percentage: efficiencyPercentage,
-            scrap_percentage: scrapPercentage,
-            base_required_sheets: baseRequiredSheets,
-            additional_sheets: additionalSheets || 0,
-            final_total_sheets: finalTotalSheets,
-            material_cost: costData.totalCost,
-            wastage_justification: wastageJustification,
-            planning_status: 'PLANNED'
-          }
+      } catch (upsertError) {
+        console.error('❌ Error upserting planning:', upsertError);
+        console.error('Error details:', {
+          message: upsertError.message,
+          code: upsertError.code,
+          detail: upsertError.detail,
+          hint: upsertError.hint
         });
+        throw upsertError;
       }
     } catch (error) {
       console.error('❌ Error saving planning:', error);

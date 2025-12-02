@@ -6,6 +6,9 @@
 **Size:** ~123 MB  
 **Location:** `dumps/complete-dump-20251202.sql`
 
+## Download Link
+**Google Drive:** [Download Complete Dump (20251202)](https://drive.google.com/file/d/13YBOHwAtnjLwXIoEYtQ4AEsQrDGeK5B9/view?usp=sharing)
+
 ## Contents
 This dump includes:
 - ✅ Complete database schema (all tables, indexes, constraints)
@@ -14,7 +17,9 @@ This dump includes:
 - ✅ All configuration data
 
 ## Note
-This dump file exceeds GitHub's 100MB file size limit and is not tracked in git. The file is available locally in the `dumps/` folder.
+This dump file exceeds GitHub's 100MB file size limit and is not tracked in git. The file is available:
+- Locally in the `dumps/` folder
+- On Google Drive (see download link above)
 
 ## How to Use
 

@@ -67,7 +67,8 @@ const io = new Server(server, {
       'http://localhost:3000',
       /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
       /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
-      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/  // Allow local network access
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/,  // Allow local network access
+      `http://192.168.2.124:8080`  // Specific LAN IP for this deployment
     ],
     credentials: true,
     methods: ['GET', 'POST']
@@ -127,7 +128,8 @@ const corsOptions = {
     'http://localhost:3000',
     /^http:\/\/192\.168\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,  // Allow local network access
     /^http:\/\/10\.\d+\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,   // Allow local network access
-    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/  // Allow local network access
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,  // Allow local network access
+    `http://192.168.2.124:8080`  // Specific LAN IP for this deployment
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

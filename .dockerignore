@@ -75,7 +75,9 @@ setup-*.js
 clear-*.js
 find-*.js
 
-# Development files
-*.html
+# Development files (but allow index.html for frontend build)
+test-*.html
+debug-*.html
+*.test.html
 nul
 

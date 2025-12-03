@@ -9,14 +9,16 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY prisma ./prisma
 
-# Install dependencies
+# Install dependencies (including Prisma for generation)
 RUN npm ci --only=production && npm cache clean --force
+
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Copy application code
 COPY server ./server
-COPY database-setup-complete.sql ./
-COPY seed-complete-database.js ./
 COPY wait-for-postgres.sh ./
 
 # Make wait script executable
@@ -32,5 +34,5 @@ EXPOSE 5001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:5001/api/health || exit 1
 
-# Start command
-CMD ["sh", "-c", "./wait-for-postgres.sh postgres 5432 && node server/index.js"]
+# Start command - wait for postgres and start server
+CMD ["sh", "-c", "until PGPASSWORD=$DB_PASSWORD psql -h postgres -p 5432 -U $DB_USER -d postgres -c '\\q' 2>/dev/null; do echo 'Waiting for PostgreSQL...'; sleep 2; done && echo 'PostgreSQL is ready!' && node server/index.js"]

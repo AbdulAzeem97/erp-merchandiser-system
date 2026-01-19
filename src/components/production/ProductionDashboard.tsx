@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '@/components/layout/MainLayout';
 
@@ -113,7 +114,8 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/jobs`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/production/jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -140,7 +142,7 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
   const loadOperators = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/operators`, {
+      const response = await fetch(`${apiUrl}/api/production/operators`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -160,7 +162,7 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
   const loadMachines = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/machines`, {
+      const response = await fetch(`${apiUrl}/api/production/machines`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -248,7 +250,8 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/assign`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/production/assign`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -286,7 +289,8 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/update-status`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/production/update-status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -323,7 +327,8 @@ const ProductionDashboard: React.FC<ProductionDashboardProps> = ({ onLogout }) =
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/comments`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/production/comments`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

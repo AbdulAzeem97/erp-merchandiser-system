@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Menu,
   X,
+  List,
   ChevronDown,
   ChevronRight,
   LogOut,
@@ -73,7 +74,7 @@ const menuItems: MenuItem[] = [
     label: 'Dashboard',
     icon: Home,
     page: 'dashboard',
-    roles: ['ADMIN', 'MERCHANDISER', 'HOD_PREPRESS', 'DESIGNER', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION']
+    roles: ['ADMIN', 'MERCHANDISER', 'HOD_PREPRESS', 'DESIGNER', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
   },
   
   // Merchandiser Section
@@ -81,21 +82,21 @@ const menuItems: MenuItem[] = [
     id: 'merchandiser',
     label: 'Merchandiser',
     icon: Briefcase,
-    roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER'],
+    roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER'],
     children: [
       {
         id: 'create-product',
         label: 'Create Product',
         icon: Package,
         page: 'productForm',
-        roles: ['ADMIN', 'MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       },
       {
         id: 'create-job',
         label: 'Create Job Order',
         icon: FileText,
         page: 'jobForm',
-        roles: ['ADMIN', 'MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       },
       {
         id: 'job-monitoring',
@@ -104,14 +105,14 @@ const menuItems: MenuItem[] = [
         page: 'jobMonitoring',
         badge: 'Live',
         badgeColor: 'bg-green-500',
-        roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       },
       {
         id: 'my-jobs',
         label: 'My Jobs',
         icon: Eye,
         page: 'myJobs',
-        roles: ['ADMIN', 'MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       }
     ]
   },
@@ -366,6 +367,13 @@ export const RoleBasedSidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     const currentUser = authAPI.getCurrentUser();
+    console.log('========================================');
+    console.log('🔍 RoleBasedSidebar - INITIALIZING');
+    console.log('🔍 Current user object:', currentUser);
+    console.log('🔍 User role:', currentUser?.role);
+    console.log('🔍 User role type:', typeof currentUser?.role);
+    console.log('🔍 All user keys:', currentUser ? Object.keys(currentUser) : 'No user');
+    console.log('========================================');
     setUser(currentUser);
     
     // Auto-expand current section
@@ -430,8 +438,28 @@ export const RoleBasedSidebar: React.FC<SidebarProps> = ({
   };
 
   const hasAccess = (roles: string[]) => {
-    if (!user) return false;
-    return roles.includes(user.role) || user.role === 'ADMIN';
+    if (!user) {
+      console.log('🔍 hasAccess: No user found');
+      return false;
+    }
+    // Get user role - handle different possible field names
+    const userRole = user.role || user.Role || user.userRole;
+    if (!userRole) {
+      console.log('🔍 hasAccess: No role found in user object:', user);
+      return false;
+    }
+    // Normalize role to uppercase for comparison
+    const normalizedRole = String(userRole).toUpperCase().trim();
+    const normalizedRoles = roles.map(r => String(r).toUpperCase().trim());
+    const hasAccessResult = normalizedRoles.includes(normalizedRole) || normalizedRole === 'ADMIN';
+    console.log('🔍 hasAccess check:', {
+      userRole,
+      normalizedRole,
+      roles,
+      normalizedRoles,
+      hasAccess: hasAccessResult
+    });
+    return hasAccessResult;
   };
 
   const toggleExpanded = (itemId: string) => {
@@ -445,6 +473,13 @@ export const RoleBasedSidebar: React.FC<SidebarProps> = ({
   // Filter menu items based on role
   // HOD_CUTTING, CUTTING_LABOR, HOD_PRODUCTION, PRODUCTION_OPERATOR should only see their department items
   const filteredMenuItems = (() => {
+    console.log('========================================');
+    console.log('🔍 FILTERING MENU ITEMS');
+    console.log('🔍 User object:', user);
+    console.log('🔍 User role:', user?.role);
+    console.log('🔍 Total menu items:', menuItems.length);
+    console.log('========================================');
+    
     if (user?.role === 'HOD_CUTTING' || user?.role === 'CUTTING_LABOR') {
       // Only show cutting department menu
       return menuItems.filter(item => 
@@ -458,7 +493,18 @@ export const RoleBasedSidebar: React.FC<SidebarProps> = ({
       );
     }
     // For other roles, show all accessible items
-    return menuItems.filter(item => hasAccess(item.roles));
+    const filtered = menuItems.filter(item => {
+      const hasAccessResult = hasAccess(item.roles);
+      console.log(`🔍 Menu item "${item.label}" (${item.id}): hasAccess = ${hasAccessResult}, roles:`, item.roles);
+      return hasAccessResult;
+    });
+    console.log('========================================');
+    console.log('🔍 FINAL FILTERED MENU ITEMS:', filtered.length);
+    filtered.forEach(item => {
+      console.log(`  - ${item.label} (${item.id})`);
+    });
+    console.log('========================================');
+    return filtered;
   })();
 
   const renderMenuItem = (item: MenuItem, level = 0) => {

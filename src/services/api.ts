@@ -1,7 +1,9 @@
 // API Service for ERP Merchandiser System
 import { ProcessSequence } from '../types/processSequence';
+import { getApiBaseUrl } from '../utils/apiConfig';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+// Helper function to get API base URL dynamically (for LAN support)
+const getApiUrl = () => getApiBaseUrl();
 
 // Helper function for API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
@@ -17,11 +19,21 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   };
 
   try {
-    console.log(`🌐 Making API call to: ${API_BASE_URL}${endpoint}`);
+    const apiBaseUrl = getApiUrl();
+    const fullUrl = `${apiBaseUrl}${endpoint}`;
     
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    console.log(`🌐 Making API call:`);
+    console.log(`   Endpoint: ${endpoint}`);
+    console.log(`   Base URL: ${apiBaseUrl}`);
+    console.log(`   Full URL: ${fullUrl}`);
+    console.log(`   Method: ${options.method || 'GET'}`);
     
-    console.log(`📊 Response status: ${response.status}`);
+    const response = await fetch(fullUrl, config);
+    
+    console.log(`📊 Response received:`);
+    console.log(`   Status: ${response.status}`);
+    console.log(`   Status Text: ${response.statusText}`);
+    console.log(`   URL: ${response.url}`);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -47,10 +59,20 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
     console.log('✅ API call successful');
     return data;
   } catch (error) {
-    console.error('❌ API call failed:', error);
+    console.error('❌ API call failed:');
+    console.error('   Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('   Error message:', error instanceof Error ? error.message : String(error));
+    console.error('   Full error:', error);
     
     // Handle network errors
     if (error instanceof TypeError && error.message.includes('fetch')) {
+      const apiBaseUrl = getApiUrl();
+      console.error('   Attempted URL:', `${apiBaseUrl}${endpoint}`);
+      console.error('   This is a network connectivity issue. Check:');
+      console.error('   1. Backend server is running');
+      console.error('   2. Backend is accessible at:', apiBaseUrl);
+      console.error('   3. No firewall blocking the connection');
+      console.error('   4. CORS is properly configured');
       throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
     }
     
@@ -62,10 +84,19 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
 export const authAPI = {
   login: async (email: string, password: string) => {
     try {
-      console.log('🔐 Starting login process for:', email);
+      console.log('🔐 Starting login process:');
+      console.log('   Email:', email);
+      
+      const apiBaseUrl = getApiUrl();
+      const loginUrl = `${apiBaseUrl}/auth/login`;
+      
+      console.log('🔐 Login API details:');
+      console.log('   Base URL:', apiBaseUrl);
+      console.log('   Login URL:', loginUrl);
+      console.log('   Window location:', typeof window !== 'undefined' ? window.location.href : 'N/A');
       
       // Special login API call that handles 401 as normal response
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,10 +104,13 @@ export const authAPI = {
         body: JSON.stringify({ email, password }),
       });
       
-      console.log(`📊 Login response status: ${response.status}`);
+      console.log(`📊 Login response received:`);
+      console.log(`   Status: ${response.status}`);
+      console.log(`   Status Text: ${response.statusText}`);
+      console.log(`   Response URL: ${response.url}`);
       
       const data = await response.json();
-      console.log('📋 Login response received:', data);
+      console.log('📋 Login response data:', data);
       
       if (!response.ok) {
         // Handle login failure
@@ -103,13 +137,24 @@ export const authAPI = {
       }
       
     } catch (error) {
-      console.error('❌ Login error:', error);
+      console.error('❌ Login error occurred:');
+      console.error('   Error type:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('   Error message:', error instanceof Error ? error.message : String(error));
+      console.error('   Full error:', error);
       
       // Provide more specific error messages
       if (error instanceof TypeError && error.message.includes('fetch')) {
+        const apiBaseUrl = getApiUrl();
+        console.error('   This is a network connectivity issue.');
+        console.error('   Attempted login URL:', `${apiBaseUrl}/auth/login`);
+        console.error('   Troubleshooting:');
+        console.error('     1. Verify backend is running');
+        console.error('     2. Check backend is accessible at:', apiBaseUrl);
+        console.error('     3. Verify no firewall is blocking port 5001');
+        console.error('     4. If accessing from LAN, ensure backend is reachable from your IP');
         throw new Error('Network error: Unable to connect to server. Please check your connection.');
       } else {
-        throw new Error(error.message || 'Login failed. Please try again.');
+        throw new Error(error instanceof Error ? error.message : 'Login failed. Please try again.');
       }
     }
   },
@@ -297,6 +342,14 @@ export const jobsAPI = {
     });
   },
 
+  // Update PO number for a job
+  updatePONumber: async (id: string, poData: { po_number?: string; without_po?: boolean }) => {
+    return await apiCall(`/jobs/${id}/po-number`, {
+      method: 'PATCH',
+      body: JSON.stringify(poData),
+    });
+  },
+
   // Delete job
   delete: async (id: string) => {
     return await apiCall(`/jobs/${id}`, {
@@ -343,6 +396,111 @@ export const jobsAPI = {
       method: 'PUT',
       body: JSON.stringify(plateInfo),
     });
+  },
+
+  // Get job report with comprehensive filtering
+  getJobReport: async (filters: {
+    po_status?: string;
+    status?: string;
+    brand?: string;
+    date_from?: string;
+    date_to?: string;
+    department?: string;
+    assistant_merchandiser_id?: string;
+    created_by_id?: string;
+    page?: number;
+    limit?: number;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    return await apiCall(`/jobs/report?${queryParams.toString()}`);
+  },
+
+  // Get available brands for filtering
+  getReportBrands: async () => {
+    return await apiCall('/jobs/report/brands');
+  },
+
+  // Get assistant merchandisers for senior merchandiser
+  getReportAssistants: async () => {
+    return await apiCall('/jobs/report/assistants');
+  },
+
+  // Export job report to CSV
+  exportJobReportCSV: async (filters: {
+    po_status?: string;
+    status?: string;
+    brand?: string;
+    date_from?: string;
+    date_to?: string;
+    department?: string;
+    assistant_merchandiser_id?: string;
+    created_by_id?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    const token = localStorage.getItem('authToken');
+    const apiBaseUrl = getApiBaseUrl();
+    const url = `${apiBaseUrl}/jobs/report/export/csv?${queryParams.toString()}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to export CSV');
+    }
+    
+    const blob = await response.blob();
+    return blob;
+  },
+
+  // Export job report to PDF
+  exportJobReportPDF: async (filters: {
+    po_status?: string;
+    status?: string;
+    brand?: string;
+    date_from?: string;
+    date_to?: string;
+    department?: string;
+    assistant_merchandiser_id?: string;
+    created_by_id?: string;
+  } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        queryParams.append(key, value.toString());
+      }
+    });
+    
+    const token = localStorage.getItem('authToken');
+    const apiBaseUrl = getApiBaseUrl();
+    const url = `${apiBaseUrl}/jobs/report/export/pdf?${queryParams.toString()}`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to export PDF');
+    }
+    
+    const blob = await response.blob();
+    return blob;
   }
 };
 
@@ -509,8 +667,9 @@ export const uploadAPI = {
     formData.append('jobCardId', jobCardId);
 
     const token = localStorage.getItem('authToken');
+    const apiBaseUrl = getApiUrl();
     
-    const response = await fetch(`${API_BASE_URL}/upload`, {
+    const response = await fetch(`${apiBaseUrl}/upload`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -534,8 +693,9 @@ export const uploadAPI = {
   // Download file
   downloadFile: async (fileId: string) => {
     const token = localStorage.getItem('authToken');
+    const apiBaseUrl = getApiUrl();
     
-    const response = await fetch(`${API_BASE_URL}/upload/download/${fileId}`, {
+    const response = await fetch(`${apiBaseUrl}/upload/download/${fileId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
@@ -560,7 +720,7 @@ export const uploadAPI = {
 export const healthAPI = {
   check: async () => {
     try {
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+      const baseUrl = getApiUrl();
       const healthUrl = baseUrl.replace('/api', '/health');
       const response = await fetch(healthUrl);
       if (response.ok) {
@@ -784,6 +944,33 @@ export const jobAssignmentHistoryAPI = {
   }
 };
 
+// Director API
+export const directorAPI = {
+  getTeamPerformance: async (timeframe: string = 'month') => {
+    return apiCall(`/director/team-performance?timeframe=${timeframe}`, {
+      method: 'GET'
+    });
+  },
+
+  getTeamStats: async (seniorId: number, timeframe: string = 'month') => {
+    return apiCall(`/director/team/${seniorId}?timeframe=${timeframe}`, {
+      method: 'GET'
+    });
+  },
+
+  getTeamComparison: async (timeframe: string = 'month') => {
+    return apiCall(`/director/team-comparison?timeframe=${timeframe}`, {
+      method: 'GET'
+    });
+  },
+
+  getTeamTrends: async (period: string = 'month') => {
+    return apiCall(`/director/team-trends?period=${period}`, {
+      method: 'GET'
+    });
+  }
+};
+
 export default {
   auth: authAPI,
   products: productsAPI,
@@ -796,4 +983,5 @@ export default {
   inventory: inventoryAPI,
   prepressWorkflow: prepressWorkflowAPI,
   jobAssignmentHistory: jobAssignmentHistoryAPI,
+  director: directorAPI,
 };

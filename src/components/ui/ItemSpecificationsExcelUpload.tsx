@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import * as XLSX from 'xlsx';
 
 interface ItemSpecificationsExcelUploadProps {
@@ -232,7 +233,8 @@ const ItemSpecificationsExcelUpload: React.FC<ItemSpecificationsExcelUploadProps
       formData.append('type', 'item_specifications');
 
       // Upload to Google Drive/Server
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/upload/excel`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/upload/excel`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`

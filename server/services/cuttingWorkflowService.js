@@ -646,10 +646,30 @@ class CuttingWorkflowService {
           WHERE id = $2
         `, [userId, cuttingStep.id]);
 
-        // Activate next step
-        const nextStep = workflowSteps.find(step => 
-          step.sequence_number === cuttingStep.sequence_number + 1
+        // First, check if Offset Printing step exists and is selected (not inactive)
+        const offsetPrintingStep = workflowSteps.find(step => 
+          step.sequence_number > cuttingStep.sequence_number &&
+          step.status !== 'inactive' &&
+          (step.department === 'Offset Printing' || 
+           step.step_name?.toLowerCase().includes('offset printing') ||
+           step.step_name === 'Offset Printing')
         );
+
+        let nextStep = null;
+
+        if (offsetPrintingStep) {
+          // Offset Printing step is selected - activate it
+          console.log(`✅ Found Offset Printing step for job ${jobId}, activating it`);
+          nextStep = offsetPrintingStep;
+        } else {
+          // No Offset Printing step found, find the next active step after cutting
+          const allNextSteps = workflowSteps.filter(step => 
+            step.sequence_number > cuttingStep.sequence_number &&
+            step.status !== 'inactive'
+          ).sort((a, b) => a.sequence_number - b.sequence_number);
+          
+          nextStep = allNextSteps[0];
+        }
 
         if (nextStep) {
           await dbAdapter.query(`
@@ -671,6 +691,26 @@ class CuttingWorkflowService {
             nextStep.department,
             userId
           );
+
+          // Emit notification if moving to Offset Printing
+          if (nextStep.department === 'Offset Printing' && this.socketHandler) {
+            this.socketHandler.emit('offset_printing:job_ready', {
+              jobId: jobId,
+              step: nextStep.step_name,
+              department: nextStep.department
+            });
+            
+            // Notify HOD Offset
+            this.socketHandler.emit('notification', {
+              type: 'offset_printing_job_ready',
+              title: 'New Job Ready for Offset Printing',
+              message: `A job has completed cutting and is ready for offset printing`,
+              jobId: jobId,
+              timestamp: new Date().toISOString()
+            });
+          }
+        } else {
+          console.log(`⚠️ No next step found after cutting for job ${jobId}`);
         }
       }
     } catch (error) {

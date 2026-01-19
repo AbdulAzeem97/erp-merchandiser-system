@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Edit, 
@@ -24,6 +24,7 @@ import { jobsAPI, productsAPI } from '../services/api';
 import { JobEditForm } from './JobEditForm';
 import { generateJobCardPDF } from '../utils/pdfGenerator';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 
 interface Job {
   id: number;
@@ -52,6 +53,7 @@ interface Job {
   category_name?: string;
   company_name?: string;
   po_number?: string;
+  without_po?: boolean;
   client_layout_link?: string;
   final_design_link?: string;
   fsc?: string;
@@ -61,6 +63,8 @@ interface Job {
   current_step?: string;
   workflow_status?: string;
   status_message?: string;
+  created_by_name?: string;
+  createdById?: number;
 }
 
 interface JobManagementTableProps {
@@ -116,30 +120,54 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
   const [showEditForm, setShowEditForm] = useState(false);
   const [jobToEdit, setJobToEdit] = useState<Job | null>(null);
   const [generatingPDF, setGeneratingPDF] = useState<number | null>(null);
+  
+  // Infinite scroll state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalJobs, setTotalJobs] = useState(0);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load jobs
-  const loadJobs = async () => {
+  // Load jobs (initial load or reset)
+  const loadJobs = useCallback(async (page: number = 1, append: boolean = false) => {
     try {
-      setIsLoading(true);
-      const response = await jobsAPI.getAll();
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      const response = await jobsAPI.getAll({ page, limit: 50 });
       const jobsData = response.jobs || [];
+      const pagination = response.pagination || {};
+      
       console.log('📋 Jobs loaded:', jobsData.length);
-      console.log('📋 First job sample:', jobsData[0] ? {
-        id: jobsData[0].id,
-        jobNumber: jobsData[0].jobNumber,
-        status: jobsData[0].status,
-        current_department: jobsData[0].current_department,
-        current_step: jobsData[0].current_step,
-        workflow_status: jobsData[0].workflow_status,
-        status_message: jobsData[0].status_message
-      } : 'No jobs');
-      setJobs(jobsData);
+      console.log('📋 Pagination:', pagination);
+      
+      if (append) {
+        setJobs(prev => [...prev, ...jobsData]);
+      } else {
+        setJobs(jobsData);
+      }
+      
+      setCurrentPage(page);
+      setHasMore(pagination.hasMore || false);
+      setTotalJobs(pagination.total || 0);
     } catch (error) {
       console.error('Error loading jobs:', error);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
-  };
+  }, []);
+  
+  // Load more jobs (for infinite scroll)
+  const loadMoreJobs = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+    
+    const nextPage = currentPage + 1;
+    await loadJobs(nextPage, true);
+  }, [currentPage, hasMore, isLoadingMore, loadJobs]);
 
   // Filter jobs
   useEffect(() => {
@@ -168,10 +196,37 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
     setFilteredJobs(filtered);
   }, [jobs, searchTerm, statusFilter, urgencyFilter]);
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    // Reset to page 1 and reload when filters change
+    setCurrentPage(1);
+    setHasMore(true);
+    loadJobs(1, false);
+  }, [searchTerm, statusFilter, urgencyFilter, loadJobs]);
+
   // Load jobs on component mount
   useEffect(() => {
-    loadJobs();
+    loadJobs(1, false);
   }, []);
+
+  // Infinite scroll detection
+  useEffect(() => {
+    const container = tableContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const scrollBottom = scrollHeight - scrollTop - clientHeight;
+      
+      // Load more when within 200px of bottom
+      if (scrollBottom < 200 && hasMore && !isLoadingMore && !isLoading) {
+        loadMoreJobs();
+      }
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [hasMore, isLoadingMore, isLoading, loadMoreJobs]);
 
   // Handle job deletion
   const handleDeleteJob = async (job: Job) => {
@@ -202,7 +257,8 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
   const convertAttachmentToFile = async (attachment: any): Promise<File> => {
     try {
       // Fetch the file from the server
-      const response = await fetch(`http://localhost:5001/api/upload/file/${attachment.id}`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/upload/file/${attachment.id}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -262,7 +318,8 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
       // Fetch ratio report data if available
       let ratioData = null;
       try {
-        const ratioResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${job.id}/ratio-report`, {
+        const apiBaseUrl = getApiBaseUrl();
+        const ratioResponse = await fetch(`${apiBaseUrl}/jobs/${job.id}/ratio-report`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`
           }
@@ -295,7 +352,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
       // Fetch item specifications data if available
       let itemSpecificationsData = null;
       try {
-        const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${job.id}/item-specifications`, {
+        const itemSpecsResponse = await fetch(`${apiBaseUrl}/jobs/${job.id}/item-specifications`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('authToken')}`
           }
@@ -394,14 +451,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
         gsm: job.gsm || product?.gsm || 0,
         category: job.category_name || product?.category_name || 'N/A',
         ratioData: ratioData, // Include ratio Excel data
-        itemSpecificationsData: itemSpecificationsData, // Include item specifications data
-        specialInstructions: job.notes || job.special_instructions || '', // Include remarks from job
-        customerInfo: {
-          name: job.customer_name || job.company_name || 'Customer',
-          email: job.customer_email || 'customer@example.com',
-          phone: job.customer_phone || '+1-234-567-8900',
-          address: job.customer_address || 'Customer Address'
-        }
+        itemSpecificationsData: itemSpecificationsData // Include item specifications data
       };
 
       // Create complete product with process sequence and all required fields
@@ -436,7 +486,8 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
       
       // Fallback to simple download if PDF generation fails
       try {
-        const response = await fetch(`http://localhost:5001/api/jobs/${job.id}/pdf`);
+        const apiBaseUrl = getApiBaseUrl();
+        const response = await fetch(`${apiBaseUrl}/jobs/${job.id}/pdf`);
         if (response.ok) {
           const blob = await response.blob();
           const url = window.URL.createObjectURL(blob);
@@ -541,51 +592,62 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
             No jobs found
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div 
+            ref={tableContainerRef}
+            className="overflow-x-auto lg:overflow-x-visible max-h-[600px] overflow-y-auto"
+          >
+            <table className="w-full table-auto">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32 min-w-32">
                     Job Number
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-40 min-w-40">
                     Product
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-48 min-w-48">
                     Customer
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32 min-w-32">
+                    PO Number
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32 min-w-32">
+                    Created By
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-24 min-w-24">
                     Quantity
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28 min-w-28">
                     Due Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32 min-w-32">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-28 min-w-28">
                     Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32 min-w-32">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredJobs.map((job, index) => (
+                {filteredJobs.map((job, index) => {
+                  const isWithoutPO = job.without_po === true || (job.without_po === undefined && (!job.po_number || job.po_number.trim() === ''));
+                  return (
                   <motion.tr
                     key={job.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className="hover:bg-gray-50 transition-colors"
+                    className={`transition-colors ${isWithoutPO ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm font-mono font-medium text-gray-900">
                         {job.jobNumber}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4">
                       <div className="text-sm text-gray-900">
                         {job.product_code || 'N/A'}
                       </div>
@@ -593,7 +655,7 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                         {job.brand || 'N/A'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4">
                       <div className="text-sm text-gray-900">
                         {job.customer_name || job.company_name || 'N/A'}
                       </div>
@@ -604,17 +666,33 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                         {job.customer_phone || 'No phone'}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      {isWithoutPO ? (
+                        <div className="flex items-center space-x-1">
+                          <AlertCircle className="w-4 h-4 text-amber-600" />
+                          <span className="text-sm text-amber-700 font-medium">No PO</span>
+                          <Badge variant="outline" className="ml-2 border-amber-300 text-amber-700 bg-amber-50 text-xs">
+                            PO Pending
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-900">{job.po_number || 'N/A'}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sm text-gray-900">{job.created_by_name || 'System'}</span>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {job.quantity.toLocaleString()}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
                         {new Date(job.dueDate).toLocaleDateString()}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4">
                       <div className="flex flex-col gap-1">
                         <Badge 
                           className={`${statusConfig[job.status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800'} flex items-center gap-1 w-fit`}
@@ -629,14 +707,14 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 whitespace-nowrap">
                       <Badge 
                         className={`${urgencyConfig[job.urgency as keyof typeof urgencyConfig]?.color || 'bg-gray-100 text-gray-800'} w-fit`}
                       >
                         {job.urgency}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
@@ -671,9 +749,25 @@ export const JobManagementTable: React.FC<JobManagementTableProps> = ({
                       </div>
                     </td>
                   </motion.tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+            
+            {/* Infinite scroll loading indicator */}
+            {isLoadingMore && (
+              <div className="flex items-center justify-center py-4 border-t">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2 text-blue-600" />
+                <span className="text-sm text-gray-600">Loading more jobs...</span>
+              </div>
+            )}
+            
+            {/* End of list indicator */}
+            {!hasMore && jobs.length > 0 && (
+              <div className="flex items-center justify-center py-4 border-t">
+                <span className="text-sm text-gray-500">No more jobs to load</span>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

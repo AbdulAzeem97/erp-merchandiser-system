@@ -47,3 +47,7 @@ dumps/*-jobs-*.sql
 dumps/production-jobs-*.sql
 dumps/jobs-data-only-*.sql
 dumps/complete-dump-*.sql
+database_dump_*.sql
+*.dump
+erp_merchandiser_backup.dump
+erp_dump_*.sql

@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: erp-postgres
     restart: unless-stopped
     environment:
@@ -51,9 +49,10 @@ services:
     container_name: erp-backend
     restart: unless-stopped
     ports:
-      - "${PORT:-5000}:5000"
+      - "5001:5001"
     environment:
       NODE_ENV: production
+      PORT: 5001
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-erp_merchandiser}
@@ -63,7 +62,7 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-RedisPassword123!}
       JWT_SECRET: ${JWT_SECRET:-your-super-secure-jwt-secret-change-in-production}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
     depends_on:
       postgres:
         condition: service_healthy
@@ -75,7 +74,7 @@ services:
     networks:
       - erp-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -88,16 +87,16 @@ services:
     container_name: erp-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - "${FRONTEND_PORT:-8080}:8080"
     environment:
-      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5000}
-      REACT_APP_SOCKET_URL: ${REACT_APP_SOCKET_URL:-http://localhost:5000}
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:5001}
+      REACT_APP_SOCKET_URL: ${REACT_APP_SOCKET_URL:-http://localhost:5001}
     depends_on:
       - backend
     networks:
       - erp-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080"]
       interval: 30s
       timeout: 10s
       retries: 3

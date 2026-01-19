@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 
 interface ProductionJob {
   id: string | number;
@@ -71,7 +72,8 @@ const ProductionLaborView: React.FC<ProductionLaborViewProps> = ({ onLogout }) =
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/live`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/production/live`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

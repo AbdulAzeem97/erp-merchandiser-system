@@ -1,0 +1,47 @@
+IMPORT PRODUCTION JOBS TO LOCAL PC
+====================================
+
+DUMP FILE:
+  production-jobs-final-20251126-225804.sql (113 MB)
+
+PRODUCTION DATA SUMMARY:
+  - Job Cards: 69
+  - Prepress Jobs: 45
+  - Prepress Activity: 114
+  - Ratio Reports: 26
+  - Item Specifications: 20
+  - Job Process Selections: 23
+  - Job Lifecycles: 15
+
+QUICK IMPORT COMMANDS:
+======================
+
+Option 1: Using Docker (Recommended)
+------------------------------------
+docker exec -i erp-postgres psql -U erp_user -d erp_merchandiser < production-jobs-final-20251126-225804.sql
+
+Option 2: Using Local PostgreSQL
+---------------------------------
+psql -U erp_user -d erp_merchandiser < production-jobs-final-20251126-225804.sql
+
+Option 3: Using Windows PowerShell
+-----------------------------------
+Get-Content production-jobs-final-20251126-225804.sql | docker exec -i erp-postgres psql -U erp_user -d erp_merchandiser
+
+Option 4: Using Batch Script
+-----------------------------
+Run: scripts\import-to-local-pc.bat
+
+BEFORE IMPORT:
+==============
+1. Make sure local database schema matches production
+2. Run migrations: node scripts/run-complete-migration.js
+3. Or import schema first from schema-only-dump-*.sql
+
+AFTER IMPORT:
+=============
+Verify data:
+docker exec erp-postgres psql -U erp_user -d erp_merchandiser -c "SELECT COUNT(*) FROM job_cards;"
+docker exec erp-postgres psql -U erp_user -d erp_merchandiser -c "SELECT COUNT(*) FROM prepress_jobs;"
+
+

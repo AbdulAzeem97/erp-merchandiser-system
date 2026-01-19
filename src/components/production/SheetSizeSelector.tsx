@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Badge } from '@/components/ui/badge';
 import { Plus, Package, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 
 interface MaterialSize {
   id: string | number;
@@ -57,8 +58,9 @@ export const SheetSizeSelector: React.FC<SheetSizeSelectorProps> = ({
     try {
       setLoading(true);
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/materials/${materialId}/sizes`,
+        `${apiUrl}/api/production/smart-dashboard/materials/${materialId}/sizes`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -117,8 +119,9 @@ export const SheetSizeSelector: React.FC<SheetSizeSelectorProps> = ({
 
     try {
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/materials/${materialId}/sizes`,
+        `${apiUrl}/api/production/smart-dashboard/materials/${materialId}/sizes`,
         {
           method: 'POST',
           headers: {

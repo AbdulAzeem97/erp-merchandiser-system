@@ -63,6 +63,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
 import { authAPI, jobsAPI, usersAPI } from '@/services/api';
@@ -211,14 +212,15 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
 
+      const apiUrl = getApiUrl();
       const [jobsResponse, designersResponse] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/hod/dashboard?limit=200`, {
+        fetch(`${apiUrl}/api/job-assignment/hod/dashboard?limit=200`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/designers`, {
+        fetch(`${apiUrl}/api/job-assignment/designers`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -280,7 +282,8 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const updateJobStatus = async (jobId: string, status: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/${jobId}/status`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/job-assignment/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -309,7 +312,8 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const assignJobToDesigner = async (jobCardId: string, designerId: string, priority: string, dueDate: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/assign`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/job-assignment/assign`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -345,7 +349,8 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const reassignJobToDesigner = async (jobCardId: string, designerId: string, priority: string, dueDate: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-assignment/assign`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/job-assignment/assign`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

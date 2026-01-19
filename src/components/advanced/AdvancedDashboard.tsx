@@ -1,15 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  LineChart, 
-  Line, 
-  AreaChart, 
-  Area, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell,
   ResponsiveContainer, 
   XAxis, 
   YAxis, 
@@ -35,7 +26,6 @@ import {
   Bell,
   Settings,
   BarChart3,
-  PieChart as PieChartIcon,
   Activity,
   Zap,
   Target,
@@ -59,23 +49,6 @@ interface DashboardProps {
   isLoading?: boolean;
 }
 
-// Mock data for charts
-const productionData = [
-  { month: 'Jan', completed: 245, pending: 67, revenue: 125000 },
-  { month: 'Feb', completed: 289, pending: 43, revenue: 145000 },
-  { month: 'Mar', completed: 334, pending: 52, revenue: 167000 },
-  { month: 'Apr', completed: 378, pending: 38, revenue: 189000 },
-  { month: 'May', completed: 423, pending: 29, revenue: 211000 },
-  { month: 'Jun', completed: 467, pending: 35, revenue: 234000 }
-];
-
-const departmentData = [
-  { name: 'Printing', value: 35, color: '#3B82F6' },
-  { name: 'Finishing', value: 25, color: '#10B981' },
-  { name: 'Assembly', value: 20, color: '#F59E0B' },
-  { name: 'Quality Control', value: 15, color: '#EF4444' },
-  { name: 'Packaging', value: 5, color: '#8B5CF6' }
-];
 
 const recentJobs = [
   { id: 'JC-001234', product: 'BR-00-139-A', status: 'In Progress', progress: 75, priority: 'High', customer: 'JCP Brand', dueDate: '2024-01-15' },
@@ -483,123 +456,6 @@ export const AdvancedDashboard: React.FC<DashboardProps> = ({
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Production Trends */}
-          <motion.div variants={itemVariants}>
-            <Card className="border-0 shadow-lg">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center space-x-2">
-                    <Activity className="w-5 h-5 text-blue-600" />
-                    <span>Production Trends</span>
-                  </CardTitle>
-                  <div className="flex space-x-1">
-                    {['1M', '3M', '6M', '1Y'].map((period) => (
-                      <button
-                        key={period}
-                        onClick={() => setActiveTimeframe(period)}
-                        className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                          activeTimeframe === period
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'text-gray-500 hover:text-gray-700'
-                        }`}
-                      >
-                        {period}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={productionData}>
-                      <defs>
-                        <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                        </linearGradient>
-                        <linearGradient id="pendingGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="month" stroke="#6B7280" />
-                      <YAxis stroke="#6B7280" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          background: 'white', 
-                          border: 'none', 
-                          borderRadius: '12px', 
-                          boxShadow: '0 20px 40px rgba(0,0,0,0.1)' 
-                        }} 
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="completed" 
-                        stroke="#3B82F6" 
-                        fill="url(#completedGradient)" 
-                        strokeWidth={3}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="pending" 
-                        stroke="#F59E0B" 
-                        fill="url(#pendingGradient)" 
-                        strokeWidth={3}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          {/* Department Distribution */}
-          <motion.div variants={itemVariants}>
-            <Card className="border-0 shadow-lg">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center space-x-2">
-                  <PieChartIcon className="w-5 h-5 text-purple-600" />
-                  <span>Department Workload</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={departmentData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={120}
-                        paddingAngle={5}
-                        dataKey="value"
-                      >
-                        {departmentData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mt-4">
-                  {departmentData.map((dept, index) => (
-                    <div key={`dept-${index}-${dept.name}`} className="flex items-center space-x-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: dept.color }}
-                      />
-                      <span className="text-sm text-gray-600">{dept.name}</span>
-                      <span className="text-sm font-semibold text-gray-900">{dept.value}%</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
         </div>
 
         {/* Recent Products Table */}

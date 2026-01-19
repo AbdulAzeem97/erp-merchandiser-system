@@ -23,6 +23,10 @@ export interface RatioExcelData {
     excessPercent: number;
   };
   colorDetails: Array<{
+    epNo?: string;
+    itemCode?: string;
+    itemDescription?: string;
+    price?: string;
     color: string;
     size: string;
     requiredQty: number;
@@ -135,6 +139,58 @@ export class RatioExcelParser {
         }
       }
 
+      // Find column indices from header row dynamically
+      const headerRowData = excelData[headerRow];
+      const findColumnIndex = (searchTerms: string[]): number => {
+        for (let col = 0; col < headerRowData.length; col++) {
+          const cellValue = String(headerRowData[col] || '').toLowerCase().trim();
+          for (const term of searchTerms) {
+            if (cellValue === term.toLowerCase() || cellValue.includes(term.toLowerCase())) {
+              return col;
+            }
+          }
+        }
+        return -1;
+      };
+
+      // Find compulsory columns (Color, Size, Required Qty)
+      const colorColIndex = findColumnIndex(['color']);
+      const sizeColIndex = findColumnIndex(['size']);
+      const requiredQtyColIndex = findColumnIndex(['required qty', 'required']);
+      
+      // Find optional columns (EP_NO, ITEM_CODE, ITEM_DESCRIPTION, PRICE)
+      const epNoColIndex = findColumnIndex(['ep no', 'ep number', 'ep_no', 'ep']);
+      const itemCodeColIndex = findColumnIndex(['item code', 'item_code', 'code']);
+      const itemDescriptionColIndex = findColumnIndex(['item description', 'item_desc', 'description', 'item_description']);
+      const priceColIndex = findColumnIndex(['price']);
+      
+      // Find other optional columns
+      const plateColIndex = findColumnIndex(['plate']);
+      const upsColIndex = findColumnIndex(['ups']);
+      const sheetsColIndex = findColumnIndex(['sheets']);
+      const qtyProducedColIndex = findColumnIndex(['qty produced', 'produced']);
+      const excessQtyColIndex = findColumnIndex(['excess qty', 'excess']);
+
+      console.log('Column indices found from header:', {
+        epNo: epNoColIndex,
+        itemCode: itemCodeColIndex,
+        itemDescription: itemDescriptionColIndex,
+        price: priceColIndex,
+        color: colorColIndex,
+        size: sizeColIndex,
+        requiredQty: requiredQtyColIndex,
+        plate: plateColIndex,
+        ups: upsColIndex,
+        sheets: sheetsColIndex,
+        qtyProduced: qtyProducedColIndex,
+        excessQty: excessQtyColIndex
+      });
+
+      // Validate that we found the compulsory columns
+      if (colorColIndex === -1 || sizeColIndex === -1 || requiredQtyColIndex === -1) {
+        throw new Error('Could not find compulsory columns (Color, Size, Required Qty) in header row');
+      }
+
       // Parse color details
       const colorDetails = [];
       console.log(`Starting color details parsing from row ${colorStartIndex}`);
@@ -143,43 +199,58 @@ export class RatioExcelParser {
         const row = excelData[i];
         if (!row || row.length === 0) continue;
         
-        const firstCell = String(row[0] || '').trim();
-        const secondCell = String(row[1] || '').trim();
+        // Check for data in the Color column (not first column, as first columns may be empty)
+        const colorCell = colorColIndex >= 0 && colorColIndex < row.length 
+          ? String(row[colorColIndex] || '').trim() 
+          : '';
         
-        // Skip empty rows and summary rows
-        if (!firstCell || 
+        // Skip empty rows and summary rows (check Color column, not first column)
+        const firstCell = String(row[0] || '').trim();
+        if ((!colorCell && !firstCell) || 
             firstCell.toLowerCase().includes('total') ||
             firstCell.toLowerCase().includes('summary') ||
-            firstCell.toLowerCase().includes('generated')) {
-          console.log(`Skipping row ${i}: ${firstCell} (summary/empty row)`);
+            firstCell.toLowerCase().includes('generated') ||
+            colorCell.toLowerCase().includes('total') ||
+            colorCell.toLowerCase().includes('summary')) {
+          console.log(`Skipping row ${i}: empty or summary row (Color: "${colorCell}", First: "${firstCell}")`);
           continue;
         }
 
-        // Parse color detail row - expect 8 columns: Color, Size, Required Qty, Plate, UPS, Sheets, Qty Produced, Excess Qty
-        if (row.length >= 8) {
-          const colorDetail = {
-            color: String(row[0] || '').trim(),
-            size: String(row[1] || '').trim(),
-            requiredQty: this.parseNumber(row[2]),
-            plate: String(row[3] || '').trim(),
-            ups: this.parseNumber(row[4]),
-            sheets: this.parseNumber(row[5]),
-            qtyProduced: this.parseNumber(row[6]),
-            excessQty: this.parseNumber(row[7])
+        // Parse color detail row using found column indices
+        const maxColIndex = Math.max(
+          epNoColIndex, itemCodeColIndex, itemDescriptionColIndex, priceColIndex,
+          colorColIndex, sizeColIndex, requiredQtyColIndex, plateColIndex, 
+          upsColIndex, sheetsColIndex, qtyProducedColIndex, excessQtyColIndex
+        );
+        
+        if (row.length > maxColIndex) {
+          const colorDetail: any = {
+            // Optional fields - only include if column exists
+            ...(epNoColIndex >= 0 && { epNo: String(row[epNoColIndex] || '').trim() }),
+            ...(itemCodeColIndex >= 0 && { itemCode: String(row[itemCodeColIndex] || '').trim() }),
+            ...(itemDescriptionColIndex >= 0 && { itemDescription: String(row[itemDescriptionColIndex] || '').trim() }),
+            ...(priceColIndex >= 0 && { price: String(row[priceColIndex] || '').trim() }),
+            // Compulsory fields
+            color: colorColIndex >= 0 ? String(row[colorColIndex] || '').trim() : '',
+            size: sizeColIndex >= 0 ? String(row[sizeColIndex] || '').trim() : '',
+            requiredQty: requiredQtyColIndex >= 0 ? this.parseNumber(row[requiredQtyColIndex]) : 0,
+            plate: plateColIndex >= 0 ? String(row[plateColIndex] || '').trim() : '',
+            ups: upsColIndex >= 0 ? this.parseNumber(row[upsColIndex]) : 0,
+            sheets: sheetsColIndex >= 0 ? this.parseNumber(row[sheetsColIndex]) : 0,
+            qtyProduced: qtyProducedColIndex >= 0 ? this.parseNumber(row[qtyProducedColIndex]) : 0,
+            excessQty: excessQtyColIndex >= 0 ? this.parseNumber(row[excessQtyColIndex]) : 0
           };
           
           console.log(`Parsed color detail at row ${i}:`, colorDetail);
           
-          // Only add if we have valid data (color, size, and at least one numeric value)
-          // Values can be 0, but we need at least color and size to be present
-          if (colorDetail.color && colorDetail.size && 
-              (colorDetail.requiredQty >= 0 || colorDetail.qtyProduced >= 0 || colorDetail.ups >= 0 || colorDetail.sheets >= 0)) {
+          // Only add if we have valid compulsory data (color, size, required qty)
+          if (colorDetail.color && colorDetail.size && colorDetail.requiredQty !== null && colorDetail.requiredQty !== undefined) {
             colorDetails.push(colorDetail);
           } else {
-            console.log(`Skipping row ${i}: insufficient valid data - Color: "${colorDetail.color}", Size: "${colorDetail.size}"`);
+            console.log(`Skipping row ${i}: missing compulsory data - Color: "${colorDetail.color}", Size: "${colorDetail.size}", Required Qty: ${colorDetail.requiredQty}`);
           }
         } else {
-          console.log(`Skipping row ${i}: insufficient columns (${row.length} < 8)`);
+          console.log(`Skipping row ${i}: insufficient columns (${row.length} < required)`);
         }
       }
 

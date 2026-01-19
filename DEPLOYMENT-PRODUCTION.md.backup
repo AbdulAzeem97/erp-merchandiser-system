@@ -1,0 +1,575 @@
+# Production Database Migration and Docker Deployment Guide
+
+This guide provides step-by-step instructions for deploying the ERP system to a new production server while preserving all production data and applying new database migrations safely.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Pre-Deployment Checklist](#pre-deployment-checklist)
+- [Step-by-Step Deployment](#step-by-step-deployment)
+- [Post-Deployment Verification](#post-deployment-verification)
+- [Rollback Procedures](#rollback-procedures)
+- [Troubleshooting](#troubleshooting)
+- [Environment Variables Reference](#environment-variables-reference)
+
+## Prerequisites
+
+Before starting the deployment, ensure you have the following installed and configured:
+
+### Required Software
+
+- **Docker** (version 20.10 or higher)
+  ```bash
+  docker --version
+  docker-compose --version
+  ```
+
+- **PostgreSQL Client Tools** (for database dump/restore)
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install postgresql-client
+  
+  # CentOS/RHEL
+  sudo yum install postgresql
+  
+  # macOS
+  brew install postgresql
+  ```
+
+- **Node.js** (version 18 or higher) - for running migration scripts
+  ```bash
+  node --version
+  ```
+
+- **Git** - for pulling latest code
+  ```bash
+  git --version
+  ```
+
+### Required Access
+
+- SSH access to current production server
+- SSH access to new production server
+- Database credentials for both servers
+- Git repository access
+
+## Pre-Deployment Checklist
+
+- [ ] Current production server is accessible
+- [ ] New production server is set up with Docker
+- [ ] Database credentials are documented
+- [ ] Backup of current production database exists
+- [ ] Git repository is accessible
+- [ ] All team members are notified of deployment window
+- [ ] Rollback plan is understood
+
+## Step-by-Step Deployment
+
+### Step 1: Pre-Deployment Backup
+
+**On Current Production Server:**
+
+1. Create a manual backup before starting:
+   ```bash
+   # Connect to current production server
+   ssh user@current-production-server
+   
+   # Create backup directory
+   mkdir -p ~/production-backups
+   
+   # Create database dump
+   pg_dump -h localhost -U erp_user -d erp_merchandiser -Fc \
+     -f ~/production-backups/pre_deployment_$(date +%Y%m%d_%H%M%S).dump
+   ```
+
+2. Verify backup file was created:
+   ```bash
+   ls -lh ~/production-backups/
+   ```
+
+### Step 2: Pull Latest Code
+
+**On New Production Server:**
+
+1. Navigate to project directory:
+   ```bash
+   cd /path/to/erp-merchandiser-system
+   ```
+
+2. Pull latest code from repository:
+   ```bash
+   # Check current branch
+   git branch
+   
+   # Pull latest changes
+   git pull origin main
+   # OR
+   git pull origin master
+   # OR your production branch name
+   ```
+
+3. Verify you have the latest migration scripts:
+   ```bash
+   ls -la scripts/
+   ls -la server/database/migrations/
+   ```
+
+### Step 3: Database Dump from Current Server
+
+**On Current Production Server:**
+
+1. Set environment variables (or use command-line arguments):
+   ```bash
+   export DB_HOST=localhost
+   export DB_PORT=5432
+   export DB_NAME=erp_merchandiser
+   export DB_USER=erp_user
+   export DB_PASSWORD=your_production_password
+   ```
+
+2. Run the dump script:
+   ```bash
+   cd /path/to/erp-merchandiser-system
+   chmod +x scripts/dump-production-database.sh
+   ./scripts/dump-production-database.sh
+   ```
+
+3. The script will create a timestamped dump file in `./database-dumps/`:
+   ```
+   database-dumps/erp_merchandiser_20241115_143022.dump
+   ```
+
+4. Verify dump file was created:
+   ```bash
+   ls -lh database-dumps/
+   ```
+
+5. Transfer dump file to new server:
+   ```bash
+   # Using SCP
+   scp database-dumps/erp_merchandiser_*.dump user@new-server:/path/to/erp-merchandiser-system/database-dumps/
+   
+   # OR using rsync
+   rsync -avz database-dumps/ user@new-server:/path/to/erp-merchandiser-system/database-dumps/
+   ```
+
+### Step 4: Database Import on New Server
+
+**On New Production Server:**
+
+1. Ensure database-dumps directory exists:
+   ```bash
+   cd /path/to/erp-merchandiser-system
+   mkdir -p database-dumps
+   ```
+
+2. Set environment variables for new server:
+   ```bash
+   export DB_HOST=localhost  # Or your database host
+   export DB_PORT=5432
+   export DB_NAME=erp_merchandiser
+   export DB_USER=erp_admin  # Or your database user
+   export DB_PASSWORD=your_new_server_password
+   ```
+
+3. Make script executable:
+   ```bash
+   chmod +x scripts/import-production-dump.sh
+   ```
+
+4. Run import script (it will find the latest dump or you can specify):
+   ```bash
+   # Auto-find latest dump
+   ./scripts/import-production-dump.sh
+   
+   # OR specify dump file
+   ./scripts/import-production-dump.sh database-dumps/erp_merchandiser_20241115_143022.dump
+   ```
+
+5. The script will:
+   - Test database connection
+   - Ask for confirmation
+   - Restore the database
+   - Verify import by checking key tables
+
+### Step 5: Run Database Migrations
+
+**On New Production Server:**
+
+1. Set environment variables (if not already set):
+   ```bash
+   export DB_HOST=localhost
+   export DB_PORT=5432
+   export DB_NAME=erp_merchandiser
+   export DB_USER=erp_admin
+   export DB_PASSWORD=your_new_server_password
+   ```
+
+2. Install Node.js dependencies (if not already installed):
+   ```bash
+   npm install
+   ```
+
+3. Run migration script:
+   ```bash
+   node scripts/run-new-migrations.js
+   ```
+
+4. The script will:
+   - Check/create migration tracking table
+   - Scan migration files
+   - Check which migrations are already applied
+   - Apply only new migrations (009, 010, etc.)
+   - Log all operations
+
+### Step 6: Docker Deployment
+
+**On New Production Server:**
+
+1. Create or update `.env` file with production settings:
+   ```bash
+   cp .env.example .env
+   # Edit .env with production values
+   ```
+
+2. Set required environment variables:
+   ```bash
+   export POSTGRES_PASSWORD=your_secure_password
+   export REDIS_PASSWORD=your_redis_password
+   export JWT_SECRET=your_jwt_secret
+   export CORS_ORIGIN=https://your-domain.com
+   ```
+
+3. Start Docker services:
+   ```bash
+   docker-compose -f docker-compose.production.yml up -d
+   ```
+
+4. The migrations service will run automatically before the backend starts.
+
+5. Monitor service startup:
+   ```bash
+   docker-compose -f docker-compose.production.yml logs -f
+   ```
+
+6. Check service status:
+   ```bash
+   docker-compose -f docker-compose.production.yml ps
+   ```
+
+### Step 7: Verification
+
+**Verify Database:**
+
+1. Check migration status:
+   ```bash
+   psql -h localhost -U erp_admin -d erp_merchandiser -c \
+     "SELECT migration_name, applied_at, status FROM schema_migrations ORDER BY applied_at DESC;"
+   ```
+
+2. Verify key tables have data:
+   ```bash
+   psql -h localhost -U erp_admin -d erp_merchandiser -c \
+     "SELECT 'users' as table, COUNT(*) as rows FROM users UNION ALL \
+      SELECT 'job_cards', COUNT(*) FROM job_cards UNION ALL \
+      SELECT 'companies', COUNT(*) FROM companies;"
+   ```
+
+**Verify Application:**
+
+1. Check backend health:
+   ```bash
+   curl http://localhost:5001/api/health
+   ```
+
+2. Check frontend:
+   ```bash
+   curl http://localhost:3000
+   ```
+
+3. Test login:
+   ```bash
+   curl -X POST http://localhost:5001/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"admin@example.com","password":"your_password"}'
+   ```
+
+4. Verify all services are running:
+   ```bash
+   docker-compose -f docker-compose.production.yml ps
+   ```
+
+## Post-Deployment Verification
+
+### Functional Tests
+
+- [ ] User login works
+- [ ] Job cards can be created/viewed
+- [ ] Prepress jobs are accessible
+- [ ] Production workflows function
+- [ ] Reports generate correctly
+- [ ] File uploads work
+- [ ] All user roles have correct permissions
+
+### Performance Checks
+
+- [ ] Page load times are acceptable
+- [ ] Database queries are fast
+- [ ] No memory leaks in logs
+- [ ] Docker containers are stable
+
+### Data Integrity
+
+- [ ] All job cards are present
+- [ ] User accounts are intact
+- [ ] Company data is correct
+- [ ] Historical data is preserved
+
+## Rollback Procedures
+
+### Quick Rollback (Before Data Changes)
+
+If issues are detected immediately after deployment:
+
+1. Stop Docker services:
+   ```bash
+   docker-compose -f docker-compose.production.yml down
+   ```
+
+2. Restore previous database dump:
+   ```bash
+   ./scripts/import-production-dump.sh database-dumps/previous_backup.dump
+   ```
+
+3. Revert code changes:
+   ```bash
+   git checkout <previous-commit-hash>
+   ```
+
+4. Restart services:
+   ```bash
+   docker-compose -f docker-compose.production.yml up -d
+   ```
+
+### Full Rollback (Complete Revert)
+
+1. Stop all services:
+   ```bash
+   docker-compose -f docker-compose.production.yml down -v
+   ```
+
+2. Restore database from pre-deployment backup:
+   ```bash
+   pg_restore -h localhost -U erp_admin -d erp_merchandiser \
+     --clean --if-exists \
+     /path/to/pre_deployment_backup.dump
+   ```
+
+3. Revert to previous code version:
+   ```bash
+   git checkout <previous-tag-or-commit>
+   ```
+
+4. Rebuild and restart:
+   ```bash
+   docker-compose -f docker-compose.production.yml build
+   docker-compose -f docker-compose.production.yml up -d
+   ```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Issue: Migration Script Fails
+
+**Symptoms:**
+```
+❌ Migration 009_add_new_feature.sql failed: relation already exists
+```
+
+**Solution:**
+- The migration runner should handle this automatically with IF NOT EXISTS
+- Check if migration was partially applied
+- Manually verify schema state:
+  ```bash
+  psql -h localhost -U erp_admin -d erp_merchandiser -c \
+    "\d table_name"
+  ```
+
+#### Issue: Database Connection Failed
+
+**Symptoms:**
+```
+❌ Error: Cannot connect to database
+```
+
+**Solution:**
+1. Verify database is running:
+   ```bash
+   docker-compose -f docker-compose.production.yml ps postgres
+   ```
+
+2. Check connection settings:
+   ```bash
+   echo $DB_HOST $DB_PORT $DB_NAME $DB_USER
+   ```
+
+3. Test connection manually:
+   ```bash
+   psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME
+   ```
+
+#### Issue: Import Fails with Permission Errors
+
+**Symptoms:**
+```
+ERROR: must be owner of database
+```
+
+**Solution:**
+- Ensure you're using the correct database user
+- Grant necessary permissions:
+  ```sql
+  GRANT ALL PRIVILEGES ON DATABASE erp_merchandiser TO erp_admin;
+  ```
+
+#### Issue: Docker Services Won't Start
+
+**Symptoms:**
+```
+ERROR: Service 'backend' failed to build
+```
+
+**Solution:**
+1. Check Docker logs:
+   ```bash
+   docker-compose -f docker-compose.production.yml logs backend
+   ```
+
+2. Verify Dockerfile exists:
+   ```bash
+   ls -la Dockerfile.backend
+   ```
+
+3. Rebuild services:
+   ```bash
+   docker-compose -f docker-compose.production.yml build --no-cache
+   ```
+
+#### Issue: Migrations Service Exits Immediately
+
+**Symptoms:**
+```
+erp-migrations-prod exited with code 1
+```
+
+**Solution:**
+1. Check migration logs:
+   ```bash
+   docker-compose -f docker-compose.production.yml logs migrations
+   ```
+
+2. Run migration manually to see detailed errors:
+   ```bash
+   node scripts/run-new-migrations.js
+   ```
+
+3. Verify database is accessible from migrations container:
+   ```bash
+   docker-compose -f docker-compose.production.yml exec migrations \
+     sh -c "node -e \"const {Pool}=require('pg');const p=new Pool({host:'postgres',user:'erp_admin',password:'${POSTGRES_PASSWORD}',database:'erp_merchandiser'});p.query('SELECT 1').then(()=>console.log('OK')).catch(e=>console.error(e));\""
+   ```
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. Check application logs:
+   ```bash
+   docker-compose -f docker-compose.production.yml logs -f
+   ```
+
+2. Check database logs:
+   ```bash
+   docker-compose -f docker-compose.production.yml logs postgres
+   ```
+
+3. Verify environment variables:
+   ```bash
+   docker-compose -f docker-compose.production.yml config
+   ```
+
+4. Check system resources:
+   ```bash
+   docker stats
+   ```
+
+## Environment Variables Reference
+
+### Database Configuration
+
+```bash
+# PostgreSQL
+DB_HOST=localhost              # Database host
+DB_PORT=5432                   # Database port
+DB_NAME=erp_merchandiser       # Database name
+DB_USER=erp_admin              # Database user
+DB_PASSWORD=secure_password     # Database password
+
+# Alternative PostgreSQL env vars (for Docker)
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=erp_merchandiser
+POSTGRES_USER=erp_admin
+POSTGRES_PASSWORD=secure_password
+```
+
+### Application Configuration
+
+```bash
+# Node.js
+NODE_ENV=production
+
+# Backend
+PORT=5001
+JWT_SECRET=your_super_secure_jwt_secret_key_2024
+CORS_ORIGIN=https://your-domain.com
+
+# Redis
+REDIS_HOST=redis
+REDIS_PORT=6379
+REDIS_PASSWORD=redis_secure_2024!
+```
+
+### Docker Compose Variables
+
+```bash
+# Ports
+POSTGRES_PORT=5432
+REDIS_PORT=6379
+BACKEND_PORT=5001
+FRONTEND_PORT=3000
+HTTP_PORT=80
+HTTPS_PORT=443
+
+# Passwords (use strong passwords in production!)
+POSTGRES_PASSWORD=erp_secure_2024!
+REDIS_PASSWORD=redis_secure_2024!
+JWT_SECRET=your_super_secure_jwt_secret_key_2024
+```
+
+## Additional Resources
+
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+- [Node.js Best Practices](https://github.com/goldbergyoni/nodebestpractices)
+
+## Support
+
+For deployment support, contact your system administrator or refer to the project's issue tracker.
+
+---
+
+**Last Updated:** November 2024
+**Version:** 1.0
+

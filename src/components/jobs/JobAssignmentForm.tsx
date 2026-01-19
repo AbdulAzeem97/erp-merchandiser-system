@@ -26,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 
 interface Company {
   id: string;
@@ -82,14 +83,15 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
     try {
       const token = localStorage.getItem('authToken');
       
+      const apiUrl = getApiUrl();
       const [companiesRes, productsRes, designersRes] = await Promise.all([
-        fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/companies`, {
+        fetch(`${apiUrl}/api/companies`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch('http://localhost:5001/api/products', {
+        fetch(`${apiUrl}/api/products`, {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
-        fetch('http://localhost:5001/api/job-assignment/designers', {
+        fetch(`${apiUrl}/api/job-assignment/designers`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
       ]);
@@ -147,7 +149,8 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
         status: 'PENDING'
       };
 
-      const jobResponse = await fetch('http://localhost:5001/api/jobs', {
+      const apiBaseUrl = getApiBaseUrl();
+      const jobResponse = await fetch(`${apiBaseUrl}/jobs`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -174,7 +177,7 @@ const JobAssignmentForm: React.FC<JobAssignmentFormProps> = ({ onJobCreated, onC
           notes: formData.assignNotes
         };
 
-        const assignmentResponse = await fetch('http://localhost:5001/api/job-assignment/assign', {
+        const assignmentResponse = await fetch(`${apiBaseUrl}/job-assignment/assign`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

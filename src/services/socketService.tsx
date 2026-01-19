@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getSocketUrl } from '../utils/apiConfig';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -24,10 +25,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     const token = localStorage.getItem('authToken');
     const user = localStorage.getItem('user');
     
+    // Use dynamic hostname detection for LAN support
+    const serverUrl = getSocketUrl();
+    
     console.log('🔌 Socket.io: Initializing connection...');
     console.log('🔌 Socket.io: Token present:', !!token);
     console.log('🔌 Socket.io: User present:', !!user);
-    console.log('🔌 Socket.io: API URL:', import.meta.env.VITE_API_URL || 'http://localhost:5001');
+    console.log('🔌 Socket.io: API URL:', serverUrl);
     
     if (!token) {
       console.log('❌ Socket.io: No auth token found, skipping socket connection');
@@ -35,7 +39,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     }
 
     // Initialize socket connection
-    const newSocket = io(import.meta.env.VITE_API_URL || 'http://localhost:5001', {
+    const newSocket = io(serverUrl, {
       auth: {
         token: token
       },

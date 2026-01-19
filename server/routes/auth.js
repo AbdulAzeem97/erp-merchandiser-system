@@ -35,9 +35,9 @@ router.post('/login', loginValidation, asyncHandler(async (req, res) => {
 
   const { email, password } = req.body;
 
-  // Find user by email
+  // Find user by email (case-insensitive)
   const userResult = await dbAdapter.query(
-    'SELECT * FROM users WHERE email = $1 AND "isActive" = true',
+    'SELECT * FROM users WHERE LOWER(email) = LOWER($1) AND "isActive" = true',
     [email]
   );
   const user = userResult.rows?.[0] || null;

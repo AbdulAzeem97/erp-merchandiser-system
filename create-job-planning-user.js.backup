@@ -1,0 +1,212 @@
+/**
+ * Create Job Planning User
+ * Email: jobplanning@horizonsourcing.com
+ * Password: jobplanning123
+ * Role: PRODUCTION_MANAGER (has access to Smart Production Dashboard with Job Planning)
+ */
+
+import bcrypt from 'bcryptjs';
+import dbAdapter from './server/database/adapter.js';
+import { v4 as uuidv4 } from 'uuid';
+
+async function createJobPlanningUser() {
+  try {
+    console.log('🔐 Creating Job Planning User...');
+    console.log('');
+    
+    // Hash the password
+    const passwordHash = await bcrypt.hash('jobplanning123', 10);
+    console.log('✅ Password hashed');
+    
+    // First, check available roles
+    const rolesResult = await dbAdapter.query(`
+      SELECT unnest(enum_range(NULL::"UserRole")) as role
+      ORDER BY role
+    `);
+    
+    const availableRoles = rolesResult.rows.map(r => r.role);
+    console.log('📋 Available roles:', availableRoles.join(', '));
+    
+    // Determine the best role for job planning
+    // PRODUCTION_MANAGER has access to Smart Production Dashboard with Job Planning
+    let userRole = 'PRODUCTION_MANAGER';
+    
+    if (!availableRoles.includes('PRODUCTION_MANAGER')) {
+      // Fallback to HEAD_OF_PRODUCTION which also has access
+      if (availableRoles.includes('HEAD_OF_PRODUCTION')) {
+        userRole = 'HEAD_OF_PRODUCTION';
+        console.log('⚠️  PRODUCTION_MANAGER not found, using HEAD_OF_PRODUCTION');
+      } else if (availableRoles.includes('ADMIN')) {
+        userRole = 'ADMIN';
+        console.log('⚠️  Using ADMIN role (has full access)');
+      } else {
+        throw new Error('No suitable role found for job planning');
+      }
+    }
+    
+    // Check if department column exists
+    const tableInfo = await dbAdapter.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'users' 
+      AND column_name IN ('department', 'username')
+    `);
+    
+    const hasDepartment = tableInfo.rows.some(r => r.column_name === 'department');
+    const hasUsername = tableInfo.rows.some(r => r.column_name === 'username');
+    
+    console.log(`📋 User table has department column: ${hasDepartment}`);
+    console.log(`📋 User table has username column: ${hasUsername}`);
+    
+    // User details - let database auto-generate ID (SERIAL)
+    const username = 'jobplanning';
+    const email = 'jobplanning@horizonsourcing.com';
+    const firstName = 'Job';
+    const lastName = 'Planning';
+    const department = hasDepartment ? 'Production' : null;
+    
+    // Create user
+    let result;
+    if (hasDepartment && hasUsername) {
+      // Full schema with department and username
+      result = await dbAdapter.query(`
+        INSERT INTO users (username, "firstName", "lastName", email, password, role, department, "isActive", "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (email) DO UPDATE SET 
+          role = $6,
+          password = $5,
+          department = $7,
+          "isActive" = $8,
+          "updatedAt" = CURRENT_TIMESTAMP
+        RETURNING id, email, role, department, username
+      `, [
+        username,
+        firstName,
+        lastName,
+        email,
+        passwordHash,
+        userRole,
+        department,
+        true
+      ]);
+    } else if (hasUsername) {
+      // Schema with username but no department
+      result = await dbAdapter.query(`
+        INSERT INTO users (username, "firstName", "lastName", email, password, role, "isActive", "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (email) DO UPDATE SET 
+          role = $6,
+          password = $5,
+          "isActive" = $7,
+          "updatedAt" = CURRENT_TIMESTAMP
+        RETURNING id, email, role, username
+      `, [
+        username,
+        firstName,
+        lastName,
+        email,
+        passwordHash,
+        userRole,
+        true
+      ]);
+    } else {
+      // Schema without username or department
+      result = await dbAdapter.query(`
+        INSERT INTO users ("firstName", "lastName", email, password, role, "isActive", "createdAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (email) DO UPDATE SET 
+          role = $5,
+          password = $4,
+          "isActive" = $6,
+          "updatedAt" = CURRENT_TIMESTAMP
+        RETURNING id, email, role
+      `, [
+        firstName,
+        lastName,
+        email,
+        passwordHash,
+        userRole,
+        true
+      ]);
+    }
+    
+    if (result.rows.length > 0) {
+      const user = result.rows[0];
+      console.log('');
+      console.log('✅ Job Planning User created/updated successfully!');
+      console.log('');
+      console.log('📋 User Details:');
+      console.log(`   ID: ${user.id}`);
+      console.log(`   Email: ${user.email}`);
+      console.log(`   Role: ${user.role}`);
+      if (user.department) {
+        console.log(`   Department: ${user.department}`);
+      }
+      if (user.username) {
+        console.log(`   Username: ${user.username}`);
+      }
+      console.log('');
+      console.log('🔑 Login Credentials:');
+      console.log(`   Email: ${email}`);
+      console.log(`   Password: jobplanning123`);
+      console.log('');
+      console.log('🚀 Access URLs:');
+      console.log(`   Smart Production Dashboard: http://192.168.2.124:8080/production/smart-dashboard`);
+      console.log(`   Production Dashboard: http://192.168.2.124:8080/production/dashboard`);
+      console.log('');
+      console.log('📊 Features Available:');
+      console.log('   ✅ Access to Smart Production Dashboard');
+      console.log('   ✅ View all jobs requiring planning');
+      console.log('   ✅ Create job production plans');
+      console.log('   ✅ Plan material sizes and sheet optimization');
+      console.log('   ✅ Calculate cutting layouts and costs');
+      console.log('   ✅ Apply production plans to jobs');
+      console.log('');
+    } else {
+      console.log('⚠️  User creation failed');
+      process.exit(1);
+    }
+    
+    process.exit(0);
+  } catch (error) {
+    console.error('');
+    console.error('❌ Error creating user:', error.message);
+    console.error('');
+    console.error('Stack trace:', error.stack);
+    process.exit(1);
+  }
+}
+
+// Initialize database adapter and create user
+(async () => {
+  try {
+    // Set environment variables for database connection
+    process.env.DB_USER = process.env.DB_USER || 'erp_user';
+    process.env.DB_PASSWORD = process.env.DB_PASSWORD || 'DevPassword123!';
+    process.env.DB_HOST = process.env.DB_HOST || 'localhost';
+    process.env.DB_NAME = process.env.DB_NAME || 'erp_merchandiser';
+    process.env.DB_PORT = process.env.DB_PORT || '5432';
+    
+    console.log('📡 Connecting to database...');
+    console.log(`   Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);
+    console.log(`   Database: ${process.env.DB_NAME}`);
+    console.log(`   User: ${process.env.DB_USER}`);
+    console.log('');
+    
+    await dbAdapter.initialize();
+    console.log('✅ Database connected');
+    console.log('');
+    
+    await createJobPlanningUser();
+  } catch (error) {
+    console.error('');
+    console.error('❌ Database initialization failed:', error.message);
+    console.error('');
+    console.error('💡 Troubleshooting:');
+    console.error('1. Make sure PostgreSQL is running');
+    console.error('2. Check your database credentials in .env file');
+    console.error('3. Verify database connection settings');
+    process.exit(1);
+  }
+})();
+

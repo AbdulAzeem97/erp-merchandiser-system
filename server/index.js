@@ -33,8 +33,11 @@ import itemSpecificationsRoutes from './routes/itemSpecifications.js';
 import procurementRoutes from './routes/procurement.js';
 import workflowRoutes, { setWorkflowSocketHandler } from './routes/workflow.js';
 import cuttingRoutes from './routes/cutting.js';
+import offsetPrintingRoutes from './routes/offsetPrinting.js';
 import productionRoutes from './routes/production.js';
 import smartDashboardRoutes from './routes/smartDashboard.js';
+import healthRoutes from './routes/health.js';
+import directorRoutes from './routes/director.js';
 
 // Import middleware
 import { authenticateToken } from './middleware/auth.js';
@@ -63,12 +66,17 @@ const io = new Server(server, {
       'http://localhost:8082',
       'http://localhost:8083',
       'http://localhost:8084',
-      'http://localhost:8081',
       'http://localhost:3000',
-      /^http:\/\/192\.168\.\d+\.\d+:8080$/,  // Allow local network access
-      /^http:\/\/10\.\d+\.\d+\.\d+:8080$/,   // Allow local network access
-      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:8080$/,  // Allow local network access
-      `http://192.168.2.124:8080`  // Specific LAN IP for this deployment
+      // Allow local network access for frontend (port 8080-8084)
+      /^http:\/\/192\.168\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+      // Allow local network access for backend API (port 5001)
+      /^http:\/\/192\.168\.\d+\.\d+:5001$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:5001$/,
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:5001$/,
+      `http://192.168.2.124:8080`,  // Specific LAN IP for this deployment
+      `http://192.168.2.124:5001`   // Backend access from LAN
     ],
     credentials: true,
     methods: ['GET', 'POST']
@@ -126,10 +134,16 @@ const corsOptions = {
     'http://localhost:8083',
     'http://localhost:8084',
     'http://localhost:3000',
-    /^http:\/\/192\.168\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,  // Allow local network access
-    /^http:\/\/10\.\d+\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,   // Allow local network access
-    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,  // Allow local network access
-    `http://192.168.2.124:8080`  // Specific LAN IP for this deployment
+    // Allow local network access for frontend (port 8080-8084)
+    /^http:\/\/192\.168\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+    /^http:\/\/10\.\d+\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:(8080|8081|8082|8083|8084)$/,
+    // Allow local network access for backend API (port 5001)
+    /^http:\/\/192\.168\.\d+\.\d+:5001$/,
+    /^http:\/\/10\.\d+\.\d+\.\d+:5001$/,
+    /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:5001$/,
+    `http://192.168.2.124:8080`,  // Specific LAN IP for this deployment
+    `http://192.168.2.124:5001`   // Backend access from LAN
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -164,6 +178,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // API routes
+app.use('/api/health', healthRoutes);
+app.use('/api/director', directorRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes); // Re-enabled with SQLite syntax
 app.use('/api/jobs', jobRoutes); // Re-enabled for job lifecycle
@@ -186,6 +202,7 @@ app.use('/api/job-assignment', jobAssignmentRoutes);
 app.use('/api/job-assignment-history', authenticateToken, jobAssignmentHistoryRoutes);
 app.use('/api/workflow', workflowRoutes);
 app.use('/api/cutting', cuttingRoutes);
+app.use('/api/offset-printing', offsetPrintingRoutes);
 // Register smart-dashboard routes BEFORE general production routes to avoid conflicts
 app.use('/api/production/smart-dashboard', authenticateToken, smartDashboardRoutes);
 console.log('✅ Smart Dashboard routes registered at /api/production/smart-dashboard');

@@ -51,7 +51,8 @@ import {
   RefreshCw,
   Layers,
   MonitorSpeaker,
-  ExternalLink
+  ExternalLink,
+  GitCompare
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GoogleDrivePreview } from '../ui/GoogleDrivePreview';
@@ -65,12 +66,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 import { MainLayout } from '../layout/MainLayout';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 import { authAPI, jobsAPI, prepressWorkflowAPI, processSequencesAPI, usersAPI } from '@/services/api';
 import { useSocket } from '@/services/socketService.tsx';
 import PrepressWorkflowDisplay from '../prepress/PrepressWorkflowDisplay';
 import ProcessSequenceModal from '../designer/ProcessSequenceModal';
+import { RatioLayoutComparison } from '../ratio/RatioLayoutComparison';
+import { PDFAnnotationModal } from '../pdf/PDFAnnotationModal';
 
 interface HodPrepressDashboardProps {
   onNavigate?: (page: string) => void;
@@ -359,6 +363,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
   const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
   const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
+  const [isRatioPreviewOpen, setIsRatioPreviewOpen] = useState(false);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+  const [isAnnotationModalOpen, setIsAnnotationModalOpen] = useState(false);
+  const [annotationPdfUrl, setAnnotationPdfUrl] = useState('');
+  const [annotationJobId, setAnnotationJobId] = useState<string>('');
   const [markedItems, setMarkedItems] = useState<Set<number>>(new Set());
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [selectedJobForStatusUpdate, setSelectedJobForStatusUpdate] = useState<HODJob | null>(null);
@@ -426,7 +435,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           try {
             // Fetch complete product information
             if (job.productId) {
-              const productResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/products/${job.productId}/complete-process-info`, {
+              const apiUrl = getApiUrl();
+              const productResponse = await fetch(`${apiUrl}/api/products/${job.productId}/complete-process-info`, {
                 headers: {
                   'Authorization': `Bearer ${localStorage.getItem('authToken')}`
                 }
@@ -440,7 +450,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             // Fetch process sequence for the product type
             if (completeProductInfo?.product?.product_type) {
               try {
-                const processResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/process-sequences/by-product-type?product_type=${encodeURIComponent(completeProductInfo.product.product_type)}&product_id=${job.productId}`, {
+                const processResponse = await fetch(`${apiUrl}/api/process-sequences/by-product-type?product_type=${encodeURIComponent(completeProductInfo.product.product_type)}&product_id=${job.productId}`, {
                   headers: {
                     'Authorization': `Bearer ${localStorage.getItem('authToken')}`
                   }
@@ -460,7 +470,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           // Fetch item specifications for this job
           let itemSpecifications = null;
           try {
-            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+            const itemSpecsResponse = await fetch(`${getApiUrl()}/api/jobs/${job.id}/item-specifications`, {
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('authToken')}`
               }
@@ -610,7 +620,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     try {
       console.log('🔄 Loading ratio report for job:', jobId);
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/ratio-report`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -625,6 +635,35 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           setIsRatioReportOpen(true);
           setMarkedItems(new Set()); // Reset marked items when opening new report
           console.log('📊 Ratio report loaded:', data.ratioReport);
+        } else {
+          toast.info('No ratio report found for this job');
+        }
+      } else if (response.status === 404) {
+        toast.info('No ratio report uploaded for this job yet');
+      } else {
+        toast.error('Failed to load ratio report');
+      }
+    } catch (error) {
+      console.error('Error loading ratio report:', error);
+      toast.error('Error loading ratio report');
+    }
+  };
+
+  // Preview ratio report (condensed view)
+  const previewRatioReport = async (jobId: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/ratio-report`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.ratioReport) {
+          setRatioReport(data.ratioReport);
+          setIsRatioPreviewOpen(true);
         } else {
           toast.info('No ratio report found for this job');
         }
@@ -666,7 +705,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${ratioReport.job_card_id}/ratio-report-pdf`, {
+      const response = await fetch(`${getApiUrl()}/api/jobs/${ratioReport.job_card_id}/ratio-report-pdf`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -834,7 +873,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       console.log(`👤 Assigning job ${job.job_card_id} to designer ${designer.name}`);
       
       // Update job assignment in backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/assign`, {
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/assign`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -906,7 +945,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       console.log(`🚀 HOD starting job ${job.job_card_id} - HOD User ID: ${hodUserId}`);
       
       // First, assign HOD as the designer
-      const assignResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/assign`, {
+      const assignResponse = await fetch(`${getApiUrl()}/api/jobs/${jobId}/assign`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -923,7 +962,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       }
 
       // Then update job status to IN_PROGRESS
-      const statusResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+      const statusResponse = await fetch(`${getApiUrl()}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1012,7 +1051,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           return;
         }
 
-        const submitResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${jobId}/submit-to-qa`, {
+        const apiBaseUrl = getApiBaseUrl();
+        const submitResponse = await fetch(`${apiBaseUrl}/jobs/${jobId}/submit-to-qa`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1092,7 +1132,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         requestBody.finalDesignLink = designLink.trim();
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1258,7 +1299,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       console.log(`🔄 Reassigning job ${jobId} to designer ${designer.name} (ID: ${newDesignerId})`);
       
       // Call the reassignment API
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/job-assignment/assign`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/job-assignment/assign`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1888,16 +1930,44 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                       View Process Sequence
                                     </Button>
 
-                                    {/* Ratio Report Button */}
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => loadRatioReport(job.id)}
-                                      className="w-full justify-start gap-2 bg-white hover:bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-700"
-                                    >
-                                      <BarChart3 className="h-4 w-4" />
-                                      View Ratio Report
-                                    </Button>
+                                    {/* Ratio Report Buttons */}
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => previewRatioReport(job.id)}
+                                        className="flex-1 justify-start gap-2 bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 text-blue-700"
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                        Preview
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => loadRatioReport(job.id)}
+                                        className="flex-1 justify-start gap-2 bg-white hover:bg-purple-50 border-purple-200 hover:border-purple-300 text-purple-700"
+                                      >
+                                        <BarChart3 className="h-4 w-4" />
+                                        View Report
+                                      </Button>
+                                    </div>
+
+                                    {/* Final Design Annotation Button */}
+                                    {job.final_design_link && (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setAnnotationPdfUrl(job.final_design_link || '');
+                                          setAnnotationJobId(job.id);
+                                          setIsAnnotationModalOpen(true);
+                                        }}
+                                        className="w-full justify-start gap-2 bg-white hover:bg-green-50 border-green-200 hover:border-green-300 text-green-700"
+                                      >
+                                        <FileText className="h-4 w-4" />
+                                        Annotate Final Design
+                                      </Button>
+                                    )}
 
                                     {/* Plate & Machine Info Button */}
                                     <Button
@@ -2476,6 +2546,18 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-3 py-2 text-left">Status</th>
+                          {ratioReport.color_details?.[0]?.epNo !== undefined && (
+                            <th className="px-3 py-2 text-left">EP NO</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemCode !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Code</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemDescription !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Description</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.price !== undefined && (
+                            <th className="px-3 py-2 text-left">Price</th>
+                          )}
                           <th className="px-3 py-2 text-left">Color</th>
                           <th className="px-3 py-2 text-left">Size</th>
                           <th className="px-3 py-2 text-left">Required Qty</th>
@@ -2505,6 +2587,18 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                   <div className="h-4 w-4 border-2 border-gray-300 rounded-full" />
                                 )}
                               </td>
+                              {detail.epNo !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.epNo)}</td>
+                              )}
+                              {detail.itemCode !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.itemCode)}</td>
+                              )}
+                              {detail.itemDescription !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.itemDescription)}</td>
+                              )}
+                              {detail.price !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.price)}</td>
+                              )}
                               <td className="px-3 py-2">{safeRender(detail.color)}</td>
                               <td className="px-3 py-2">{safeRender(detail.size)}</td>
                               <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
@@ -2537,28 +2631,34 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                     Plate Distribution
                   </h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(ratioReport.plate_distribution).map(([plate, count], index) => (
-                      <motion.div
-                        key={plate}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className="bg-white/70 backdrop-blur-sm p-4 rounded-lg border border-yellow-200 hover:shadow-md transition-all duration-300 hover:scale-105"
-                      >
-                        <div className="text-center">
-                          <div className="text-2xl font-bold text-yellow-600 mb-1">{safeRender(count)}</div>
-                          <div className="text-sm text-yellow-700 font-medium">Plate {safeRender(plate)}</div>
-                          <div className="w-full bg-yellow-200 rounded-full h-2 mt-2">
-                            <motion.div
-                              className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full"
-                              initial={{ width: 0 }}
-                              animate={{ width: `${Math.min(100, (Number(count) / 10) * 100)}%` }}
-                              transition={{ delay: index * 0.1 + 0.3, duration: 0.8 }}
-                            />
+                    {Object.entries(ratioReport.plate_distribution).map(([plate, data], index) => {
+                      // Handle both old format (number) and new format (object with sheets, colors, totalUPS)
+                      const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
+                        ? (data as any).sheets 
+                        : (typeof data === 'number' ? data : 0);
+                      return (
+                        <motion.div
+                          key={plate}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.1 }}
+                          className="bg-white/70 backdrop-blur-sm p-4 rounded-lg border border-yellow-200 hover:shadow-md transition-all duration-300 hover:scale-105"
+                        >
+                          <div className="text-center">
+                            <div className="text-2xl font-bold text-yellow-600 mb-1">{safeRender(sheets)}</div>
+                            <div className="text-sm text-yellow-700 font-medium">Plate {safeRender(plate)}</div>
+                            <div className="w-full bg-yellow-200 rounded-full h-2 mt-2">
+                              <motion.div
+                                className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${Math.min(100, (Number(sheets) / 10) * 100)}%` }}
+                                transition={{ delay: index * 0.1 + 0.3, duration: 0.8 }}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      </motion.div>
-                    ))}
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -3208,6 +3308,117 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Ratio Report Preview Modal */}
+      <Dialog open={isRatioPreviewOpen} onOpenChange={setIsRatioPreviewOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Ratio Report Preview - {ratioReport?.job_number}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {ratioReport && (
+            <div className="space-y-4">
+              {/* Key Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {ratioReport.total_sheets !== null && ratioReport.total_sheets !== undefined ? ratioReport.total_sheets : 'N/A'}
+                  </div>
+                  <div className="text-sm text-blue-700">Total Sheets</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {ratioReport.total_plates !== null && ratioReport.total_plates !== undefined ? ratioReport.total_plates : 'N/A'}
+                  </div>
+                  <div className="text-sm text-green-700">Total Plates</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {typeof ratioReport.efficiency_percentage === 'number'
+                      ? `${ratioReport.efficiency_percentage.toFixed(1)}%`
+                      : 'N/A'}
+                  </div>
+                  <div className="text-sm text-purple-700">Efficiency</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {ratioReport.excess_qty !== null && ratioReport.excess_qty !== undefined ? ratioReport.excess_qty : 'N/A'}
+                  </div>
+                  <div className="text-sm text-orange-700">Excess Qty</div>
+                </div>
+              </div>
+
+              {/* Order Info */}
+              <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><strong>Factory:</strong> {ratioReport.factory_name}</div>
+                  <div><strong>PO Number:</strong> {ratioReport.po_number}</div>
+                  <div><strong>Brand:</strong> {ratioReport.brand_name}</div>
+                  <div><strong>Item:</strong> {ratioReport.item_name}</div>
+                </div>
+              </div>
+
+              {/* Color Details Count */}
+              {ratioReport.color_details && ratioReport.color_details.length > 0 && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>{ratioReport.color_details.length}</strong> color/size combinations
+                  </p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsRatioPreviewOpen(false);
+                    setIsRatioReportOpen(true);
+                  }}
+                >
+                  View Full Report
+                </Button>
+                <Button
+                  onClick={downloadRatioReportPDF}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ratio vs Final Layout Comparison Modal */}
+      {ratioReport && prepressJobs.find(j => j.id === ratioReport.job_card_id.toString()) && (
+        <RatioLayoutComparison
+          ratioReport={ratioReport}
+          finalLayoutUrl={prepressJobs.find(j => j.id === ratioReport.job_card_id.toString())?.final_design_link || ''}
+          jobNumber={ratioReport.job_number}
+          jobCardId={ratioReport.job_card_id}
+          isOpen={isComparisonOpen}
+          onClose={() => setIsComparisonOpen(false)}
+        />
+      )}
+
+      {/* PDF Annotation Modal */}
+      {annotationPdfUrl && annotationJobId && (
+        <PDFAnnotationModal
+          pdfUrl={annotationPdfUrl}
+          jobCardId={parseInt(annotationJobId)}
+          jobNumber={prepressJobs.find(j => j.id === annotationJobId)?.job_card_id || undefined}
+          isOpen={isAnnotationModalOpen}
+          onClose={() => {
+            setIsAnnotationModalOpen(false);
+            setAnnotationPdfUrl('');
+            setAnnotationJobId('');
+          }}
+        />
+      )}
     </MainLayout>
   );
 };

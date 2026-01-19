@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '@/components/layout/MainLayout';
 import ClockTimer from '@/components/ui/ClockTimer';
@@ -75,8 +76,9 @@ const SmartProductionDashboard: React.FC<SmartProductionDashboardProps> = ({ onL
     try {
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs`,
+        `${apiUrl}/api/production/smart-dashboard/jobs`,
         {
           headers: {
             'Authorization': `Bearer ${token}`

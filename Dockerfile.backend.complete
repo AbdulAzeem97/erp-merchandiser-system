@@ -1,0 +1,51 @@
+# Backend Dockerfile for Complete Docker Setup
+FROM node:18-alpine
+
+# Install PostgreSQL client and other utilities
+RUN apk update && apk add --no-cache postgresql15-client wget curl bash
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma
+
+# Install dependencies (including Prisma for generation)
+RUN npm ci && npm cache clean --force
+
+# Generate Prisma Client for Linux
+RUN npx prisma generate
+
+# Copy application code
+COPY server ./server
+
+# Create directories for logs and uploads
+RUN mkdir -p /app/logs /app/uploads
+
+# Create wait-for-postgres script
+RUN echo '#!/bin/sh' > /wait-for-postgres.sh && \
+    echo 'set -e' >> /wait-for-postgres.sh && \
+    echo 'host="$1"' >> /wait-for-postgres.sh && \
+    echo 'shift' >> /wait-for-postgres.sh && \
+    echo 'cmd="$@"' >> /wait-for-postgres.sh && \
+    echo 'echo "Waiting for postgres at $host..."' >> /wait-for-postgres.sh && \
+    echo 'until pg_isready -h "$host" -U "$DB_USER" -d "$DB_NAME" -q; do' >> /wait-for-postgres.sh && \
+    echo '  echo "PostgreSQL is unavailable - sleeping"' >> /wait-for-postgres.sh && \
+    echo '  sleep 2' >> /wait-for-postgres.sh && \
+    echo 'done' >> /wait-for-postgres.sh && \
+    echo 'echo "PostgreSQL is up - executing command"' >> /wait-for-postgres.sh && \
+    echo 'sleep 5' >> /wait-for-postgres.sh && \
+    echo 'exec $cmd' >> /wait-for-postgres.sh && \
+    chmod +x /wait-for-postgres.sh
+
+# Expose port
+EXPOSE 5001
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:5001/api/health || exit 1
+
+# Start command with wait-for-postgres
+CMD ["/wait-for-postgres.sh", "postgres", "node", "server/index.js"]
+

@@ -51,6 +51,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 
 interface AdminDashboardProps {
@@ -110,7 +111,8 @@ export const AdminMonitoringDashboard: React.FC<AdminDashboardProps> = ({ onLogo
       setIsLoading(true);
       
       // Load stats
-      const statsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/stats/dashboard`, {
+      const apiUrl = getApiUrl();
+      const statsResponse = await fetch(`${apiUrl}/api/job-lifecycle/stats/dashboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -122,7 +124,7 @@ export const AdminMonitoringDashboard: React.FC<AdminDashboardProps> = ({ onLogo
       }
 
       // Load all jobs for system metrics
-      const jobsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle`, {
+      const jobsResponse = await fetch(`${apiUrl}/api/job-lifecycle`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

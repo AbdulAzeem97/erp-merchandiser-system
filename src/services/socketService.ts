@@ -6,6 +6,7 @@ import {
   NotificationEvent 
 } from '../types/prepress';
 import { DashboardKPIUpdateEvent } from '../types/reports';
+import { getSocketUrl } from '../utils/apiConfig';
 
 class SocketService {
   private socket: Socket | null = null;
@@ -21,7 +22,8 @@ class SocketService {
         return;
       }
 
-      const serverUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+      // Use dynamic hostname detection for LAN support
+      const serverUrl = getSocketUrl();
       
       this.socket = io(serverUrl, {
         auth: {

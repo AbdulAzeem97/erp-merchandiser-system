@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { MainLayout } from '../layout/MainLayout';
 import { prepressAPI, authAPI, jobsAPI, processSequencesAPI, prepressWorkflowAPI } from '@/services/api';
 import { useSocket } from '@/services/socketService.tsx';
@@ -410,7 +411,8 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
       console.log(`🚀 Starting job ${job.job_card_id} for designer`);
       
       // Update job status in backend
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

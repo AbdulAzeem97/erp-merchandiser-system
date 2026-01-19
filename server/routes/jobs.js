@@ -1,8 +1,10 @@
 import express from 'express';
 import { body, validationResult, query } from 'express-validator';
+import jwt from 'jsonwebtoken';
 import dbAdapter from '../database/adapter.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { requirePermission, authenticateToken } from '../middleware/rbac.js';
+import jobReportService from '../services/jobReportService.js';
 
 const router = express.Router();
 
@@ -21,11 +23,51 @@ const jobValidation = [
   }),
 ];
 
+// Optional authentication middleware - sets req.user if token exists, but doesn't fail if missing
+const optionalAuth = async (req, res, next) => {
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (token) {
+      // Try to authenticate
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      
+      const userResult = await dbAdapter.query(
+        'SELECT id, username, email, "firstName", "lastName", role, "isActive" FROM users WHERE id = $1',
+        [decoded.id]
+      );
+      const user = userResult.rows?.[0] || null;
+      
+      if (user && user.isActive) {
+        req.user = {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          isActive: user.isActive
+        };
+      }
+    }
+  } catch (error) {
+    // Ignore auth errors - continue without user
+  }
+  next();
+};
+
 // Get all jobs with pagination and filtering
-router.get('/', asyncHandler(async (req, res) => {
+// Uses optional auth - if authenticated, filter by user; if not, show all (backward compatibility)
+router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   try {
     console.log('Getting jobs...');
     console.log('Query params:', req.query);
+    
+    // Get pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
     
     // Check if workflow columns exist
     const columnCheck = await dbAdapter.query(`
@@ -43,6 +85,34 @@ router.get('/', asyncHandler(async (req, res) => {
     const whereConditions = [];
     const queryParams = [];
     let paramIndex = 1;
+    
+    // Check user role for job filtering
+    // Admin/manager roles can see all jobs, regular users only see their own
+    const canViewAll = ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'DIRECTOR'].includes(req.user?.role);
+    const isSeniorMerchandiser = req.user?.role === 'SENIOR_MERCHANDISER';
+    
+    // Add user-based filtering for jobs (unless admin/manager)
+    if (!canViewAll && req.user?.id) {
+      if (isSeniorMerchandiser) {
+        // Senior merchandisers see their own jobs + jobs from their assistant merchandisers
+        whereConditions.push(`(
+          jc."createdById" = $${paramIndex} 
+          OR jc."createdById" IN (
+            SELECT id FROM users 
+            WHERE manager_id = $${paramIndex} 
+            AND role = 'ASSISTANT_MERCHANDISER'
+          )
+          OR jc."createdById" IS NULL
+        )`);
+        queryParams.push(req.user.id);
+        paramIndex++;
+      } else {
+        // Other roles (including assistant merchandisers) see only their own jobs
+        whereConditions.push(`(jc."createdById" = $${paramIndex} OR jc."createdById" IS NULL)`);
+        queryParams.push(req.user.id);
+        paramIndex++;
+      }
+    }
     
     if (req.query.status) {
       whereConditions.push(`jc.status = $${paramIndex}`);
@@ -69,6 +139,17 @@ router.get('/', asyncHandler(async (req, res) => {
          NULL as workflow_status,
          NULL as status_message`;
     
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM job_cards jc
+      LEFT JOIN products p ON jc."productId" = p.id
+      ${whereClause}
+    `;
+    const countResult = await dbAdapter.query(countQuery, queryParams);
+    const total = parseInt(countResult.rows[0]?.total || 0);
+    const totalPages = Math.ceil(total / limit);
+    
     // Enhanced query with proper joins to get complete job information including workflow data
   const jobsQuery = `
     SELECT 
@@ -90,6 +171,7 @@ router.get('/', asyncHandler(async (req, res) => {
         u."firstName" || ' ' || u."lastName" as assigned_designer_name,
         u.email as assigned_designer_email,
         u.phone as assigned_designer_phone,
+        creator."firstName" || ' ' || creator."lastName" as created_by_name,
         pj.id as prepress_job_id,
         pj.required_plate_count,
         pj.ctp_machine_id,
@@ -112,13 +194,15 @@ router.get('/', asyncHandler(async (req, res) => {
       LEFT JOIN categories cat ON p."categoryId" = cat.id
       LEFT JOIN companies c ON jc."companyId" = c.id
       LEFT JOIN users u ON jc."assignedToId" = u.id
+      LEFT JOIN users creator ON jc."createdById" = creator.id
       LEFT JOIN prepress_jobs pj ON jc.id = pj.job_card_id
       LEFT JOIN ctp_machines cm ON pj.ctp_machine_id = cm.id
     ${whereClause}
       ORDER BY jc."createdAt" DESC
-      LIMIT 20
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
+    queryParams.push(limit, offset);
     const jobsResult = await dbAdapter.query(jobsQuery, queryParams);
     const jobs = jobsResult.rows;
 
@@ -191,10 +275,11 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json({
     jobs: enhancedJobs,
     pagination: {
-        page: 1,
-        limit: 20,
-        total: enhancedJobs.length,
-        pages: 1
+        page: page,
+        limit: limit,
+        total: total,
+        pages: totalPages,
+        hasMore: page < totalPages
       }
     });
   } catch (error) {
@@ -363,6 +448,306 @@ router.get('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, r
   }
 }));
 
+// Get PDF annotations for a job (MUST be before /:id route)
+router.get('/:jobId/annotations', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { pdf_url } = req.query;
+
+    if (!pdf_url) {
+      return res.status(400).json({ error: 'pdf_url query parameter is required' });
+    }
+
+    const result = await dbAdapter.query(`
+      SELECT * FROM pdf_annotations 
+      WHERE job_card_id = $1 AND pdf_url = $2
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `, [jobId, pdf_url]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'No annotations found for this PDF' 
+      });
+    }
+
+    res.json({
+      success: true,
+      annotations: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error fetching annotations:', error);
+    res.status(500).json({ error: 'Server error', message: error.message });
+  }
+}));
+
+// Create or update PDF annotations for a job (MUST be before /:id route)
+router.post('/:jobId/annotations', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { pdf_url, annotations } = req.body;
+
+    if (!pdf_url || !annotations || !Array.isArray(annotations)) {
+      return res.status(400).json({ 
+        error: 'pdf_url and annotations array are required' 
+      });
+    }
+
+    // Verify job exists
+    const jobCheck = await dbAdapter.query('SELECT id FROM job_cards WHERE id = $1', [jobId]);
+    if (jobCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Check if annotations already exist for this PDF
+    const existing = await dbAdapter.query(`
+      SELECT id FROM pdf_annotations 
+      WHERE job_card_id = $1 AND pdf_url = $2
+    `, [jobId, pdf_url]);
+
+    let result;
+    if (existing.rows.length > 0) {
+      // Update existing annotations
+      result = await dbAdapter.query(`
+        UPDATE pdf_annotations 
+        SET annotations = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE job_card_id = $2 AND pdf_url = $3
+        RETURNING *
+      `, [JSON.stringify(annotations), jobId, pdf_url]);
+    } else {
+      // Create new annotations
+      result = await dbAdapter.query(`
+        INSERT INTO pdf_annotations (job_card_id, pdf_url, annotations, created_by)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `, [jobId, pdf_url, JSON.stringify(annotations), req.user.id]);
+    }
+
+    console.log(`✅ PDF annotations ${existing.rows.length > 0 ? 'updated' : 'created'} successfully for job ${jobId}`);
+    res.json({
+      success: true,
+      annotations: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error saving annotations:', error);
+    res.status(500).json({ error: 'Server error', message: error.message });
+  }
+}));
+
+// Delete a specific annotation (MUST be before /:id route)
+router.delete('/:jobId/annotations/:annotationId', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const { jobId, annotationId } = req.params;
+    const { pdf_url } = req.query;
+
+    if (!pdf_url) {
+      return res.status(400).json({ error: 'pdf_url query parameter is required' });
+    }
+
+    // Get current annotations
+    const current = await dbAdapter.query(`
+      SELECT annotations FROM pdf_annotations 
+      WHERE job_card_id = $1 AND pdf_url = $2
+    `, [jobId, pdf_url]);
+
+    if (current.rows.length === 0) {
+      return res.status(404).json({ error: 'Annotations not found' });
+    }
+
+    // Remove the annotation from the array
+    const annotations = current.rows[0].annotations || [];
+    const filtered = annotations.filter(ann => ann.id !== annotationId);
+
+    // Update annotations
+    const result = await dbAdapter.query(`
+      UPDATE pdf_annotations 
+      SET annotations = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE job_card_id = $2 AND pdf_url = $3
+      RETURNING *
+    `, [JSON.stringify(filtered), jobId, pdf_url]);
+
+    res.json({
+      success: true,
+      annotations: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Error deleting annotation:', error);
+    res.status(500).json({ error: 'Server error', message: error.message });
+  }
+}));
+
+// ============================================
+// JOB REPORT ROUTES (must be before /:id route)
+// ============================================
+
+// Get job report with comprehensive filtering
+// GET /api/jobs/report
+router.get('/report', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const filters = {
+      po_status: req.query.po_status || 'all',
+      status: req.query.status || null,
+      brand: req.query.brand || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      department: req.query.department || null,
+      assistant_merchandiser_id: req.query.assistant_merchandiser_id || null,
+      created_by_id: req.query.created_by_id || null,
+      page: parseInt(req.query.page) || 1,
+      limit: parseInt(req.query.limit) || 1000
+    };
+
+    const result = await jobReportService.getFilteredJobs(filters, req.user);
+
+    res.json({
+      success: true,
+      data: result.jobs,
+      total: result.total,
+      statistics: result.statistics,
+      filters: result.filters
+    });
+  } catch (error) {
+    console.error('Error generating job report:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to generate job report',
+      message: error.message
+    });
+  }
+}));
+
+// Get available brands for filtering
+// GET /api/jobs/report/brands
+router.get('/report/brands', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const brands = await jobReportService.getAvailableBrands();
+    res.json({
+      success: true,
+      brands
+    });
+  } catch (error) {
+    console.error('Error getting brands:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get brands'
+    });
+  }
+}));
+
+// Get assistant merchandisers for senior merchandiser
+// GET /api/jobs/report/assistants
+router.get('/report/assistants', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    if (req.user.role !== 'SENIOR_MERCHANDISER') {
+      return res.json({
+        success: true,
+        assistants: []
+      });
+    }
+
+    const assistants = await jobReportService.getAssistantMerchandisers(req.user.id);
+    res.json({
+      success: true,
+      assistants
+    });
+  } catch (error) {
+    console.error('Error getting assistant merchandisers:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get assistant merchandisers'
+    });
+  }
+}));
+
+// Export job report to CSV
+// GET /api/jobs/report/export/csv
+router.get('/report/export/csv', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const filters = {
+      po_status: req.query.po_status || 'all',
+      status: req.query.status || null,
+      brand: req.query.brand || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      department: req.query.department || null,
+      assistant_merchandiser_id: req.query.assistant_merchandiser_id || null,
+      created_by_id: req.query.created_by_id || null
+    };
+
+    const result = await jobReportService.getFilteredJobs(filters, req.user);
+    const csvData = jobReportService.exportToCSV(result.jobs);
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `job_report_${timestamp}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csvData);
+  } catch (error) {
+    console.error('Error exporting job report to CSV:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export job report to CSV',
+      message: error.message
+    });
+  }
+}));
+
+// Export job report to PDF
+// GET /api/jobs/report/export/pdf
+router.get('/report/export/pdf', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const filters = {
+      po_status: req.query.po_status || 'all',
+      status: req.query.status || null,
+      brand: req.query.brand || null,
+      date_from: req.query.date_from || null,
+      date_to: req.query.date_to || null,
+      department: req.query.department || null,
+      assistant_merchandiser_id: req.query.assistant_merchandiser_id || null,
+      created_by_id: req.query.created_by_id || null
+    };
+
+    const result = await jobReportService.getFilteredJobs(filters, req.user);
+    
+    if (!result.jobs || result.jobs.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'No jobs found matching the filters'
+      });
+    }
+
+    // Generate PDF
+    const pdfBuffer = await jobReportService.exportToPDF(
+      result.jobs,
+      filters,
+      result.statistics
+    );
+    
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `job_report_${timestamp}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error exporting job report to PDF:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to export job report to PDF',
+      message: error.message
+    });
+  }
+}));
+
+// ============================================
+// END JOB REPORT ROUTES
+// ============================================
+
 // Get job by ID
 router.get('/:id', asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -403,7 +788,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 // Create new job
-router.post('/', jobValidation, asyncHandler(async (req, res) => {
+router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     console.log('Validation errors:', errors.array());
@@ -431,8 +816,19 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     customer_phone,
     customer_address,
     assigned_designer_id,
-    client_layout_link
+    client_layout_link,
+    without_po
   } = req.body;
+
+  // Validate PO number based on without_po flag
+  const isWithoutPO = without_po === true || without_po === 'true';
+  if (!isWithoutPO && (!po_number || po_number.trim() === '')) {
+    return res.status(400).json({
+      error: 'Validation error',
+      message: 'PO number is required unless "Without PO" option is selected',
+      field: 'po_number'
+    });
+  }
 
   // Check if job card ID already exists
   const existingJob = await dbAdapter.query(
@@ -452,8 +848,9 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     INSERT INTO job_cards (
       "jobNumber", "productId", "companyId", "sequenceId", quantity, "dueDate",
       notes, urgency, status, "totalCost", "createdById", "updatedAt", po_number,
-      customer_name, customer_email, customer_phone, customer_address, "assignedToId", client_layout_link
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      customer_name, customer_email, customer_phone, customer_address, "assignedToId", client_layout_link,
+      without_po, po_required
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
     RETURNING *
   `;
 
@@ -466,29 +863,103 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     'URGENT': 'URGENT'
   };
 
-  const result = await dbAdapter.query(query, [
-    job_card_id,
-    product_id,
-    company_id || 1, // Default company ID
-    1, // Default sequence ID
-    quantity,
-    delivery_date,
-    customer_notes || '',
-    urgencyMap[priority] || 'NORMAL',
-    status,
-    0, // totalCost - default to 0
-    req.user?.id || 1,
-    new Date(), // updatedAt - current timestamp
-    po_number || '', // PO number from user input
-    customer_name || '', // Customer name
-    customer_email || '', // Customer email
-    customer_phone || '', // Customer phone
-    customer_address || '', // Customer address
-    assigned_designer_id || null, // Assigned designer ID
-    client_layout_link || '' // Client layout Google Drive link
-  ]);
-
-  const job = result.rows[0];
+  // Wrap INSERT in try-catch with auto-recovery for sequence errors
+  let result;
+  let job;
+  try {
+    result = await dbAdapter.query(query, [
+      job_card_id,
+      product_id,
+      company_id || 1, // Default company ID
+      1, // Default sequence ID
+      quantity,
+      delivery_date,
+      customer_notes || '',
+      urgencyMap[priority] || 'NORMAL',
+      status,
+      0, // totalCost - default to 0
+      req.user?.id || 1,
+      new Date(), // updatedAt - current timestamp
+      isWithoutPO ? null : (po_number || ''), // PO number - null if without PO
+      customer_name || '', // Customer name
+      customer_email || '', // Customer email
+      customer_phone || '', // Customer phone
+      customer_address || '', // Customer address
+      assigned_designer_id || null, // Assigned designer ID
+      client_layout_link || '', // Client layout Google Drive link
+      isWithoutPO, // without_po flag
+      !isWithoutPO // po_required - false if without PO
+    ]);
+    job = result.rows[0];
+  } catch (error) {
+    // Check if it's a duplicate key error on the id column (sequence out of sync)
+    if (error.code === '23505' && error.message && error.message.includes('Key (id)=')) {
+      console.warn('⚠️ Sequence out of sync detected. Attempting auto-fix...');
+      
+      try {
+        // Auto-fix the sequence
+        await dbAdapter.query(`
+          SELECT setval(
+            'job_cards_id_seq', 
+            COALESCE((SELECT MAX(id) FROM job_cards), 0) + 1, 
+            false
+          )
+        `);
+        
+        console.log('✅ Sequence auto-fixed. Retrying job creation...');
+        
+        // Retry the insert once
+        result = await dbAdapter.query(query, [
+          job_card_id,
+          product_id,
+          company_id || 1,
+          1,
+          quantity,
+          delivery_date,
+          customer_notes || '',
+          urgencyMap[priority] || 'NORMAL',
+          status,
+          0,
+          req.user?.id || 1,
+          new Date(),
+          isWithoutPO ? null : (po_number || ''),
+          customer_name || '',
+          customer_email || '',
+          customer_phone || '',
+          customer_address || '',
+          assigned_designer_id || null,
+          client_layout_link || '',
+          isWithoutPO,
+          !isWithoutPO
+        ]);
+        job = result.rows[0];
+      } catch (retryError) {
+        console.error('❌ Auto-fix failed:', retryError);
+        return res.status(500).json({
+          error: 'Database sequence error',
+          message: 'Failed to create job. Please contact administrator.',
+          details: 'Sequence auto-recovery failed'
+        });
+      }
+    } else if (error.code === '23505') {
+      // Handle other duplicate key errors (like duplicate jobNumber)
+      if (error.message && error.message.includes('jobNumber')) {
+        return res.status(409).json({
+          error: 'Duplicate job number',
+          message: 'A job with this job number already exists',
+          field: 'jobNumber'
+        });
+      }
+      return res.status(409).json({
+        error: 'Duplicate entry',
+        message: 'A record with this information already exists',
+        field: error.message
+      });
+    } else {
+      // Re-throw other errors
+      throw error;
+    }
+  }
 
   // Automatically create prepress job entry (mandatory for all jobs)
   try {
@@ -574,6 +1045,15 @@ router.post('/', jobValidation, asyncHandler(async (req, res) => {
     console.log('🔌 Emitting Socket.io events for job creation:', job.job_card_id);
     
     // Notify all connected users about the new job
+    // Emit team performance update for directors
+    if (req.user?.role === 'DIRECTOR' || true) { // Always emit, let frontend filter
+      io.emit('team:performance_updated', {
+        message: 'Team performance data updated',
+        jobId: job.id,
+        createdById: job.createdById
+      });
+    }
+
     io.emit('job_created', {
       jobCardId: job.job_card_id,
       jobId: job.id,
@@ -1060,6 +1540,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         d.email as assigned_designer_email,
         d.phone as assigned_designer_phone,
         pj.id as prepress_job_id,
+        pj.status as prepress_status,
         pj.required_plate_count,
         pj.ctp_machine_id,
         pj.blank_width_mm,
@@ -1212,6 +1693,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         quantity: job.quantity || 0,
         dueDate: job.dueDate,
         status: job.status || 'PENDING',
+        prepress_status: job.prepress_status || job.status || 'PENDING',
         urgency: job.urgency || 'NORMAL',
         notes: job.notes || '',
         createdBy: job.created_by_name || 'N/A',
@@ -2278,6 +2760,124 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
     res.status(500).json({
       error: 'Failed to update plate info',
       message: error.message
+    });
+  }
+}));
+
+// Update PO number for a job
+// PATCH /api/jobs/:id/po-number
+router.patch('/:id/po-number', 
+  authenticateToken,
+  requirePermission('UPDATE_JOB_PO_NUMBER'),
+  [
+    body('po_number').optional().isString().trim(),
+    body('without_po').optional().isBoolean()
+  ],
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        error: 'Validation error',
+        details: errors.array()
+      });
+    }
+
+    const { id } = req.params;
+    const { po_number, without_po } = req.body;
+
+    // Get current job to check if it was without PO
+    const currentJob = await dbAdapter.query(
+      'SELECT id, without_po, po_number FROM job_cards WHERE id = $1',
+      [id]
+    );
+
+    if (currentJob.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Job not found',
+        message: 'The requested job does not exist'
+      });
+    }
+
+    const job = currentJob.rows[0];
+    const wasWithoutPO = job.without_po;
+    const isWithoutPO = without_po === true || without_po === 'true';
+    const hasPONumber = po_number && po_number.trim() !== '';
+
+    // Determine if PO was just provided (transition from without PO to with PO)
+    const poJustProvided = wasWithoutPO && hasPONumber && !isWithoutPO;
+
+    // Update PO number
+    const updateQuery = `
+      UPDATE job_cards SET
+        po_number = $1,
+        without_po = $2,
+        po_required = $3,
+        po_provided_at = CASE 
+          WHEN $4 = true AND po_provided_at IS NULL THEN CURRENT_TIMESTAMP 
+          ELSE po_provided_at 
+        END,
+        po_updated_by = $5,
+        "updatedAt" = CURRENT_TIMESTAMP
+      WHERE id = $6
+      RETURNING *
+    `;
+
+    const result = await dbAdapter.query(updateQuery, [
+      hasPONumber ? po_number.trim() : null,
+      isWithoutPO,
+      !isWithoutPO,
+      poJustProvided,
+      req.user?.id || null,
+      id
+    ]);
+
+    const updatedJob = result.rows[0];
+
+    // Emit real-time update
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('job_po_updated', {
+        jobId: id,
+        jobNumber: updatedJob.jobNumber,
+        poNumber: updatedJob.po_number,
+        withoutPO: updatedJob.without_po,
+        updatedBy: req.user?.firstName + ' ' + req.user?.lastName || 'System',
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      message: poJustProvided ? 'PO number added successfully' : 'PO number updated successfully',
+      job: updatedJob
+    });
+  })
+);
+
+// Health check endpoint for sequence monitoring
+// GET /api/jobs/health/sequence
+router.get('/health/sequence', authenticateToken, requirePermission(['ADMIN', 'HEAD_OF_PRODUCTION']), asyncHandler(async (req, res) => {
+  try {
+    const result = await dbAdapter.query(`
+      SELECT 
+        (SELECT MAX(id) FROM job_cards) as max_id,
+        (SELECT last_value FROM job_cards_id_seq) as sequence_value,
+        (SELECT last_value FROM job_cards_id_seq) - (SELECT MAX(id) FROM job_cards) as difference
+    `);
+    
+    const { max_id, sequence_value, difference } = result.rows[0];
+    const isHealthy = parseInt(difference) >= 0;
+    
+    res.json({
+      healthy: isHealthy,
+      max_id: parseInt(max_id),
+      sequence_value: parseInt(sequence_value),
+      difference: parseInt(difference),
+      status: isHealthy ? 'OK' : 'WARNING - Sequence may be out of sync'
+    });
+  } catch (error) {
+    res.status(500).json({
+      healthy: false,
+      error: error.message
     });
   }
 }));

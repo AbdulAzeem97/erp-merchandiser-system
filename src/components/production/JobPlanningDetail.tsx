@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { MainLayout } from '@/components/layout/MainLayout';
 import ClockTimer from '@/components/ui/ClockTimer';
 import { authAPI } from '@/services/api';
@@ -32,6 +33,7 @@ import CuttingLayoutCard from './CuttingLayoutCard';
 import AdditionalSheetPanel from './AdditionalSheetPanel';
 import CostSummaryBox from './CostSummaryBox';
 import CuttingVisualization from './CuttingVisualization';
+import { GoogleDrivePreview } from '@/components/ui/GoogleDrivePreview';
 import {
   OptimizationResult,
   SheetOptimization,
@@ -66,6 +68,17 @@ interface JobDetails {
     total_ups: number | null;
     efficiency_percentage: number | null;
     created_at: string | null;
+  } | null;
+  final_design_link?: string | null;
+  process_sequence?: {
+    productType: string;
+    steps: Array<{
+      id: number;
+      name: string;
+      order: number;
+      isSelected: boolean;
+      isCompulsory: boolean;
+    }>;
   } | null;
   blank_size?: {
     width_mm: number | null;
@@ -159,8 +172,9 @@ const JobPlanningDetail: React.FC = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -234,8 +248,9 @@ const JobPlanningDetail: React.FC = () => {
       const effectiveQuantity = Math.ceil(jobDetails.quantity / ups);
       
       // Calculate optimization for the selected sheet size
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/optimize`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}/optimize`,
         {
           method: 'POST',
           headers: {
@@ -308,8 +323,9 @@ const JobPlanningDetail: React.FC = () => {
       const token = localStorage.getItem('authToken');
       // Use ratio report sheets as base if available, otherwise use calculated base
       const baseSheets = jobDetails?.ratioReport?.total_sheets || selectedOptimization.baseRequiredSheets;
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/cost`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}/cost`,
         {
           method: 'POST',
           headers: {
@@ -416,8 +432,15 @@ const JobPlanningDetail: React.FC = () => {
       const selectedLayoutData = selectedOptimization!.layouts[selectedLayout];
 
       // First, save the planning
+      const apiUrl = getApiUrl();
+      
+      // Check if blank size was modified by planner
+      const originalWidth = jobDetails?.blank_size?.width_mm || 0;
+      const originalHeight = jobDetails?.blank_size?.height_mm || 0;
+      const blankSizeModified = Math.abs(blankWidth - originalWidth) > 0.01 || Math.abs(blankHeight - originalHeight) > 0.01;
+      
       const saveResponse = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/planning`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}/planning`,
         {
           method: 'POST',
           headers: {
@@ -433,7 +456,13 @@ const JobPlanningDetail: React.FC = () => {
             scrapPercentage: selectedLayoutData.wastagePercentage,
             baseRequiredSheets: jobDetails?.ratioReport?.total_sheets || selectedOptimization.baseRequiredSheets,
             additionalSheets,
-            wastageJustification: wastageJustification || null
+            wastageJustification: wastageJustification || null,
+            // Add blank size - include updated values from planner
+            blank_width_mm: blankWidth,
+            blank_height_mm: blankHeight,
+            blank_width_inches: blankWidth / 25.4,
+            blank_height_inches: blankHeight / 25.4,
+            blank_size_modified: blankSizeModified
           })
         }
       );
@@ -454,7 +483,7 @@ const JobPlanningDetail: React.FC = () => {
 
       // Then, apply the planning
       const applyResponse = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/apply`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}/apply`,
         {
           method: 'POST',
           headers: {
@@ -487,8 +516,9 @@ const JobPlanningDetail: React.FC = () => {
   const handlePrintGuide = async () => {
     try {
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/jobs/${jobId}/cutting-guide-pdf`,
+        `${apiUrl}/api/production/smart-dashboard/jobs/${jobId}/cutting-guide-pdf`,
         {
           headers: {
             'Authorization': `Bearer ${token}`
@@ -619,9 +649,97 @@ const JobPlanningDetail: React.FC = () => {
                   <p className="font-medium">{jobDetails.product.material_name || 'N/A'}</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Blank Dimensions Input */}
-              <div className="mt-6 space-y-4">
+          {/* Final Design Reference */}
+          {jobDetails.final_design_link && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Final Design Reference
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <GoogleDrivePreview 
+                  url={jobDetails.final_design_link}
+                  label="Final Design PDF"
+                  showThumbnail={true}
+                  showPreview={true}
+                />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Upcoming Production Steps */}
+          {jobDetails.process_sequence && (() => {
+            // Filter steps after Prepress
+            const futureSteps = jobDetails.process_sequence.steps.filter(
+              step => step.name.toLowerCase() !== 'prepress' && step.order > 1
+            );
+            
+            if (futureSteps.length === 0) return null;
+            
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Upcoming Production Steps
+                  </CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Product Type: {jobDetails.process_sequence.productType}
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {futureSteps.map((step) => (
+                      <div 
+                        key={step.id} 
+                        className={`flex items-center gap-3 p-3 rounded-lg border ${
+                          step.isCompulsory 
+                            ? 'bg-blue-50 border-blue-200' 
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
+                          step.isCompulsory 
+                            ? 'bg-blue-600 text-white' 
+                            : 'bg-gray-400 text-white'
+                        }`}>
+                          {step.order}
+                        </div>
+                        <div className="flex-1">
+                          <p className={`font-medium ${
+                            step.isCompulsory ? 'text-blue-900' : 'text-gray-700'
+                          }`}>
+                            {step.name}
+                          </p>
+                        </div>
+                        {step.isCompulsory && (
+                          <Badge variant="outline" className="bg-blue-100 text-blue-800">
+                            Required
+                          </Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          {/* Blank Dimensions Input Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Scissors className="h-5 w-5" />
+                Blank Dimensions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
                 {/* Auto-fetched Blank Size Indicator */}
                 {jobDetails?.blank_size && (jobDetails.blank_size.width_mm || jobDetails.blank_size.width_inches) && (
                   <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">

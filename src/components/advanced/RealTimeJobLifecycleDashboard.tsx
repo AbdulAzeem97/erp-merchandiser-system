@@ -34,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 
 interface JobLifecycleProps {
@@ -120,7 +121,8 @@ export const RealTimeJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
       console.log('🔄 Loading job lifecycle data...');
       
       // Load all jobs with lifecycle data
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/all`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/job-lifecycle/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -148,7 +150,7 @@ export const RealTimeJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
   const loadStats = async () => {
     try {
       console.log('🔄 Loading dashboard stats...');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/job-lifecycle/stats/dashboard`, {
+      const response = await fetch(`${apiUrl}/api/job-lifecycle/stats/dashboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

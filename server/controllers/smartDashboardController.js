@@ -5,6 +5,8 @@ import sheetOptimizationService from '../services/sheetOptimizationService.js';
 import costCalculationService from '../services/costCalculationService.js';
 import UnifiedWorkflowService from '../services/unifiedWorkflowService.js';
 
+
+
 class SmartDashboardController {
   /**
    * Get all jobs after CTP completion
@@ -62,7 +64,7 @@ class SmartDashboardController {
           jpp.final_total_sheets,
           jpp.material_cost` : `,
           NULL as planning_status,
-          NULL as final_total_sheets,
+          NULL as final_total_sheets, 
           NULL as material_cost`}
         FROM prepress_jobs pj
         JOIN job_cards jc ON pj.job_card_id = jc.id
@@ -184,6 +186,7 @@ class SmartDashboardController {
         NULL as product_material,
         c.name as company_name,
         jc.customer_name,
+        jc.final_design_link,
         pj.blank_width_mm,
         pj.blank_height_mm,
         pj.blank_width_inches,
@@ -439,6 +442,68 @@ class SmartDashboardController {
         console.error('Error fetching machines for job planning:', error);
       }
 
+      // Fetch process sequence for the product
+      let processSequence = null;
+      try {
+        // Get product type - try to fetch from products table, default to 'Offset'
+        let productType = 'Offset';
+        const productId = job.product_id;
+        
+        try {
+          // Try to get product type from products table
+          const productTypeQuery = `SELECT product_type FROM products WHERE id = $1`;
+          const productTypeResult = await dbAdapter.query(productTypeQuery, [productId]);
+          if (productTypeResult.rows.length > 0 && productTypeResult.rows[0].product_type) {
+            productType = productTypeResult.rows[0].product_type;
+          }
+        } catch (typeError) {
+          // If column doesn't exist or query fails, use default
+          console.log('⚠️ Could not fetch product_type, using default:', typeError.message);
+          productType = job.product_type || 'Offset';
+        }
+        
+        console.log('🔍 Fetching process sequence for product:', productId, 'type:', productType);
+        
+        // Query process sequence steps
+        const processSequenceQuery = `
+          SELECT
+            ps.id as sequence_id,
+            ps.name as product_type,
+            pst.id as step_id,
+            pst.name as step_name,
+            pst."isQualityCheck" as is_compulsory,
+            pst."stepNumber" as step_order,
+            COALESCE(pps.is_selected, pst."isQualityCheck") as is_selected
+          FROM process_sequences ps
+          JOIN process_steps pst ON ps.id = pst."sequenceId"
+          LEFT JOIN product_process_selections pps ON pst.id = pps."processStepId" AND pps."productId" = $1
+          WHERE (ps.name = $2 OR ps.name LIKE $2 || '%') AND ps."isActive" = true AND pst."isActive" = true
+          ORDER BY pst."stepNumber" ASC
+        `;
+        
+        const processResult = await dbAdapter.query(processSequenceQuery, [productId, productType]);
+        
+        if (processResult.rows.length > 0) {
+          processSequence = {
+            productType: productType,
+            steps: processResult.rows.map(row => ({
+              id: row.step_id,
+              name: row.step_name,
+              order: row.step_order,
+              isCompulsory: row.is_compulsory,
+              isSelected: row.is_selected !== null ? row.is_selected : row.is_compulsory
+            }))
+          };
+          console.log('✅ Process sequence fetched:', processSequence.steps.length, 'steps');
+        } else {
+          console.log('⚠️ No process sequence found for product type:', productType);
+        }
+      } catch (error) {
+        console.warn('⚠️ Error fetching process sequence:', error.message);
+        console.warn('Error stack:', error.stack);
+        // Continue without process sequence - not critical
+      }
+
       res.json({
         success: true,
         job: {
@@ -462,6 +527,8 @@ class SmartDashboardController {
           material_id: materialId,
           planning: planning,
           ratioReport: ratioReport,
+          final_design_link: job.final_design_link || null,
+          process_sequence: processSequence,
           // Blank size information (auto-fetch for job planning)
           blank_size: {
             width_mm: job.blank_width_mm || null,
@@ -760,7 +827,13 @@ class SmartDashboardController {
         scrapPercentage,
         baseRequiredSheets,
         additionalSheets,
-        wastageJustification
+        wastageJustification,
+        // Blank size fields from planner
+        blank_width_mm,
+        blank_height_mm,
+        blank_width_inches,
+        blank_height_inches,
+        blank_size_modified
       } = req.body;
 
       // Convert jobId to integer
@@ -843,6 +916,41 @@ class SmartDashboardController {
       }
       jobCardId = jobCardIdInt;
       console.log('✅ Job card ID (parsed):', jobCardId, 'Type:', typeof jobCardId);
+
+      // Update blank size in job_cards if modified by planner
+      if (blank_size_modified && blank_width_mm && blank_height_mm) {
+        try {
+          const widthMm = parseFloat(blank_width_mm);
+          const heightMm = parseFloat(blank_height_mm);
+          const widthInches = blank_width_inches ? parseFloat(blank_width_inches) : widthMm / 25.4;
+          const heightInches = blank_height_inches ? parseFloat(blank_height_inches) : heightMm / 25.4;
+
+          if (!isNaN(widthMm) && !isNaN(heightMm) && widthMm > 0 && heightMm > 0) {
+            await dbAdapter.query(
+              `UPDATE job_cards 
+               SET blank_width_mm = $1, 
+                   blank_height_mm = $2,
+                   blank_width_inches = $3,
+                   blank_height_inches = $4,
+                   blank_size_unit = 'mm',
+                   updated_at = NOW()
+               WHERE id = $5`,
+              [widthMm, heightMm, widthInches, heightInches, jobCardId]
+            );
+            console.log('✅ Updated blank size in job_cards:', {
+              width_mm: widthMm,
+              height_mm: heightMm,
+              width_inches: widthInches,
+              height_inches: heightInches
+            });
+          } else {
+            console.warn('⚠️ Invalid blank size values, skipping update:', { blank_width_mm, blank_height_mm });
+          }
+        } catch (blankSizeError) {
+          console.error('❌ Error updating blank size:', blankSizeError);
+          // Don't fail the entire save if blank size update fails, but log it
+        }
+      }
 
       // Check if planning exists
       const existingPlanning = await sheetOptimizationService.getJobPlanning(jobCardId);

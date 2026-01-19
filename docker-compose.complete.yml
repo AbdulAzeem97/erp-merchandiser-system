@@ -3,13 +3,13 @@ version: '3.8'
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: erp-postgres
     restart: always
     environment:
       POSTGRES_DB: erp_merchandiser
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: erp_secure_password_2024
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: DevPassword123!
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
@@ -19,7 +19,7 @@ services:
     networks:
       - erp-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U erp_user -d erp_merchandiser"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,8 +36,8 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: erp_merchandiser
-      DB_USER: postgres
-      DB_PASSWORD: erp_secure_password_2024
+      DB_USER: erp_user
+      DB_PASSWORD: DevPassword123!
       
       # Server Configuration
       PORT: 5001
@@ -74,9 +74,9 @@ services:
       dockerfile: Dockerfile.frontend
     container_name: erp-frontend
     restart: always
-    environment:
-      VITE_API_URL: http://localhost:5001
-      VITE_WS_URL: ws://localhost:5001
+    # Note: VITE_API_URL removed - frontend now auto-detects hostname for LAN support
+    # The frontend will use window.location.hostname to connect to backend
+    # This allows automatic LAN access without hardcoding IPs
     ports:
       - "8080:8080"
     depends_on:

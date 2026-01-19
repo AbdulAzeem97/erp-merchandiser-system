@@ -25,11 +25,36 @@ class EnhancedJobLifecycleService {
   };
 
   // Create job lifecycle entry
-  async createJobLifecycle(jobCardId, productType, createdBy, priority = 'MEDIUM') {
+  // Supports both: createJobLifecycle(jobCardId, createdBy) and createJobLifecycle(jobCardId, productType, createdBy, priority)
+  async createJobLifecycle(jobCardId, arg2, arg3, arg4) {
+    // Handle different call signatures
+    let createdBy, productType = 'Offset', priority = 'MEDIUM';
+    
+    if (typeof arg2 === 'number' || typeof arg2 === 'string') {
+      // Called as: createJobLifecycle(jobCardId, createdBy)
+      createdBy = arg2;
+    } else if (typeof arg2 === 'string') {
+      // Called as: createJobLifecycle(jobCardId, productType, createdBy, priority)
+      productType = arg2;
+      createdBy = arg3;
+      priority = arg4 || 'MEDIUM';
+    }
+    
     const lifecycleId = uuidv4();
     const currentTime = new Date().toISOString();
     
     try {
+      // Check if lifecycle already exists
+      const existingResult = await dbAdapter.query(
+        'SELECT id FROM job_lifecycle WHERE job_card_id = $1',
+        [jobCardId]
+      );
+      
+      if (existingResult.rows.length > 0) {
+        console.log(`Job lifecycle already exists for job ${jobCardId}`);
+        return { id: existingResult.rows[0].id, status: EnhancedJobLifecycleService.JOB_STATUSES.CREATED };
+      }
+      
       // Create main lifecycle entry
       const lifecycleQuery = `
         INSERT INTO job_lifecycle (
@@ -319,6 +344,157 @@ class EnhancedJobLifecycleService {
         this.io.to('role:ADMIN').emit('job_status_changed', data);
         this.io.to('role:HEAD_OF_MERCHANDISER').emit('job_status_changed', data);
         break;
+    }
+  }
+
+  // Update job status to prepress (called when prepress job is created)
+  async updateJobStatusToPrepress(jobCardId, prepressJobId, assignedDesignerId, updatedBy) {
+    try {
+      const currentTime = new Date().toISOString();
+      
+      // Get or create lifecycle
+      let lifecycleResult = await dbAdapter.query(
+        'SELECT id FROM job_lifecycle WHERE job_card_id = $1',
+        [jobCardId]
+      );
+      
+      let lifecycleId;
+      if (lifecycleResult.rows.length === 0) {
+        // Create lifecycle if it doesn't exist
+        lifecycleId = uuidv4();
+        await dbAdapter.query(`
+          INSERT INTO job_lifecycle (
+            id, job_card_id, status, current_stage, prepress_job_id, 
+            assigned_designer_id, updated_at, created_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        `, [
+          lifecycleId,
+          jobCardId,
+          EnhancedJobLifecycleService.JOB_STATUSES.ASSIGNED_TO_PREPRESS,
+          'prepress_assignment',
+          prepressJobId,
+          assignedDesignerId,
+          currentTime
+        ]);
+      } else {
+        lifecycleId = lifecycleResult.rows[0].id;
+        // Update existing lifecycle
+        await dbAdapter.query(`
+          UPDATE job_lifecycle 
+          SET status = $1, 
+              current_stage = $2,
+              prepress_job_id = $3,
+              assigned_designer_id = $4,
+              updated_at = $5
+          WHERE job_card_id = $6
+        `, [
+          EnhancedJobLifecycleService.JOB_STATUSES.ASSIGNED_TO_PREPRESS,
+          'prepress_assignment',
+          prepressJobId,
+          assignedDesignerId,
+          currentTime,
+          jobCardId
+        ]);
+      }
+
+      // Log the status change
+      await this.logStatusChange(
+        lifecycleId,
+        EnhancedJobLifecycleService.JOB_STATUSES.CREATED,
+        EnhancedJobLifecycleService.JOB_STATUSES.ASSIGNED_TO_PREPRESS,
+        `Job assigned to prepress. Prepress job ID: ${prepressJobId}`,
+        updatedBy,
+        { prepressJobId, assignedDesignerId }
+      );
+
+      // Emit real-time update
+      this.emitLifecycleUpdate(jobCardId, 'STATUS_CHANGED', {
+        lifecycleId,
+        oldStatus: EnhancedJobLifecycleService.JOB_STATUSES.CREATED,
+        newStatus: EnhancedJobLifecycleService.JOB_STATUSES.ASSIGNED_TO_PREPRESS,
+        prepressJobId,
+        assignedDesignerId,
+        updatedBy,
+        timestamp: currentTime
+      });
+
+      return { success: true, lifecycleId };
+    } catch (error) {
+      console.error('Error updating job status to prepress:', error);
+      throw error;
+    }
+  }
+
+  // Update prepress status (called when prepress status changes)
+  async updatePrepressStatus(jobCardId, prepressStatus, updatedBy, notes = '') {
+    try {
+      const currentTime = new Date().toISOString();
+      
+      // Determine job status based on prepress status
+      let jobStatus = EnhancedJobLifecycleService.JOB_STATUSES.ASSIGNED_TO_PREPRESS;
+      if (prepressStatus === 'IN_PROGRESS') {
+        jobStatus = EnhancedJobLifecycleService.JOB_STATUSES.PREPRESS_IN_PROGRESS;
+      } else if (prepressStatus === 'COMPLETED') {
+        jobStatus = EnhancedJobLifecycleService.JOB_STATUSES.PREPRESS_COMPLETED;
+      } else if (prepressStatus === 'ON_HOLD') {
+        jobStatus = EnhancedJobLifecycleService.JOB_STATUSES.ON_HOLD;
+      }
+
+      // Get lifecycle
+      const lifecycleResult = await dbAdapter.query(
+        'SELECT id, status FROM job_lifecycle WHERE job_card_id = $1',
+        [jobCardId]
+      );
+
+      if (lifecycleResult.rows.length === 0) {
+        throw new Error(`Job lifecycle not found for job ${jobCardId}`);
+      }
+
+      const lifecycle = lifecycleResult.rows[0];
+      const oldStatus = lifecycle.status;
+
+      // Update lifecycle
+      await dbAdapter.query(`
+        UPDATE job_lifecycle 
+        SET status = $1,
+            prepress_status = $2,
+            prepress_notes = $3,
+            current_stage = $4,
+            updated_at = $5
+        WHERE job_card_id = $6
+      `, [
+        jobStatus,
+        prepressStatus,
+        notes,
+        this.getStageFromStatus(jobStatus),
+        currentTime,
+        jobCardId
+      ]);
+
+      // Log the status change
+      await this.logStatusChange(
+        lifecycle.id,
+        oldStatus,
+        jobStatus,
+        notes || `Prepress status updated to ${prepressStatus}`,
+        updatedBy,
+        { prepressStatus }
+      );
+
+      // Emit real-time update
+      this.emitLifecycleUpdate(jobCardId, 'STATUS_CHANGED', {
+        lifecycleId: lifecycle.id,
+        oldStatus,
+        newStatus: jobStatus,
+        prepressStatus,
+        updatedBy,
+        timestamp: currentTime
+      });
+
+      return { success: true, oldStatus, newStatus: jobStatus };
+    } catch (error) {
+      console.error('Error updating prepress status:', error);
+      throw error;
     }
   }
 

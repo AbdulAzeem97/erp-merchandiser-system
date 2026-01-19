@@ -60,6 +60,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 
 interface ProductionHeadDashboardProps {
@@ -187,7 +188,8 @@ export const ProductionHeadDashboard: React.FC<ProductionHeadDashboardProps> = (
       setIsLoading(true);
       console.log('🔄 Loading production head dashboard data...');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/complete-job-lifecycle/all`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/complete-job-lifecycle/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

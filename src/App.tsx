@@ -21,6 +21,7 @@ import QADashboard from "./components/qa/QADashboard";
 import CTPDashboard from "./components/ctp/CTPDashboard";
 import CuttingDashboard from "./components/cutting/CuttingDashboard";
 import CuttingLaborView from "./components/cutting/CuttingLaborView";
+import OffsetPrintingDashboard from "./components/offsetPrinting/OffsetPrintingDashboard";
 import JobManagementDashboard from "./components/jobs/JobManagementDashboard";
 import MerchandiserDashboard from "./components/dashboards/MerchandiserDashboard";
 import JobManagementModule from "./components/modules/JobManagementModule";
@@ -44,6 +45,7 @@ import PurchaseOrderManager from "./components/procurement/PurchaseOrderManager"
 import SupplierManager from "./components/procurement/SupplierManager";
 import ProcurementReportsManager from "./components/procurement/ProcurementReportsManager";
 import { SocketProvider } from "./services/socketService.tsx";
+import { ThemeProvider } from "./contexts/ThemeContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,10 +59,11 @@ const queryClient = new QueryClient({
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <SocketProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+      <ThemeProvider>
+        <SocketProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Index />} />
@@ -93,6 +96,7 @@ const App = () => (
             <Route path="/ctp/dashboard" element={<CTPDashboard onLogout={() => {}} onNavigate={() => {}} />} />
             <Route path="/cutting/dashboard" element={<CuttingDashboard onLogout={() => {}} />} />
             <Route path="/cutting/labor" element={<CuttingLaborView onLogout={() => {}} />} />
+            <Route path="/offset-printing/dashboard" element={<OffsetPrintingDashboard onLogout={() => {}} />} />
             <Route path="/jobs/management" element={<JobManagementDashboard />} />
             <Route path="/merchandiser/dashboard" element={<MerchandiserDashboard />} />
             
@@ -130,7 +134,8 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-      </SocketProvider>
+        </SocketProvider>
+      </ThemeProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

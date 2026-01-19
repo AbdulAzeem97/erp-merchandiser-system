@@ -22,6 +22,8 @@ interface Job {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  po_number?: string;
+  without_po?: boolean;
 }
 
 interface JobEditFormProps {
@@ -43,7 +45,9 @@ export const JobEditForm: React.FC<JobEditFormProps> = ({
     dueDate: job.dueDate.split('T')[0], // Format for date input
     status: job.status,
     urgency: job.urgency,
-    notes: job.notes || ''
+    notes: job.notes || '',
+    poNumber: job.po_number || '',
+    withoutPo: job.without_po || false
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +65,19 @@ export const JobEditForm: React.FC<JobEditFormProps> = ({
     setError(null);
 
     try {
+      // Update PO number if changed
+      if (formData.poNumber !== job.po_number || formData.withoutPo !== job.without_po) {
+        try {
+          await jobsAPI.updatePONumber(job.id.toString(), {
+            po_number: formData.withoutPo ? '' : formData.poNumber,
+            without_po: formData.withoutPo
+          });
+        } catch (error: any) {
+          console.error('Error updating PO number:', error);
+          // Continue with other updates even if PO update fails
+        }
+      }
+
       const updatedJob = await jobsAPI.update(job.id.toString(), {
         job_card_id: formData.jobNumber,
         quantity: formData.quantity,
@@ -187,17 +204,51 @@ export const JobEditForm: React.FC<JobEditFormProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => handleInputChange('notes', e.target.value)}
-                  placeholder="Enter any additional notes..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                />
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="poNumber">PO Number</Label>
+                  <div className="flex items-center space-x-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="withoutPo"
+                      checked={formData.withoutPo}
+                      onChange={(e) => {
+                        handleInputChange('withoutPo', e.target.checked);
+                        if (e.target.checked) {
+                          handleInputChange('poNumber', '');
+                        }
+                      }}
+                      className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                    />
+                    <Label htmlFor="withoutPo" className="text-sm text-gray-700 cursor-pointer">
+                      Job without PO number
+                    </Label>
+                  </div>
+                  <Input
+                    id="poNumber"
+                    value={formData.poNumber}
+                    onChange={(e) => handleInputChange('poNumber', e.target.value)}
+                    placeholder={formData.withoutPo ? "Will be added later" : "Enter PO number"}
+                    disabled={formData.withoutPo}
+                    className={formData.withoutPo ? 'bg-gray-100 cursor-not-allowed' : ''}
+                  />
+                  {job.without_po && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      This job was created without a PO number. You can add it now.
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => handleInputChange('notes', e.target.value)}
+                    placeholder="Enter any additional notes..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={3}
+                  />
+                </div>
 
               {/* Job Info Display */}
               <div className="bg-gray-50 p-4 rounded-md">

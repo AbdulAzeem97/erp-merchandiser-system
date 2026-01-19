@@ -58,6 +58,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import JobAssignmentForm from './JobAssignmentForm';
 
@@ -78,6 +79,8 @@ interface Job {
   delivery_date: string;
   description: string;
   created_by: string;
+  created_by_name?: string;
+  createdById?: number;
   created_at: string;
   updated_at: string;
   current_department?: string;
@@ -138,7 +141,8 @@ const JobManagementDashboard: React.FC<JobManagementDashboardProps> = ({ onLogou
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

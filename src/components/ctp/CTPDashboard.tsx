@@ -27,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MainLayout } from '../layout/MainLayout';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 
 interface CTPJob {
   id: string;
@@ -103,7 +104,8 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
     setIsLoading(true);
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/ctp/jobs`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ctp/jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -156,7 +158,8 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
   const handleGeneratePlate = async (job: CTPJob) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/ctp/jobs/${job.id}/generate-plate`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ctp/jobs/${job.id}/generate-plate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -188,7 +191,8 @@ const CTPDashboard: React.FC<CTPDashboardProps> = ({ onLogout, onNavigate }) => 
   const handlePrintPlateTag = async (job: CTPJob) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/ctp/jobs/${job.id}/print-tag`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/ctp/jobs/${job.id}/print-tag`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

@@ -75,8 +75,10 @@ export const STEP_DEPARTMENT_MAPPING = {
   'RFID': 'Finishing',
   'Eyelet': 'Finishing',
   
+  // Offset Printing Department Steps (Separate from Production)
+  'Offset Printing': 'Offset Printing',
+  
   // Production Press Department Steps (Separate from Finishing)
-  'Offset Printing': 'Production',
   'Digital Printing': 'Production',
   
   // Quality Assurance Department Steps (Separate from Production)
@@ -162,8 +164,13 @@ export function getDepartmentForStep(stepName) {
     return 'Cutting';
   }
   
-  // Default to Production if contains print (but not finishing operations)
-  if (stepLower.includes('print') && !stepLower.includes('finish') && !stepLower.includes('varnish') && !stepLower.includes('lamination')) {
+  // Default to Offset Printing if contains "offset printing"
+  if (stepLower.includes('offset printing') || (stepLower.includes('offset') && stepLower.includes('print'))) {
+    return 'Offset Printing';
+  }
+  
+  // Default to Production if contains print (but not finishing operations or offset)
+  if (stepLower.includes('print') && !stepLower.includes('finish') && !stepLower.includes('varnish') && !stepLower.includes('lamination') && !stepLower.includes('offset')) {
     return 'Production';
   }
   

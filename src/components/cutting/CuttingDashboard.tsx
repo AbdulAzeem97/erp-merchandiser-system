@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { authAPI } from '@/services/api';
@@ -100,6 +101,8 @@ interface CuttingJob {
   scrap_percentage?: number;
   sheet_width_mm?: number;
   sheet_height_mm?: number;
+  blanks_per_sheet?: number;
+  final_total_sheets?: number;
 }
 
 interface CuttingDashboardProps {
@@ -145,7 +148,8 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/cutting/jobs`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/cutting/jobs`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -172,7 +176,7 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
   const loadAvailableLabor = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/auth/users/role/CUTTING_LABOR`, {
+      const response = await fetch(`${apiUrl}/api/auth/users/role/CUTTING_LABOR`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -271,7 +275,8 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/cutting/assign`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/cutting/assign`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -308,7 +313,8 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/cutting/update-status`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/cutting/update-status`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -345,7 +351,8 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
 
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/cutting/comments`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/cutting/comments`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -902,6 +909,41 @@ const CuttingDashboard: React.FC<CuttingDashboardProps> = ({ onLogout }) => {
                                           </span>
                                         </div>
                                       )}
+                                      {/* Big Sheets Calculation */}
+                                      {(() => {
+                                        const totalSheets = job.final_total_sheets 
+                                          ? (typeof job.final_total_sheets === 'number' ? job.final_total_sheets : parseInt(job.final_total_sheets))
+                                          : null;
+                                        const blanksPerSheet = job.blanks_per_sheet 
+                                          ? (typeof job.blanks_per_sheet === 'number' ? job.blanks_per_sheet : parseInt(job.blanks_per_sheet))
+                                          : null;
+                                        
+                                        const calculateBigSheetsNeeded = (total: number | null, blanks: number | null): number | null => {
+                                          if (!total || !blanks || blanks === 0) {
+                                            return null;
+                                          }
+                                          return Math.ceil(total / blanks);
+                                        };
+                                        
+                                        const bigSheetsNeeded = calculateBigSheetsNeeded(totalSheets, blanksPerSheet);
+                                        
+                                        if (bigSheetsNeeded !== null) {
+                                          return (
+                                            <div className="flex items-center justify-between p-3 bg-blue-100 rounded border-2 border-blue-300 mt-2">
+                                              <div className="flex flex-col">
+                                                <span className="text-sm font-semibold text-blue-900">Big Sheets Needed for Cutting:</span>
+                                                <span className="text-xs text-blue-700 mt-1">
+                                                  {totalSheets?.toLocaleString()} sheets ÷ {blanksPerSheet?.toLocaleString()} blanks/sheet
+                                                </span>
+                                              </div>
+                                              <span className="text-2xl font-bold text-blue-900">
+                                                {bigSheetsNeeded.toLocaleString()}
+                                              </span>
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
                                       {(!job.base_required_sheets && !job.additional_sheets && job.final_total_sheets) && (
                                         <p className="text-xs text-gray-500 italic">
                                           Total sheets approved for cutting

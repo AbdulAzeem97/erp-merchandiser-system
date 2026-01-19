@@ -86,6 +86,15 @@ class EnhancedSocketHandler {
         this.handleDispatchStatusUpdate(socket, data);
       });
 
+      // Offset Printing events
+      socket.on('join_offset_printing_updates', () => {
+        this.handleJoinOffsetPrintingUpdates(socket);
+      });
+
+      socket.on('offset_printing_status_update', (data) => {
+        this.handleOffsetPrintingStatusUpdate(socket, data);
+      });
+
       // Notification events
       socket.on('join_notifications', (userId) => {
         this.handleJoinNotifications(socket, userId);
@@ -297,6 +306,18 @@ class EnhancedSocketHandler {
     });
   }
 
+  handleJoinOffsetPrintingUpdates(socket) {
+    socket.join('offset_printing_updates');
+    console.log(`🖨️ Socket ${socket.id} joined offset printing updates`);
+  }
+
+  handleOffsetPrintingStatusUpdate(socket, data) {
+    // Events are already emitted from the service, but we can add additional handling here if needed
+    // The service methods emit: offset_printing:progress_updated, offset_printing:plate_completed, etc.
+    // These are broadcast automatically via the service's socketHandler
+    console.log(`🖨️ Offset printing status update received:`, data);
+  }
+
   handleJoinNotifications(socket, userId) {
     socket.join(`notifications_${userId}`);
     console.log(`🔔 Socket ${socket.id} joined notifications for user ${userId}`);
@@ -430,6 +451,11 @@ class EnhancedSocketHandler {
   // Broadcast to all
   broadcastToAll(event, data) {
     this.io.emit(event, data);
+  }
+
+  // Broadcast team performance update to directors
+  broadcastTeamPerformanceUpdate(teamData) {
+    this.broadcastToRole('DIRECTOR', 'team:performance_updated', teamData);
   }
 }
 

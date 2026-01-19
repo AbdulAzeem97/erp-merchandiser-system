@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 
 interface CuttingJob {
   id: string;
@@ -81,7 +82,8 @@ const CuttingLaborView: React.FC<CuttingLaborViewProps> = ({ onLogout }) => {
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/cutting/live`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/cutting/live`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

@@ -61,6 +61,10 @@ interface Job {
   current_step?: string;
   workflow_status?: string;
   status_message?: string;
+  po_number?: string;
+  without_po?: boolean;
+  created_by_name?: string;
+  createdById?: number;
 }
 
 interface JobAttachment {
@@ -721,6 +725,8 @@ const JobsModule: React.FC = () => {
                         <TableHead>Job ID</TableHead>
                         <TableHead>Product</TableHead>
                         <TableHead>Company</TableHead>
+                        <TableHead>PO Number</TableHead>
+                        <TableHead>Created By</TableHead>
                         <TableHead>Designer</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Priority</TableHead>
@@ -730,8 +736,13 @@ const JobsModule: React.FC = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {getFilteredJobs().map((job) => (
-                        <TableRow key={job.id}>
+                      {getFilteredJobs().map((job) => {
+                        const isWithoutPO = job.without_po === true || (job.without_po === undefined && (!job.po_number || job.po_number.trim() === ''));
+                        return (
+                        <TableRow 
+                          key={job.id}
+                          className={isWithoutPO ? 'bg-amber-50 hover:bg-amber-100' : ''}
+                        >
                           <TableCell className="font-medium">{job.job_card_id}</TableCell>
                           <TableCell>
                             <div>
@@ -740,6 +751,20 @@ const JobsModule: React.FC = () => {
                             </div>
                           </TableCell>
                           <TableCell>{job.company_name || 'N/A'}</TableCell>
+                          <TableCell>
+                            {isWithoutPO ? (
+                              <div className="flex items-center space-x-1">
+                                <AlertCircle className="w-4 h-4 text-amber-600" />
+                                <span className="text-amber-700 font-medium">No PO</span>
+                                <Badge variant="outline" className="ml-2 border-amber-300 text-amber-700 bg-amber-50 text-xs">
+                                  PO Pending
+                                </Badge>
+                              </div>
+                            ) : (
+                              <span className="text-gray-900">{job.po_number || 'N/A'}</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{job.created_by_name || 'System'}</TableCell>
                           <TableCell>{job.designer_name || 'Unassigned'}</TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1">
@@ -803,7 +828,8 @@ const JobsModule: React.FC = () => {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </div>

@@ -72,7 +72,7 @@ const menuItems: MenuItem[] = [
     label: 'Dashboard',
     icon: Home,
     page: 'dashboard',
-    roles: ['ADMIN', 'MERCHANDISER', 'HOD_PREPRESS', 'DESIGNER', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION']
+    roles: ['ADMIN', 'MERCHANDISER', 'HOD_PREPRESS', 'DESIGNER', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
   }
 ];
 
@@ -81,21 +81,21 @@ const projectsMenuItems: MenuItem[] = [
     id: 'merchandiser',
     label: 'Merchandiser',
     icon: Briefcase,
-    roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER'],
+    roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER'],
     children: [
       {
         id: 'create-product',
         label: 'Create Product',
         icon: Package,
         page: 'productForm',
-        roles: ['ADMIN', 'MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       },
       {
         id: 'create-job',
         label: 'Create Job Order',
         icon: FileText,
         page: 'jobForm',
-        roles: ['ADMIN', 'MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       },
       {
         id: 'job-monitoring',
@@ -104,7 +104,7 @@ const projectsMenuItems: MenuItem[] = [
         page: 'jobMonitoring',
         badge: 'Live',
         badgeVariant: 'secondary',
-        roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER']
+        roles: ['ADMIN', 'MERCHANDISER', 'HEAD_OF_MERCHANDISER', 'DIRECTOR', 'SENIOR_MERCHANDISER', 'ASSISTANT_MERCHANDISER']
       }
     ]
   },

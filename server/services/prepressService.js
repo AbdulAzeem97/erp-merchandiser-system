@@ -44,20 +44,27 @@ class PrepressService {
         throw new Error('Prepress job already exists for this job card');
       }
 
-      // Create prepress job
-      const result = await dbAdapter.query(`
+      // Create prepress job with sequence recovery
+      const { insertWithRecovery } = await import('../utils/sequenceRecovery.js');
+      const insertQuery = `
         INSERT INTO prepress_jobs (job_card_id, assigned_designer_id, status, priority, due_date, created_by, updated_by)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
-      `, [
-        jobCardId,
-        assignedDesignerId,
-        assignedDesignerId ? 'ASSIGNED' : 'PENDING',
-        priority,
-        dueDate,
-        createdBy,
-        createdBy
-      ]);
+      `;
+      const result = await insertWithRecovery(
+        dbAdapter,
+        insertQuery,
+        [
+          jobCardId,
+          assignedDesignerId,
+          assignedDesignerId ? 'ASSIGNED' : 'PENDING',
+          priority,
+          dueDate,
+          createdBy,
+          createdBy
+        ],
+        'prepress_jobs'
+      );
 
       const prepressJob = result.rows[0];
       if (!prepressJob) {

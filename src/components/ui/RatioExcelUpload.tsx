@@ -395,6 +395,18 @@ const RatioExcelUpload: React.FC<RatioExcelUploadProps> = ({
                   <table className="w-full border-collapse border border-gray-300 text-sm">
                     <thead>
                       <tr className="bg-gray-100">
+                        {previewData.rawData?.colorDetails?.[0]?.epNo !== undefined && (
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold">EP NO</th>
+                        )}
+                        {previewData.rawData?.colorDetails?.[0]?.itemCode !== undefined && (
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Item Code</th>
+                        )}
+                        {previewData.rawData?.colorDetails?.[0]?.itemDescription !== undefined && (
+                          <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Item Description</th>
+                        )}
+                        {previewData.rawData?.colorDetails?.[0]?.price !== undefined && (
+                          <th className="border border-gray-300 px-3 py-2 text-center font-semibold">Price</th>
+                        )}
                         <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Color</th>
                         <th className="border border-gray-300 px-3 py-2 text-left font-semibold">Size</th>
                         <th className="border border-gray-300 px-3 py-2 text-center font-semibold">Required Qty</th>
@@ -408,6 +420,18 @@ const RatioExcelUpload: React.FC<RatioExcelUploadProps> = ({
                     <tbody>
                       {previewData.rawData?.colorDetails?.map((item: any, index: number) => (
                         <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          {item.epNo !== undefined && (
+                            <td className="border border-gray-300 px-3 py-2">{item.epNo || '-'}</td>
+                          )}
+                          {item.itemCode !== undefined && (
+                            <td className="border border-gray-300 px-3 py-2">{item.itemCode || '-'}</td>
+                          )}
+                          {item.itemDescription !== undefined && (
+                            <td className="border border-gray-300 px-3 py-2">{item.itemDescription || '-'}</td>
+                          )}
+                          {item.price !== undefined && (
+                            <td className="border border-gray-300 px-3 py-2 text-center">{item.price || '-'}</td>
+                          )}
                           <td className="border border-gray-300 px-3 py-2 font-medium">{item.color}</td>
                           <td className="border border-gray-300 px-3 py-2">{item.size}</td>
                           <td className="border border-gray-300 px-3 py-2 text-center">{item.requiredQty}</td>

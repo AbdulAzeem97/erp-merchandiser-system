@@ -67,6 +67,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
 import { authAPI, processSequencesAPI, jobsAPI } from '@/services/api';
@@ -241,7 +242,8 @@ const statusColors = {
   PAUSED: 'bg-yellow-100 text-yellow-800 border-yellow-300',
   HOD_REVIEW: 'bg-purple-100 text-purple-800 border-purple-300',
   COMPLETED: 'bg-emerald-100 text-emerald-800 border-emerald-300',
-  REJECTED: 'bg-red-100 text-red-800 border-red-300'
+  REJECTED: 'bg-red-100 text-red-800 border-red-300',
+  REVISIONS_REQUIRED: 'bg-orange-100 text-orange-800 border-orange-300'
 };
 
 const priorityColors = {
@@ -386,7 +388,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           try {
             // Fetch complete product information
             if (job.productId) {
-              const productResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/products/${job.productId}/complete-process-info`, {
+              const apiUrl = getApiUrl();
+              const productResponse = await fetch(`${apiUrl}/api/products/${job.productId}/complete-process-info`, {
                 headers: {
                   'Authorization': `Bearer ${token}`
                 }
@@ -400,7 +403,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             // Fetch process sequence for the product type
             if (completeProductInfo?.product?.product_type) {
               try {
-                const processResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/process-sequences/by-product-type?product_type=${encodeURIComponent(completeProductInfo.product.product_type)}&product_id=${job.productId}`, {
+                const processResponse = await fetch(`${apiUrl}/api/process-sequences/by-product-type?product_type=${encodeURIComponent(completeProductInfo.product.product_type)}&product_id=${job.productId}`, {
                   headers: {
                     'Authorization': `Bearer ${token}`
                   }
@@ -420,7 +423,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           // Fetch item specifications for this job
           let itemSpecifications = null;
           try {
-            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+            const itemSpecsResponse = await fetch(`${getApiUrl()}/api/jobs/${job.id}/item-specifications`, {
               headers: {
                 'Authorization': `Bearer ${token}`
               }
@@ -450,7 +453,10 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           return {
             ...job,
             // Job ID mapping (ensure we have the correct job ID)
+            // job.id is the job_card_id from the database (numeric)
             id: job.id.toString(),
+            // Store the numeric job_card_id for API calls
+            job_card_id_numeric: job.id,
             job_card_id: job.jobNumber || `JC-${job.id}`,
             // Complete product information from API
             product_name: product.name || job.product_name || 'N/A',
@@ -513,9 +519,9 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           };
         }));
         
-        // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, PAUSED, and REJECTED (revised from QA)
+        // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, PAUSED, REJECTED, and REVISIONS_REQUIRED (revised from QA)
         // Exclude: APPROVED_BY_QA, SUBMITTED_TO_QA, COMPLETED, HOD_REVIEW, and other statuses
-        const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'REJECTED'];
+        const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'REJECTED', 'REVISIONS_REQUIRED'];
         const excludedStatuses = ['APPROVED_BY_QA', 'SUBMITTED_TO_QA', 'COMPLETED', 'HOD_REVIEW'];
         const filteredDesignerJobs = designerJobsWithCompleteInfo.filter((job: DesignerJob) => {
           const jobStatus = (job.status || job.prepress_status || '').toUpperCase();
@@ -563,11 +569,16 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   };
 
   // Load ratio report for a specific job
-  const loadRatioReport = async (jobId: string) => {
+  const loadRatioReport = async (jobId: string | number) => {
     try {
+      // Ensure jobId is numeric (job_card_id from database)
+      const numericJobId = typeof jobId === 'string' ? parseInt(jobId, 10) : jobId;
+      console.log('🔍 Loading ratio report for job ID:', numericJobId, '(original:', jobId, ')');
+      
       toast.info('Loading ratio report...');
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/jobs/${numericJobId}/ratio-report`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -657,7 +668,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const updateJobStatus = async (jobId: string, status: string, notes: string) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/status`, {
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/status`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -814,7 +825,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
 
     try {
       // Update job with final design link and status
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${selectedJob.id}/submit-to-qa`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/jobs/${selectedJob.id}/submit-to-qa`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1519,7 +1531,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                   Production Ratio Report
                                 </h4>
                                 <Button
-                    onClick={() => loadRatioReport(selectedJob.id)}
+                    onClick={() => loadRatioReport(selectedJob.job_card_id_numeric || selectedJob.id)}
                                   variant="outline"
                                   size="sm"
                                   className="text-purple-700 border-purple-300 hover:bg-purple-100"
@@ -2424,6 +2436,18 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       <thead className="bg-gray-50">
                         <tr>
                           <th className="px-3 py-2 text-left">Status</th>
+                          {ratioReport.color_details?.[0]?.epNo !== undefined && (
+                            <th className="px-3 py-2 text-left">EP NO</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemCode !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Code</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemDescription !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Description</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.price !== undefined && (
+                            <th className="px-3 py-2 text-left">Price</th>
+                          )}
                           <th className="px-3 py-2 text-left">Color</th>
                           <th className="px-3 py-2 text-left">Size</th>
                           <th className="px-3 py-2 text-left">Required Qty</th>
@@ -2435,7 +2459,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         </tr>
                       </thead>
                       <tbody>
-                        {ratioReport.color_details.map((detail, index) => {
+                        {ratioReport.color_details.map((detail: any, index) => {
                           const isMarked = markedItems.has(index);
                           return (
                           <tr 
@@ -2456,6 +2480,18 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                 <span className="text-gray-300">○</span>
                               )}
                             </td>
+                            {detail.epNo !== undefined && (
+                              <td className="px-3 py-2">{safeRender(detail.epNo)}</td>
+                            )}
+                            {detail.itemCode !== undefined && (
+                              <td className="px-3 py-2">{safeRender(detail.itemCode)}</td>
+                            )}
+                            {detail.itemDescription !== undefined && (
+                              <td className="px-3 py-2">{safeRender(detail.itemDescription)}</td>
+                            )}
+                            {detail.price !== undefined && (
+                              <td className="px-3 py-2">{safeRender(detail.price)}</td>
+                            )}
                             <td className="px-3 py-2">{safeRender(detail.color)}</td>
                             <td className="px-3 py-2">{safeRender(detail.size)}</td>
                             <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
@@ -2480,7 +2516,12 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               {/* Plate Distribution - Enhanced Modern UI */}
               {ratioReport.plate_distribution && typeof ratioReport.plate_distribution === 'object' && Object.keys(ratioReport.plate_distribution).length > 0 && (() => {
                 const plateEntries = Object.entries(ratioReport.plate_distribution);
-                const totalCount = plateEntries.reduce((sum, [, count]) => sum + (typeof count === 'number' ? count : 0), 0);
+                const totalCount = plateEntries.reduce((sum, [, data]) => {
+                  const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
+                    ? (data as any).sheets 
+                    : (typeof data === 'number' ? data : 0);
+                  return sum + sheets;
+                }, 0);
                 const plateColors = [
                   'from-blue-500 to-blue-600',
                   'from-purple-500 to-purple-600',
@@ -2510,8 +2551,12 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     </div>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {plateEntries.map(([plate, count], index) => {
-                        const percentage = totalCount > 0 ? ((typeof count === 'number' ? count : 0) / totalCount * 100).toFixed(1) : 0;
+                      {plateEntries.map(([plate, data], index) => {
+                        // Handle both old format (number) and new format (object with sheets, colors, totalUPS)
+                        const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
+                          ? (data as any).sheets 
+                          : (typeof data === 'number' ? data : 0);
+                        const percentage = totalCount > 0 ? (sheets / totalCount * 100).toFixed(1) : 0;
                         const colorGradient = plateColors[index % plateColors.length];
                         
                         return (
@@ -2547,7 +2592,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                     {safeRender(plate)}
                                   </div>
                                   <div className="text-3xl font-bold text-white/90">
-                                    {safeRender(count)}
+                                    {safeRender(sheets)}
                                   </div>
                                   <div className="text-sm text-white/70 mt-1">
                                     items

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Navigate } from 'react-router-dom';
 import { AdvancedDashboard } from '../components/advanced/AdvancedDashboard';
 import AdvancedDashboardWithSidebar from '../components/advanced/AdvancedDashboardWithSidebar';
 import { AdvancedProductForm } from '../components/advanced/AdvancedProductForm';
@@ -22,6 +23,15 @@ import { authAPI } from '@/services/api';
 type ViewType = 'dashboard' | 'productForm' | 'jobForm' | 'reports' | 'prepressHOD' | 'prepressDesigner' | 'qaDashboard' | 'products' | 'jobs' | 'companies' | 'users' | 'settings';
 
 const Index = () => {
+  // CRITICAL: Early redirect check - before ANY state, hooks, or rendering
+  const currentUser = authAPI.getCurrentUser();
+  if (currentUser && (currentUser.role === 'HOD_OFFSET' || currentUser.role === 'OFFSET_OPERATOR')) {
+    console.log('🖨️ CRITICAL: Index - Immediate redirect for HOD_OFFSET user');
+    // Use window.location.replace for immediate redirect (more reliable than Navigate)
+    window.location.replace('/offset-printing/dashboard');
+    return null; // Prevent any rendering
+  }
+  
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [savedProduct, setSavedProduct] = useState<ProductMaster | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -124,6 +134,10 @@ const Index = () => {
       // Redirect to Cutting labor view
       window.location.href = '/cutting/labor';
       return;
+    } else if (user?.role === 'HOD_OFFSET' || user?.role === 'OFFSET_OPERATOR') {
+      // Redirect to Offset Printing dashboard
+      window.location.href = '/offset-printing/dashboard';
+      return;
     } else {
       setCurrentView('dashboard');
     }
@@ -183,6 +197,10 @@ const Index = () => {
           // Redirect to procurement dashboard
           window.location.href = '/procurement/dashboard';
           return;
+        } else if (user?.role === 'HOD_OFFSET' || user?.role === 'OFFSET_OPERATOR') {
+          // Redirect to Offset Printing dashboard
+          window.location.href = '/offset-printing/dashboard';
+          return;
         } else {
           setCurrentView('dashboard');
         }
@@ -195,6 +213,15 @@ const Index = () => {
   }, []);
 
   const renderCurrentView = () => {
+    // Early redirect check for Offset Printing roles - before any rendering
+    if (!isLoading && isAuthenticated) {
+      const user = authAPI.getCurrentUser();
+      if (user?.role === 'HOD_OFFSET' || user?.role === 'OFFSET_OPERATOR') {
+        console.log('🖨️ Index: Redirecting HOD_OFFSET user to Offset Printing dashboard (React Router)...');
+        return <Navigate to="/offset-printing/dashboard" replace />;
+      }
+    }
+    
     // Show loading state
     if (isLoading) {
       return (
@@ -234,6 +261,7 @@ const Index = () => {
             onNavigateToPrepressHOD={handleNavigateToPrepressHOD}
             onNavigateToPrepressDesigner={handleNavigateToPrepressDesigner}
             onLogout={handleLogout}
+            onCreateProduct={handleNavigateToProductForm}
           />
         );
       case 'productForm':
@@ -329,6 +357,7 @@ const Index = () => {
             onNavigateToPrepressHOD={handleNavigateToPrepressHOD}
             onNavigateToPrepressDesigner={handleNavigateToPrepressDesigner}
             onLogout={handleLogout}
+            onCreateProduct={handleNavigateToProductForm}
           />
         );
     }

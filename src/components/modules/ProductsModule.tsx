@@ -42,9 +42,13 @@ interface Product {
   dimensions: string;
   color: string;
   description: string;
+  basePrice?: number;
+  fsc?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  created_by_name?: string;
+  createdById?: number;
 }
 
 interface Material {
@@ -470,8 +474,13 @@ const ProductsModule: React.FC = () => {
                         <TableHead>Type</TableHead>
                         <TableHead>Material</TableHead>
                         <TableHead>GSM</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Base Price</TableHead>
+                        <TableHead>FSC Certified</TableHead>
+                        <TableHead>Created By</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Created</TableHead>
+                        <TableHead>Updated</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -483,6 +492,18 @@ const ProductsModule: React.FC = () => {
                           <TableCell>{product.type}</TableCell>
                           <TableCell>{product.material_name || 'N/A'}</TableCell>
                           <TableCell>{product.gsm} g/m²</TableCell>
+                          <TableCell className="max-w-xs truncate" title={product.description || ''}>
+                            {product.description || '-'}
+                          </TableCell>
+                          <TableCell>${product.basePrice || 0}</TableCell>
+                          <TableCell>
+                            {product.fsc ? (
+                              <Badge variant="default" className="bg-green-500">Yes</Badge>
+                            ) : (
+                              <Badge variant="secondary">No</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{product.created_by_name || 'System'}</TableCell>
                           <TableCell>
                             <Badge variant={product.is_active ? "default" : "secondary"}>
                               {product.is_active ? (
@@ -499,6 +520,7 @@ const ProductsModule: React.FC = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>{new Date(product.created_at).toLocaleDateString()}</TableCell>
+                          <TableCell>{product.updated_at ? new Date(product.updated_at).toLocaleDateString() : '-'}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end space-x-2">
                               <Button

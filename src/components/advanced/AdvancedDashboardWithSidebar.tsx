@@ -1,15 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  LineChart, 
-  Line, 
-  AreaChart, 
-  Area, 
-  BarChart, 
-  Bar, 
-  PieChart, 
-  Pie, 
-  Cell,
   ResponsiveContainer, 
   XAxis, 
   YAxis, 
@@ -35,14 +26,15 @@ import {
   Bell,
   Settings,
   BarChart3,
-  PieChart as PieChartIcon,
   Activity,
   Zap,
   Target,
   Award,
   FileText,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  Crown,
+  Sparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,6 +45,11 @@ import { dashboardAPI, productsAPI, jobsAPI, authAPI } from '@/services/api';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 import SmartSidebar from '../layout/SmartSidebar';
 import { JobManagementTable } from '../JobManagementTable';
+import { ProductManagementTable } from '../ProductManagementTable';
+import { JobReport } from '../reports/JobReport';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ThemeSelector } from '../director/ThemeSelector';
+import { TeamAnalytics } from '../director/TeamAnalytics';
 
 interface DashboardProps {
   onNavigateToProductForm: () => void;
@@ -61,43 +58,47 @@ interface DashboardProps {
   onNavigateToPrepressHOD?: () => void;
   onNavigateToPrepressDesigner?: () => void;
   onLogout?: () => void;
+  onCreateProduct?: () => void;
 }
 
-// Mock data for charts
-const productionData = [
-  { month: 'Jan', completed: 245, pending: 67, revenue: 125000 },
-  { month: 'Feb', completed: 289, pending: 43, revenue: 145000 },
-  { month: 'Mar', completed: 334, pending: 52, revenue: 167000 },
-  { month: 'Apr', completed: 378, pending: 38, revenue: 189000 },
-  { month: 'May', completed: 423, pending: 29, revenue: 211000 },
-  { month: 'Jun', completed: 467, pending: 35, revenue: 234000 }
-];
-
-const departmentData = [
-  { name: 'Printing', value: 35, color: '#3B82F6' },
-  { name: 'Finishing', value: 25, color: '#10B981' },
-  { name: 'Assembly', value: 20, color: '#F59E0B' },
-  { name: 'Quality Control', value: 15, color: '#EF4444' },
-  { name: 'Packaging', value: 5, color: '#8B5CF6' }
-];
 
 export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({ 
   onNavigateToProductForm, 
   onNavigateToJobForm,
   onNavigateToReports,
+  onCreateProduct,
   onNavigateToPrepressHOD,
   onNavigateToPrepressDesigner,
   onLogout 
 }) => {
+  // CRITICAL: Check user role BEFORE any hooks or state - must be first thing
+  const currentUser = authAPI.getCurrentUser();
+  const userRole = currentUser?.role || currentUser?.Role;
+  
+  // CRITICAL: Immediate redirect for Offset Printing roles - MUST happen before ANY rendering
+  if (userRole === 'HOD_OFFSET' || userRole === 'OFFSET_OPERATOR') {
+    console.log('🖨️ CRITICAL: Redirecting HOD_OFFSET user - preventing all rendering');
+    // Use replace to prevent back button issues and force immediate redirect
+    window.location.replace('/offset-printing/dashboard');
+    // Return null immediately - this should prevent all rendering
+    return null;
+  }
+  
+  console.log('🔍 AdvancedDashboardWithSidebar - Current user:', currentUser);
+  console.log('🔍 AdvancedDashboardWithSidebar - User role:', userRole);
+  console.log('🔍 AdvancedDashboardWithSidebar - Role type:', typeof userRole);
+  console.log('🔍 AdvancedDashboardWithSidebar - Is Director?', userRole === 'DIRECTOR');
+  console.log('🔍 AdvancedDashboardWithSidebar - Role comparison:', `"${userRole}" === "DIRECTOR"`);
+  console.log('🎨 ThemeSelector should be visible to all users');
+  console.log('📊 Team Analytics tab should be visible for DIRECTOR:', userRole === 'DIRECTOR');
+  console.log('✅ ThemeSelector component imported:', typeof ThemeSelector !== 'undefined');
+  console.log('✅ TeamAnalytics component imported:', typeof TeamAnalytics !== 'undefined');
+  
   const [activeTimeframe, setActiveTimeframe] = useState('6M');
   const [showNotifications, setShowNotifications] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMetric, setSelectedMetric] = useState('production');
   const [currentView, setCurrentView] = useState('dashboard');
-  
-  // Get current user role
-  const currentUser = authAPI.getCurrentUser();
-  const userRole = currentUser?.role;
   const [productsSummary, setProductsSummary] = useState({
     totalProducts: 0,
     activeProducts: 0,
@@ -281,8 +282,24 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
     }
   };
 
+  // Premium styling for Director role
+  const isDirector = userRole === 'DIRECTOR' || userRole === 'director' || userRole?.toUpperCase() === 'DIRECTOR';
+  console.log('🎨 Premium Director Styling - isDirector:', isDirector);
+  console.log('🎨 Premium Director Styling - userRole:', userRole);
+  const dashboardBgClass = isDirector 
+    ? 'min-h-screen bg-gradient-to-br from-amber-50 via-yellow-50/40 to-orange-50/30 relative overflow-hidden'
+    : 'min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50';
+  
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50">
+    <div className={dashboardBgClass}>
+      {isDirector && (
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(245, 158, 11, 0.3) 1px, transparent 0)',
+            backgroundSize: '40px 40px'
+          }}></div>
+        </div>
+      )}
       <SmartSidebar 
         currentView={currentView}
         onNavigate={handleNavigate}
@@ -292,8 +309,8 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
       
-      <div className={`p-4 sm:p-6 transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-70'}`}>
-        <div className="max-w-7xl mx-auto">
+      <div className={`p-4 sm:p-6 transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-70'} relative z-10`}>
+        <div className="w-full">
           {/* Modern Header */}
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
@@ -302,16 +319,54 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
             className="flex flex-col sm:flex-row sm:items-center justify-between mb-8"
           >
             <div className="mb-4 sm:mb-0">
-              <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent">
-                Dashboard
-              </h1>
-              <p className="text-gray-600 mt-2 text-sm sm:text-base">
-                Welcome back, <span className="font-semibold text-blue-600">{currentUser?.first_name || 'User'}</span>! 
-                Here's what's happening today.
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className={`text-3xl sm:text-4xl font-bold bg-clip-text text-transparent ${
+                  isDirector 
+                    ? 'bg-gradient-to-r from-amber-700 via-yellow-600 to-orange-600' 
+                    : 'bg-gradient-to-r from-gray-900 via-blue-900 to-indigo-900'
+                }`}>
+                  Dashboard
+                </h1>
+                {isDirector && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-400 rounded-full shadow-lg border-2 border-amber-500">
+                    <Crown className="w-4 h-4 text-amber-900" />
+                    <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">Director</span>
+                    <Sparkles className="w-3 h-3 text-amber-900 animate-pulse" />
+                  </div>
+                )}
+              </div>
+              {isDirector && (
+                <div className="mb-2">
+                  <h2 className={`text-2xl sm:text-3xl font-bold ${
+                    isDirector 
+                      ? 'bg-gradient-to-r from-amber-800 via-yellow-700 to-orange-700 bg-clip-text text-transparent' 
+                      : ''
+                  }`}>
+                    MR SHAHID AAZMI
+                  </h2>
+                </div>
+              )}
+              <p className={`mt-2 text-sm sm:text-base ${
+                isDirector 
+                  ? 'text-amber-900/80' 
+                  : 'text-gray-600'
+              }`}>
+                {isDirector ? (
+                  <>
+                    Welcome, <span className="font-bold text-amber-700">MR SHAHID AAZMI</span>! 
+                    <span className="ml-2">Executive overview of your organization.</span>
+                  </>
+                ) : (
+                  <>
+                    Welcome back, <span className="font-semibold text-blue-600">{currentUser?.first_name || 'User'}</span>! 
+                    Here's what's happening today.
+                  </>
+                )}
               </p>
             </div>
             <div className="flex items-center space-x-3">
               <BackendStatusIndicator />
+              <ThemeSelector />
               <Button 
                 variant="outline" 
                 onClick={() => window.location.href = '/jobs'}
@@ -340,21 +395,39 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
               transition={{ duration: 0.5, delay: 0.1 }}
               className="will-change-transform"
             >
-              <div className="modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-indigo-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative z-10">
+              <div className={`modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative ${
+                isDirector ? 'border-2 border-amber-400/50 shadow-xl shadow-amber-200/20' : ''
+              }`}>
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-400/10 to-yellow-400/15' 
+                    : 'bg-gradient-to-br from-blue-600/5 to-indigo-600/10'
+                }`}></div>
+                <CardContent className={`p-6 relative z-10 ${
+                  isDirector ? 'bg-gradient-to-br from-amber-50/50 via-yellow-50/30 to-orange-50/20' : ''
+                }`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-caption text-blue-600/80 mb-2">Total Products</p>
-                      <p className="text-display-3 font-bold text-slate-900 mb-1">
+                      <p className={`text-caption mb-2 ${
+                        isDirector ? 'text-amber-700/90 font-semibold' : 'text-blue-600/80'
+                      }`}>Total Products</p>
+                      <p className={`text-display-3 font-bold mb-1 ${
+                        isDirector ? 'text-amber-900' : 'text-slate-900'
+                      }`}>
                         {dashboardData.overallStats?.total_products || 0}
                       </p>
                       <div className="flex items-center space-x-2">
-                        <div className="status-success">Active inventory</div>
-                        <TrendingUp className="w-3 h-3 text-emerald-600" />
+                        <div className={isDirector ? 'status-warning' : 'status-success'}>Active inventory</div>
+                        <TrendingUp className={`w-3 h-3 ${
+                          isDirector ? 'text-amber-600' : 'text-emerald-600'
+                        }`} />
                       </div>
                     </div>
-                    <div className="h-16 w-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg">
+                    <div className={`h-16 w-16 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg ${
+                      isDirector 
+                        ? 'bg-gradient-to-br from-amber-500 to-amber-600' 
+                        : 'bg-gradient-to-br from-blue-500 to-blue-600'
+                    }`}>
                       <Package className="h-8 w-8 text-white" />
                     </div>
                   </div>
@@ -368,21 +441,39 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
               transition={{ duration: 0.5, delay: 0.2 }}
               className="will-change-transform"
             >
-              <div className="modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-600/5 to-green-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative z-10">
+              <div className={`modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative ${
+                isDirector ? 'border-2 border-amber-400/50 shadow-xl shadow-amber-200/20' : ''
+              }`}>
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-400/10 to-yellow-400/15' 
+                    : 'bg-gradient-to-br from-emerald-600/5 to-green-600/10'
+                }`}></div>
+                <CardContent className={`p-6 relative z-10 ${
+                  isDirector ? 'bg-gradient-to-br from-amber-50/50 via-yellow-50/30 to-orange-50/20' : ''
+                }`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-caption text-emerald-600/80 mb-2">Total Jobs</p>
-                      <p className="text-display-3 font-bold text-slate-900 mb-1">
+                      <p className={`text-caption mb-2 ${
+                        isDirector ? 'text-amber-700/90 font-semibold' : 'text-emerald-600/80'
+                      }`}>Total Jobs</p>
+                      <p className={`text-display-3 font-bold mb-1 ${
+                        isDirector ? 'text-amber-900' : 'text-slate-900'
+                      }`}>
                         {dashboardData.overallStats?.total_jobs || 0}
                       </p>
                       <div className="flex items-center space-x-2">
-                        <div className="status-info">Production orders</div>
-                        <Factory className="w-3 h-3 text-blue-600" />
+                        <div className={isDirector ? 'status-warning' : 'status-info'}>Production orders</div>
+                        <Factory className={`w-3 h-3 ${
+                          isDirector ? 'text-amber-600' : 'text-blue-600'
+                        }`} />
                       </div>
                     </div>
-                    <div className="h-16 w-16 bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg">
+                    <div className={`h-16 w-16 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg ${
+                      isDirector 
+                        ? 'bg-gradient-to-br from-amber-500 to-amber-600' 
+                        : 'bg-gradient-to-br from-emerald-500 to-emerald-600'
+                    }`}>
                       <Factory className="h-8 w-8 text-white" />
                     </div>
                   </div>
@@ -396,21 +487,39 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
               transition={{ duration: 0.5, delay: 0.3 }}
               className="will-change-transform"
             >
-              <div className="modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-600/5 to-violet-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative z-10">
+              <div className={`modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative ${
+                isDirector ? 'border-2 border-amber-400/50 shadow-xl shadow-amber-200/20' : ''
+              }`}>
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-400/10 to-yellow-400/15' 
+                    : 'bg-gradient-to-br from-purple-600/5 to-violet-600/10'
+                }`}></div>
+                <CardContent className={`p-6 relative z-10 ${
+                  isDirector ? 'bg-gradient-to-br from-amber-50/50 via-yellow-50/30 to-orange-50/20' : ''
+                }`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-caption text-purple-600/80 mb-2">Companies</p>
-                      <p className="text-display-3 font-bold text-slate-900 mb-1">
+                      <p className={`text-caption mb-2 ${
+                        isDirector ? 'text-amber-700/90 font-semibold' : 'text-purple-600/80'
+                      }`}>Companies</p>
+                      <p className={`text-display-3 font-bold mb-1 ${
+                        isDirector ? 'text-amber-900' : 'text-slate-900'
+                      }`}>
                         {dashboardData.overallStats?.total_companies || 0}
                       </p>
                       <div className="flex items-center space-x-2">
-                        <div className="status-info">Active clients</div>
-                        <Users className="w-3 h-3 text-blue-600" />
+                        <div className={isDirector ? 'status-warning' : 'status-info'}>Active clients</div>
+                        <Users className={`w-3 h-3 ${
+                          isDirector ? 'text-amber-600' : 'text-blue-600'
+                        }`} />
                       </div>
                     </div>
-                    <div className="h-16 w-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg">
+                    <div className={`h-16 w-16 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg ${
+                      isDirector 
+                        ? 'bg-gradient-to-br from-amber-500 to-amber-600' 
+                        : 'bg-gradient-to-br from-purple-500 to-purple-600'
+                    }`}>
                       <Users className="h-8 w-8 text-white" />
                     </div>
                   </div>
@@ -424,13 +533,25 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
               transition={{ duration: 0.5, delay: 0.4 }}
               className="will-change-transform"
             >
-              <div className="modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-600/5 to-yellow-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <CardContent className="p-6 relative z-10">
+              <div className={`modern-card group hover:shadow-2xl hover:scale-105 transition-all duration-300 hardware-accelerated overflow-hidden relative ${
+                isDirector ? 'border-2 border-amber-400/50 shadow-xl shadow-amber-200/20' : ''
+              }`}>
+                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-400/10 to-yellow-400/15' 
+                    : 'bg-gradient-to-br from-amber-600/5 to-yellow-600/10'
+                }`}></div>
+                <CardContent className={`p-6 relative z-10 ${
+                  isDirector ? 'bg-gradient-to-br from-amber-50/50 via-yellow-50/30 to-orange-50/20' : ''
+                }`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-caption text-amber-600/80 mb-2">Active Users</p>
-                      <p className="text-display-3 font-bold text-slate-900 mb-1">
+                      <p className={`text-caption mb-2 ${
+                        isDirector ? 'text-amber-700/90 font-semibold' : 'text-amber-600/80'
+                      }`}>Active Users</p>
+                      <p className={`text-display-3 font-bold mb-1 ${
+                        isDirector ? 'text-amber-900' : 'text-slate-900'
+                      }`}>
                         {dashboardData.overallStats?.total_users || 0}
                       </p>
                       <div className="flex items-center space-x-2">
@@ -438,7 +559,11 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
                         <Activity className="w-3 h-3 text-amber-600" />
                       </div>
                     </div>
-                    <div className="h-16 w-16 bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg">
+                    <div className={`h-16 w-16 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 shadow-lg ${
+                      isDirector 
+                        ? 'bg-gradient-to-br from-amber-500 to-amber-600' 
+                        : 'bg-gradient-to-br from-amber-500 to-amber-600'
+                    }`}>
                       <Activity className="h-8 w-8 text-white" />
                     </div>
                   </div>
@@ -447,162 +572,101 @@ export const AdvancedDashboardWithSidebar: React.FC<DashboardProps> = ({
             </motion.div>
           </div>
 
-          {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Production Trends */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.5 }}
-              className="will-change-transform"
-            >
-              <div className="modern-card hover:shadow-2xl transition-all duration-300 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50/50 border-b border-slate-200/50">
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="p-2 bg-emerald-100 rounded-lg mr-3">
-                        <TrendingUp className="w-5 h-5 text-emerald-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-heading-3 text-slate-900">Production Trends</h3>
-                        <p className="text-body-small text-slate-600">Monthly performance overview</p>
-                      </div>
-                    </div>
-                    <div className="status-success">+12.5%</div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={productionData}>
-                      <defs>
-                        <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10B981" stopOpacity={0.1}/>
-                        </linearGradient>
-                        <linearGradient id="pendingGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#F59E0B" stopOpacity={0.1}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'white', 
-                          border: 'none', 
-                          borderRadius: '12px', 
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' 
-                        }} 
-                      />
-                      <Legend />
-                      <Area 
-                        type="monotone" 
-                        dataKey="completed" 
-                        stackId="1" 
-                        stroke="#10B981" 
-                        fill="url(#completedGradient)"
-                        strokeWidth={2}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="pending" 
-                        stackId="1" 
-                        stroke="#F59E0B" 
-                        fill="url(#pendingGradient)"
-                        strokeWidth={2}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </div>
-            </motion.div>
-
-            {/* Department Distribution */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.6 }}
-              className="will-change-transform"
-            >
-              <div className="modern-card hover:shadow-2xl transition-all duration-300 overflow-hidden">
-                <CardHeader className="bg-gradient-to-r from-slate-50 to-purple-50/50 border-b border-slate-200/50">
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="p-2 bg-purple-100 rounded-lg mr-3">
-                        <PieChartIcon className="w-5 h-5 text-purple-600" />
-                      </div>
-                      <div>
-                        <h3 className="text-heading-3 text-slate-900">Department Distribution</h3>
-                        <p className="text-body-small text-slate-600">Workload across departments</p>
-                      </div>
-                    </div>
-                    <div className="status-info">5 Departments</div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-center">
-                    <ResponsiveContainer width="100%" height={250}>
-                      <PieChart>
-                        <Pie
-                          data={departmentData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                          stroke="#fff"
-                          strokeWidth={2}
-                        >
-                          {departmentData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'white', 
-                            border: 'none', 
-                            borderRadius: '12px', 
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' 
-                          }} 
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="space-y-3">
-                      {departmentData.map((dept, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: dept.color }}
-                            />
-                            <span className="text-body-small font-medium text-slate-700">{dept.name}</span>
-                          </div>
-                          <span className="text-body-small font-semibold text-slate-900">{dept.value}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </CardContent>
-              </div>
-            </motion.div>
-          </div>
-
-          {/* Job Management Table */}
+          {/* Jobs and Products Management Tables with Tabs */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}
             className="col-span-full"
           >
-            <JobManagementTable 
-              onCreateJob={() => onNavigateToJobForm()}
-              onEditJob={(job) => {
-                // Navigate to job form with job data for editing
-                onNavigateToJobForm(job);
-              }}
-            />
+            <Tabs defaultValue="jobs" className="w-full">
+              <TabsList className={`grid w-full mb-4 ${userRole === 'DIRECTOR' ? 'grid-cols-4' : 'grid-cols-3'} ${
+                isDirector ? 'bg-amber-50/50 border-2 border-amber-200/50 shadow-lg' : ''
+              }`}>
+                <TabsTrigger 
+                  value="jobs"
+                  className={isDirector ? 'data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-lg' : ''}
+                >
+                  Jobs
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="products"
+                  className={isDirector ? 'data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-lg' : ''}
+                >
+                  Products
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="reports"
+                  className={isDirector ? 'data-[state=active]:bg-amber-500 data-[state=active]:text-white data-[state=active]:shadow-lg' : ''}
+                >
+                  Reports
+                </TabsTrigger>
+                {userRole === 'DIRECTOR' && (
+                  <TabsTrigger 
+                    value="team-analytics"
+                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-orange-500 data-[state=active]:text-white data-[state=active]:shadow-xl data-[state=active]:border-2 data-[state=active]:border-amber-400"
+                  >
+                    <Crown className="w-4 h-4 mr-2" />
+                    Team Analytics
+                  </TabsTrigger>
+                )}
+              </TabsList>
+              
+              <TabsContent value="jobs" className="space-y-4">
+                <JobManagementTable 
+                  onCreateJob={() => onNavigateToJobForm()}
+                  onEditJob={(job) => {
+                    // Navigate to job form with job data for editing
+                    onNavigateToJobForm(job);
+                  }}
+                />
+              </TabsContent>
+              
+              <TabsContent value="products" className="space-y-4">
+                <ProductManagementTable 
+                  onCreateProduct={() => {
+                    if (onCreateProduct) {
+                      onCreateProduct();
+                    } else {
+                      onNavigateToProductForm();
+                    }
+                  }}
+                />
+              </TabsContent>
+              
+              <TabsContent value="reports" className="space-y-4">
+                <JobReport />
+              </TabsContent>
+
+              {userRole === 'DIRECTOR' && (
+                <TabsContent value="team-analytics" className={`space-y-4 p-6 rounded-lg ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-50/80 via-yellow-50/60 to-orange-50/40 border-2 border-amber-200/50 shadow-xl' 
+                    : ''
+                }`}>
+                  <div className={`mb-4 p-4 rounded-lg ${
+                    isDirector 
+                      ? 'bg-gradient-to-r from-amber-400/20 to-orange-400/20 border-l-4 border-amber-500' 
+                      : ''
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Crown className={`w-5 h-5 ${isDirector ? 'text-amber-600' : ''}`} />
+                      <h3 className={`text-lg font-bold ${
+                        isDirector ? 'text-amber-900' : 'text-gray-900'
+                      }`}>
+                        Executive Team Performance Dashboard
+                      </h3>
+                    </div>
+                    <p className={`text-sm mt-1 ${
+                      isDirector ? 'text-amber-700/80' : 'text-gray-600'
+                    }`}>
+                      Comprehensive analytics for all senior merchandisers and their teams
+                    </p>
+                  </div>
+                  <TeamAnalytics />
+                </TabsContent>
+              )}
+            </Tabs>
           </motion.div>
         </div>
       </div>

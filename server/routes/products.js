@@ -151,9 +151,12 @@ router.get('/', [
       'Offset' as product_type,
       m.name as material_name,
       COALESCE(p.color_specifications, '') as color_specifications,
-      COALESCE(p.remarks, '') as remarks
+      COALESCE(p.remarks, '') as remarks,
+      p."createdById",
+      creator."firstName" || ' ' || creator."lastName" as created_by_name
     FROM products p
     LEFT JOIN materials m ON p.material_id = m.id
+    LEFT JOIN users creator ON p."createdById" = creator.id
     ${whereClause}
     ORDER BY p."createdAt" DESC
     LIMIT $${limitParam} OFFSET $${offsetParam}`;
@@ -361,13 +364,16 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
     INSERT INTO products (
       name, sku, brand, "categoryId", description,
       gsm, "fscCertified", "fscLicense", "basePrice", material_id, 
-      color_specifications, remarks, "createdAt", "updatedAt"
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      color_specifications, remarks, "createdById", "createdAt", "updatedAt"
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING *
   `;
 
+  // Wrap INSERT in try-catch with auto-recovery for sequence errors
+  let result;
+  let product;
   try {
-    const result = await dbAdapter.query(query, [
+    result = await dbAdapter.query(query, [
       sku || 'Unnamed Product', // name field
       sku,
       brand,
@@ -379,38 +385,89 @@ router.post('/', productValidation, asyncHandler(async (req, res) => {
       0, // basePrice default
       finalMaterialId, // material_id
       color_specifications || null, // color_specifications
-      remarks || null // remarks
+      remarks || null, // remarks
+      req.user?.id || null // createdById - track creator but products remain visible to all
     ]);
-
-    const product = result.rows[0];
-
-    res.status(201).json({
-      message: 'Product created successfully',
-      product
-    });
+    product = result.rows[0];
   } catch (error) {
-    console.error('Product creation error:', error);
-    
-    // Handle foreign key constraint errors
-    if (error.code === '23503') {
+    // Check if it's a duplicate key error on the id column (sequence out of sync)
+    if (error.code === '23505' && error.message && error.message.includes('Key (id)=')) {
+      console.warn('⚠️ Products sequence out of sync detected. Attempting auto-fix...');
+      
+      try {
+        // Auto-fix the sequence
+        await dbAdapter.query(`
+          SELECT setval(
+            'products_id_seq', 
+            COALESCE((SELECT MAX(id) FROM products), 0) + 1, 
+            false
+          )
+        `);
+        
+        console.log('✅ Products sequence auto-fixed. Retrying product creation...');
+        
+        // Retry the insert once
+        result = await dbAdapter.query(query, [
+          sku || 'Unnamed Product',
+          sku,
+          brand,
+          finalCategoryId,
+          description || '',
+          gsm || null,
+          fsc || false,
+          fsc_claim || null,
+          0,
+          finalMaterialId,
+          color_specifications || null,
+          remarks || null
+        ]);
+        product = result.rows[0];
+      } catch (retryError) {
+        console.error('❌ Products sequence auto-fix failed:', retryError);
+        return res.status(500).json({
+          error: 'Database sequence error',
+          message: 'Failed to create product. Please contact administrator.',
+          details: 'Sequence auto-recovery failed'
+        });
+      }
+    } else if (error.code === '23505') {
+      // Handle other duplicate key errors (like duplicate sku)
+      if (error.message && error.message.includes('sku')) {
+        return res.status(409).json({
+          error: 'Duplicate product code',
+          message: 'A product with this code already exists',
+          field: 'sku'
+        });
+      }
+      return res.status(409).json({
+        error: 'Duplicate entry',
+        message: 'A record with this information already exists',
+        field: error.message
+      });
+    } else if (error.code === '23503') {
+      // Handle foreign key constraint errors
       return res.status(400).json({
         error: 'Invalid reference',
         message: 'The selected material does not exist. Please select a valid material.',
         details: error.detail
       });
-    }
-    
-    // Handle other database errors
-    if (error.code) {
+    } else if (error.code) {
+      // Handle other database errors
       return res.status(400).json({
         error: 'Database error',
         message: 'An error occurred while creating the product',
         details: error.message
       });
+    } else {
+      // Re-throw other errors
+      throw error;
     }
-    
-    throw error;
   }
+
+  res.status(201).json({
+    message: 'Product created successfully',
+    product
+  });
 }));
 
 // Update product
@@ -588,27 +645,55 @@ router.post('/:id/process-selections', [
       }
     }
 
-    // Clear existing selections for this product
-    await dbAdapter.query(
-      'DELETE FROM product_step_selections WHERE "productId" = $1',
-      [productId]
-    );
+    // Use transaction for atomicity
+    const client = await dbAdapter.getConnection().connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Clear existing selections for this product
+      await client.query(
+        'DELETE FROM product_step_selections WHERE "productId" = $1',
+        [productId]
+      );
 
-    // Insert new selections (only the selected ones)
-    const validSelections = selectedSteps.filter(step => step.is_selected && step.step_id);
-    console.log('Valid selections to save:', validSelections.length, 'out of', selectedSteps.filter(s => s.is_selected).length);
+      // Insert new selections (only the selected ones)
+      // Remove duplicates by step_id to prevent unique constraint violations
+      const seenStepIds = new Set();
+      const validSelections = selectedSteps
+        .filter(step => step.is_selected && step.step_id)
+        .filter(step => {
+          if (seenStepIds.has(step.step_id)) {
+            console.warn(`Duplicate step_id ${step.step_id} found, skipping`);
+            return false;
+          }
+          seenStepIds.add(step.step_id);
+          return true;
+        });
+      
+      console.log('Valid selections to save:', validSelections.length, 'out of', selectedSteps.filter(s => s.is_selected).length);
 
-    for (const step of validSelections) {
-      console.log('Inserting selection:', {
-        productId,
-        stepId: step.step_id,
-        isSelected: step.is_selected
-      });
+      for (const step of validSelections) {
+        console.log('Inserting selection:', {
+          productId,
+          stepId: step.step_id,
+          isSelected: step.is_selected
+        });
 
-      await dbAdapter.query(`
-        INSERT INTO product_step_selections ("productId", "stepId", is_selected)
-        VALUES ($1, $2, $3)
+        // Use ON CONFLICT to handle any race conditions or edge cases
+        await client.query(`
+          INSERT INTO product_step_selections ("productId", "stepId", is_selected)
+          VALUES ($1, $2, $3)
+          ON CONFLICT ("productId", "stepId") 
+          DO UPDATE SET is_selected = EXCLUDED.is_selected, "updatedAt" = CURRENT_TIMESTAMP
         `, [productId, step.step_id, step.is_selected ? true : false]);
+      }
+      
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
     res.json({
@@ -617,6 +702,24 @@ router.post('/:id/process-selections', [
     });
   } catch (error) {
     console.error('Process selections save error:', error);
+    
+    // Handle duplicate key errors with better error message
+    if (error.code === '23505') {
+      if (error.message && error.message.includes('product_step_selections')) {
+        return res.status(409).json({
+          error: 'Duplicate entry',
+          message: 'A process selection for this product and step already exists. This may be due to a race condition. Please try again.',
+          details: error.message
+        });
+      }
+      return res.status(409).json({
+        error: 'Duplicate entry',
+        message: 'A record with this information already exists',
+        details: error.message
+      });
+    }
+    
+    // Re-throw other errors to be handled by error middleware
     throw error;
   }
 }));

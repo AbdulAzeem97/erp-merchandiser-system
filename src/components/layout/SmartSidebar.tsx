@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Calendar,
   Shield,
-  Zap
+  Zap,
+  Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -62,8 +63,18 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
       }
     ];
 
-    // Role-based navigation
-    if (userRole === 'ADMIN' || userRole === 'MERCHANDISER' || userRole === 'HEAD_MERCHANDISER') {
+    // Role-based navigation - Merchandiser roles (including new roles)
+    const merchandiserRoles = [
+      'ADMIN', 
+      'MERCHANDISER', 
+      'HEAD_OF_MERCHANDISER', 
+      'HEAD_MERCHANDISER',
+      'DIRECTOR',
+      'SENIOR_MERCHANDISER',
+      'ASSISTANT_MERCHANDISER'
+    ];
+    
+    if (merchandiserRoles.includes(userRole || '')) {
       baseItems.push(
         {
           id: 'products',
@@ -98,7 +109,8 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
       );
     }
 
-    if (userRole === 'ADMIN' || userRole === 'HEAD_MERCHANDISER') {
+    // User management - Admin and Director only
+    if (userRole === 'ADMIN' || userRole === 'HEAD_OF_MERCHANDISER' || userRole === 'HEAD_MERCHANDISER' || userRole === 'DIRECTOR') {
       baseItems.push(
         {
           id: 'users',
@@ -137,8 +149,9 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
       );
     }
 
-    // Reports (for non-prepress roles)
-    if (userRole !== 'HOD_PREPRESS' && userRole !== 'DESIGNER') {
+    // Reports (for non-prepress roles and all merchandiser roles)
+    const prepressRoles = ['HOD_PREPRESS', 'DESIGNER'];
+    if (!prepressRoles.includes(userRole || '')) {
       baseItems.push(
         {
           id: 'reports',
@@ -171,6 +184,7 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
   };
 
   const navigationItems = getNavigationItems();
+  const isDirector = userRole === 'DIRECTOR';
 
   const handleNavigation = (itemId: string) => {
     onNavigate(itemId);
@@ -231,6 +245,7 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
           sidebar-modern fixed left-0 top-0 h-full z-50 shadow-2xl
           ${isMobileOpen ? 'translate-x-0' : 'lg:translate-x-0 -translate-x-full'}
           transition-transform duration-300 ease-in-out lg:transition-none
+          ${isDirector ? 'bg-gradient-to-b from-amber-50/95 via-yellow-50/90 to-orange-50/95 border-r-2 border-amber-200/50' : ''}
         `}
       >
         <div className="flex flex-col h-full">
@@ -242,13 +257,27 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
                 animate={isCollapsed ? "collapsed" : "expanded"}
                 className="flex items-center space-x-3"
               >
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <Factory className="w-7 h-7 text-white" />
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg ${
+                  isDirector 
+                    ? 'bg-gradient-to-br from-amber-500 via-yellow-500 to-orange-500' 
+                    : 'bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600'
+                }`}>
+                  {isDirector ? (
+                    <Crown className="w-7 h-7 text-white" />
+                  ) : (
+                    <Factory className="w-7 h-7 text-white" />
+                  )}
                 </div>
                 {!isCollapsed && (
                   <div>
-                    <h1 className="text-heading-3 font-bold text-slate-900">ERP System</h1>
-                    <p className="text-caption text-slate-500">Merchandiser Platform</p>
+                    <h1 className={`text-heading-3 font-bold ${
+                      isDirector ? 'text-amber-900' : 'text-slate-900'
+                    }`}>ERP System</h1>
+                    <p className={`text-caption ${
+                      isDirector ? 'text-amber-700/80' : 'text-slate-500'
+                    }`}>
+                      {isDirector ? 'Executive Platform' : 'Merchandiser Platform'}
+                    </p>
                   </div>
                 )}
               </motion.div>
@@ -281,7 +310,7 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-body-small font-semibold text-slate-900 truncate">
-                      {currentUser.first_name} {currentUser.last_name}
+                      {isDirector ? 'MR SHAHID AAZMI' : `${currentUser.first_name} ${currentUser.last_name}`}
                     </p>
                     <p className="text-caption text-slate-600 truncate">{currentUser.role}</p>
                   </div>
@@ -322,7 +351,11 @@ const SmartSidebar: React.FC<SmartSidebarProps> = ({
                   >
                     {/* Active indicator */}
                     {isActive && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-indigo-600 rounded-r-full"></div>
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${
+                        isDirector 
+                          ? 'bg-gradient-to-b from-amber-500 to-orange-500' 
+                          : 'bg-gradient-to-b from-blue-500 to-indigo-600'
+                      }`}></div>
                     )}
                     
                     <div className="flex items-center space-x-3">

@@ -36,6 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 import { ProductMaster } from '../../types/erp';
 import { PROCESS_SEQUENCES } from '../../data/processSequences';
 import { generateJobCardPDF } from '../../utils/pdfGenerator';
@@ -135,6 +136,7 @@ const CUSTOMER_NAMES = [
   'METROTEX INDUSTRIES',
   'GnB SOX MILL',
   'INTERNATIONAL TEXTILE LTD',
+  'IRFAN GARMENTS',
   'ELITE',
   'HI-KNIT (PVT) LTD',
   'MEHRAN FOOD AND SPICES',
@@ -212,6 +214,7 @@ interface AdvancedJobFormProps {
 interface JobCardData {
   productCode: string;
   poNumber: string;
+  withoutPo: boolean;
   quantity: number;
   deliveryDate: string;
   customerNotes: string;
@@ -278,6 +281,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
   const [jobCardData, setJobCardData] = useState<JobCardData>({
     productCode: initialProduct?.product_item_code || '',
     poNumber: '',
+    withoutPo: false,
     quantity: 1,
     deliveryDate: '',
     customerNotes: '',
@@ -350,7 +354,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     const errors: string[] = [];
     
     if (!product) errors.push('Product selection required');
-    if (!jobCardData.poNumber.trim()) errors.push('PO Number required');
+    if (!jobCardData.withoutPo && !jobCardData.poNumber.trim()) errors.push('PO Number required');
     if (jobCardData.quantity <= 0) errors.push('Quantity must be greater than 0');
     if (!jobCardData.deliveryDate) errors.push('Delivery date required');
     if (!jobCardData.customerInfo.name.trim()) errors.push('Customer name required');
@@ -363,7 +367,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
     const totalFields = 10; // Total required fields
     const completedFields = [
       product,
-      jobCardData.poNumber.trim(),
+      jobCardData.withoutPo || jobCardData.poNumber.trim(),
       jobCardData.quantity > 0,
       jobCardData.deliveryDate,
       jobCardData.customerInfo.name.trim(),
@@ -827,7 +831,8 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       const jobData: any = {
         job_card_id: `JC-${Date.now()}`, // Generate unique job card ID
         product_id: product.id,
-        po_number: jobCardData.poNumber,
+        po_number: jobCardData.withoutPo ? '' : jobCardData.poNumber,
+        without_po: jobCardData.withoutPo,
         quantity: jobCardData.quantity,
         delivery_date: deliveryDate.toISOString(),
         target_date: deliveryDate.toISOString(),
@@ -855,6 +860,9 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       // Save job to API
       const savedJob = await jobsAPI.create(jobData);
       
+      // Get API base URL once for all subsequent API calls
+      const apiBaseUrl = getApiBaseUrl();
+      
       // Save item specifications if provided
       if (jobCardData.itemSpecificationsData && jobCardData.itemSpecificationsExcelLink) {
         try {
@@ -874,8 +882,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             raw_excel_data: jobCardData.itemSpecificationsData || {},
             items: jobCardData.itemSpecificationsData.items || [] // Include individual items for database storage
           };
-
-          const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${savedJob.job.id}/item-specifications`, {
+          const itemSpecsResponse = await fetch(`${apiBaseUrl}/jobs/${savedJob.job.id}/item-specifications`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
@@ -910,9 +917,35 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             total_sheets: jobCardData.ratioData.totalSheets || null,
             total_plates: jobCardData.ratioData.totalPlates || null,
             qty_produced: jobCardData.ratioData.rawData?.summary?.qtyProduced || jobCardData.ratioData.qtyProduced || null,
-            excess_qty: jobCardData.ratioData.excessQuantity || null,
-            efficiency_percentage: jobCardData.ratioData.productionEfficiency || null,
-            excess_percentage: jobCardData.ratioData.excessPercentage || (jobCardData.ratioData.excessQuantity && jobCardData.ratioData.rawData?.summary?.requiredOrderQty ? ((jobCardData.ratioData.excessQuantity / jobCardData.ratioData.rawData.summary.requiredOrderQty) * 100).toFixed(2) : null),
+            // Excess Qty: try top level first, then summary section, ensure it's a number
+            excess_qty: (() => {
+              const value = jobCardData.ratioData.excessQuantity ?? jobCardData.ratioData.rawData?.summary?.excessQty;
+              if (value === null || value === undefined) return null;
+              const num = typeof value === 'number' ? value : Number(value);
+              return isNaN(num) ? null : num;
+            })(),
+            // Efficiency: try top level first, then summary section, ensure it's a number
+            efficiency_percentage: (() => {
+              const value = jobCardData.ratioData.productionEfficiency ?? jobCardData.ratioData.rawData?.summary?.efficiency;
+              if (value === null || value === undefined) return null;
+              const num = typeof value === 'number' ? value : Number(value);
+              return isNaN(num) ? null : num;
+            })(),
+            // Excess Percentage: try top level, then summary, then calculate, ensure it's a number
+            excess_percentage: (() => {
+              let value = jobCardData.ratioData.excessPercentage ?? jobCardData.ratioData.rawData?.summary?.excessPercent;
+              if (value === null || value === undefined) {
+                // Calculate if we have the data
+                const excessQty = jobCardData.ratioData.excessQuantity ?? jobCardData.ratioData.rawData?.summary?.excessQty;
+                const requiredQty = jobCardData.ratioData.rawData?.summary?.requiredOrderQty;
+                if (excessQty !== null && excessQty !== undefined && requiredQty !== null && requiredQty !== undefined && requiredQty > 0) {
+                  value = (excessQty / requiredQty) * 100;
+                }
+              }
+              if (value === null || value === undefined) return null;
+              const num = typeof value === 'number' ? value : Number(value);
+              return isNaN(num) ? null : num;
+            })(),
             required_order_qty: jobCardData.ratioData.rawData?.summary?.requiredOrderQty || jobCardData.ratioData.requiredOrderQty || null,
             color_details: jobCardData.ratioData.rawData?.colorDetails || [],
             plate_distribution: jobCardData.ratioData.plateDistribution || {},
@@ -920,7 +953,11 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             raw_excel_data: jobCardData.ratioData.rawData || {}
           };
 
-          const ratioResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${savedJob.job.id}/ratio-report`, {
+          console.log('📊 Saving ratio report for job:', savedJob.job.id);
+          console.log('📊 API URL:', `${apiBaseUrl}/jobs/${savedJob.job.id}/ratio-report`);
+          console.log('📊 Ratio report data:', ratioReportData);
+          
+          const ratioResponse = await fetch(`${apiBaseUrl}/jobs/${savedJob.job.id}/ratio-report`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -929,66 +966,28 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
             body: JSON.stringify(ratioReportData)
           });
 
+          console.log('📊 Ratio report response status:', ratioResponse.status);
+          console.log('📊 Ratio report response OK:', ratioResponse.ok);
+
           if (ratioResponse.ok) {
-            console.log('Ratio report saved successfully');
+            const responseData = await ratioResponse.json();
+            console.log('✅ Ratio report saved successfully:', responseData);
             toast.success('Ratio report saved successfully! 📊');
           } else {
-            console.error('Failed to save ratio report:', await ratioResponse.text());
-            toast.warning('Job created but ratio report failed to save');
+            const errorText = await ratioResponse.text();
+            console.error('❌ Failed to save ratio report. Status:', ratioResponse.status);
+            console.error('❌ Error response:', errorText);
+            toast.warning(`Job created but ratio report failed to save (Status: ${ratioResponse.status})`);
           }
         } catch (error) {
-          console.error('Error saving ratio report:', error);
-          toast.warning('Job created but ratio report failed to save');
+          console.error('❌ Error saving ratio report:', error);
+          console.error('❌ Error details:', error instanceof Error ? error.message : String(error));
+          toast.warning(`Job created but ratio report failed to save: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
       
-      // Create prepress job automatically
-      if (jobCardData.assignedDesigner) {
-        try {
-          const authToken = localStorage.getItem('authToken');
-          if (!authToken) {
-            console.warn('No auth token found, skipping prepress job creation');
-            toast.warning('Job created but designer assignment failed - authentication required');
-          } else {
-            const prepressJobData = {
-              jobCardId: savedJob.job.id, // Use the actual job ID from the saved job
-              assignedDesignerId: jobCardData.assignedDesigner,
-              priority: jobCardData.priority.toUpperCase() === 'URGENT' ? 'CRITICAL' : jobCardData.priority.toUpperCase(),
-              dueDate: deliveryDate.toISOString()
-            };
-
-            console.log('Creating prepress job:', prepressJobData);
-
-            // Create prepress job via API service
-            try {
-              const prepressJobResponse = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/prepress/jobs`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify(prepressJobData)
-              });
-            
-              if (prepressJobResponse.ok) {
-                const createdPrepressJob = await prepressJobResponse.json();
-                console.log('Prepress job created:', createdPrepressJob);
-                toast.success(`Job assigned to designer successfully! 🎨`);
-              } else {
-                const errorText = await prepressJobResponse.text();
-                console.error('Failed to create prepress job:', errorText);
-                toast.warning('Job created but designer assignment failed');
-              }
-            } catch (prepressApiError) {
-              console.error('Error calling prepress API:', prepressApiError);
-              toast.warning('Job created but designer assignment failed');
-            }
-          }
-        } catch (prepressError) {
-          console.error('Error creating prepress job:', prepressError);
-          toast.warning('Job created but designer assignment failed');
-        }
-      }
+      // Prepress job is automatically created by the backend when the job is created
+      // No need for a separate API call - the backend handles prepress job creation with designer assignment
       
       // Generate PDF with the actual job ID from the saved job
       const jobCardId = savedJob.job.jobNumber || savedJob.job.job_card_id || jobCardData.jobCardId;
@@ -1127,7 +1126,12 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         jobCardId
       });
       
-      toast.success(`Job Card ${jobCardId} created successfully! 🎉`);
+      // Show success message with designer assignment info if applicable
+      if (jobCardData.assignedDesigner && jobCardData.assignedDesigner.trim() && jobCardData.assignedDesigner !== 'loading' && jobCardData.assignedDesigner !== 'no-designers') {
+        toast.success(`Job Card ${jobCardId} created successfully! Designer assigned. 🎉`);
+      } else {
+        toast.success(`Job Card ${jobCardId} created successfully! 🎉`);
+      }
       console.log('Job saved:', savedJob);
       onBack();
     } catch (error) {
@@ -1155,7 +1159,7 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
-        <div className="max-w-5xl mx-auto px-6 py-8">
+        <div className="w-full max-w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
           <Card className="bg-white/80 backdrop-blur-lg shadow-2xl border-white/30">
             <CardHeader className="pb-6">
               <div className="flex items-center justify-between">
@@ -1378,10 +1382,10 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
     >
-      <div className="max-w-6xl mx-auto px-6 py-8">
+      <div className="w-full max-w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
         {/* Header */}
         <motion.div 
-          className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 mb-8 border border-white/20 shadow-xl"
+          className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 mb-6 lg:mb-8 border border-white/20 shadow-xl w-full"
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
         >
@@ -1449,9 +1453,9 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8 xl:gap-10">
           {/* Main Form */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-3 space-y-6">
             {/* Product Search */}
             <motion.div
               initial={{ x: -20, opacity: 0 }}
@@ -1630,15 +1634,47 @@ export const AdvancedJobForm: React.FC<AdvancedJobFormProps> = ({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <input
+                        type="checkbox"
+                        id="withoutPo"
+                        checked={jobCardData.withoutPo}
+                        onChange={(e) => {
+                          handleInputChange('withoutPo', e.target.checked);
+                          if (e.target.checked) {
+                            handleInputChange('poNumber', '');
+                          }
+                        }}
+                        className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                      />
+                      <Label htmlFor="withoutPo" className="text-sm font-medium text-amber-900 cursor-pointer">
+                        This job does not have a PO number yet
+                      </Label>
+                    </div>
+                    <p className="text-xs text-amber-700 ml-7 -mt-2">
+                      You can add the PO number later when the buyer provides it
+                    </p>
+                  </div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="poNumber">PO Number *</Label>
+                      <Label htmlFor="poNumber">
+                        PO Number{jobCardData.withoutPo ? '' : ' *'}
+                      </Label>
                       <Input
                         id="poNumber"
                         value={jobCardData.poNumber}
                         onChange={(e) => handleInputChange('poNumber', e.target.value)}
-                        placeholder="Enter PO number"
-                        className={!jobCardData.poNumber.trim() && validationErrors.length > 0 ? 'border-red-300 bg-red-50' : ''}
+                        placeholder={jobCardData.withoutPo ? "Will be added later" : "Enter PO number"}
+                        disabled={jobCardData.withoutPo}
+                        className={
+                          (!jobCardData.withoutPo && !jobCardData.poNumber.trim() && validationErrors.length > 0) 
+                            ? 'border-red-300 bg-red-50' 
+                            : jobCardData.withoutPo 
+                              ? 'bg-gray-100 cursor-not-allowed' 
+                              : ''
+                        }
                       />
                     </div>
                     

@@ -48,10 +48,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 import { jobsAPI } from '@/services/api';
 import { GoogleDrivePreview } from '@/components/ui/GoogleDrivePreview';
 import { ItemSpecificationsDisplay } from '@/components/ui/ItemSpecificationsDisplay';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, GitCompare } from 'lucide-react';
+import { RatioLayoutComparison } from '@/components/ratio/RatioLayoutComparison';
+import { PDFAnnotationModal } from '@/components/pdf/PDFAnnotationModal';
 
 interface RatioReport {
   id: number;
@@ -182,11 +185,35 @@ const ModernQADashboard: React.FC = () => {
   const [isSplitScreenOpen, setIsSplitScreenOpen] = useState(false);
   const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
   const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
+  const [isRatioPreviewOpen, setIsRatioPreviewOpen] = useState(false);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+  const [isAnnotationModalOpen, setIsAnnotationModalOpen] = useState(false);
+  const [annotationPdfUrl, setAnnotationPdfUrl] = useState('');
 
   useEffect(() => {
     loadUser();
     loadQAJobs();
   }, []);
+
+  // Keyboard shortcut for comparison (Ctrl+K or Cmd+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        if (selectedJob && ratioReport && selectedJob.finalDesignLink) {
+          setIsComparisonOpen(true);
+        } else if (selectedJob && selectedJob.finalDesignLink) {
+          // Load ratio report first, then open comparison
+          loadRatioReport(selectedJob.id).then(() => {
+            setIsComparisonOpen(true);
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedJob, ratioReport]);
 
   useEffect(() => {
     filterJobs();
@@ -212,7 +239,7 @@ const ModernQADashboard: React.FC = () => {
         const qaJobsWithSpecs = await Promise.all(response.jobs.map(async (job: any) => {
           let itemSpecifications = null;
           try {
-            const itemSpecsResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${job.id}/item-specifications`, {
+            const itemSpecsResponse = await fetch(`${getApiUrl()}/api/jobs/${job.id}/item-specifications`, {
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('authToken')}`
               }
@@ -297,12 +324,12 @@ const ModernQADashboard: React.FC = () => {
     }
   };
 
-  // Load ratio report for a specific job
+  // Load ratio report for a specific job (opens modal)
   const loadRatioReport = async (jobId: string) => {
     try {
-      toast.info('Generating PDF report...');
+      toast.info('Loading ratio report...');
       const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/jobs/${jobId}/ratio-report`, {
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/ratio-report`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -311,9 +338,9 @@ const ModernQADashboard: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         if (data.success && data.ratioReport) {
-          // Generate and download PDF
-          generateRatioReportPDF(data.ratioReport);
-          toast.success('PDF report downloaded successfully! 📄');
+          setRatioReport(data.ratioReport);
+          setIsRatioReportOpen(true);
+          toast.success('Ratio report loaded! 📊');
         } else {
           toast.info('No ratio report found for this job');
         }
@@ -325,6 +352,47 @@ const ModernQADashboard: React.FC = () => {
     } catch (error) {
       console.error('Error loading ratio report:', error);
       toast.error('Error loading ratio report');
+    }
+  };
+
+  // Preview ratio report (condensed view)
+  const previewRatioReport = async (jobId: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/ratio-report`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.ratioReport) {
+          setRatioReport(data.ratioReport);
+          setIsRatioPreviewOpen(true);
+        } else {
+          toast.info('No ratio report found for this job');
+        }
+      } else if (response.status === 404) {
+        toast.info('No ratio report uploaded for this job yet');
+      } else {
+        toast.error('Failed to load ratio report');
+      }
+    } catch (error) {
+      console.error('Error loading ratio report:', error);
+      toast.error('Error loading ratio report');
+    }
+  };
+
+  // Download ratio report as PDF
+  const downloadRatioReportPDF = async () => {
+    if (!ratioReport) return;
+    try {
+      generateRatioReportPDF(ratioReport);
+      toast.success('PDF report downloaded successfully! 📄');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Failed to generate PDF');
     }
   };
 
@@ -357,7 +425,8 @@ const ModernQADashboard: React.FC = () => {
     try {
       setIsProcessing(true);
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${selectedJob.id}/qa-approve`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/jobs/${selectedJob.id}/qa-approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -390,7 +459,8 @@ const ModernQADashboard: React.FC = () => {
     try {
       setIsProcessing(true);
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api'}/jobs/${selectedJob.id}/qa-reject`, {
+      const apiBaseUrl = getApiBaseUrl();
+      const response = await fetch(`${apiBaseUrl}/jobs/${selectedJob.id}/qa-reject`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1137,17 +1207,31 @@ const ModernQADashboard: React.FC = () => {
                           <FileText className="w-5 h-5 text-green-500" />
                           <div>
                             <p className="font-medium">Final Design</p>
-                            <p className="text-sm text-gray-500">Designer upload</p>
+                            <p className="text-sm text-gray-500">Designer upload - Annotate with tick/cross marks</p>
                           </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handlePreviewFile(selectedJob.finalDesignLink, 'Final Design')}
-                        >
-                          <Eye className="w-4 h-4 mr-2" />
-                          Preview
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePreviewFile(selectedJob.finalDesignLink, 'Final Design')}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            Preview
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setAnnotationPdfUrl(selectedJob.finalDesignLink);
+                              setIsAnnotationModalOpen(true);
+                            }}
+                            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            Annotate
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1166,15 +1250,51 @@ const ModernQADashboard: React.FC = () => {
                         <p className="font-medium text-purple-800">Production Metrics & Color Details</p>
                         <p className="text-sm text-purple-600">View production efficiency, plate distribution, and color breakdown</p>
                       </div>
-                      <Button
-                        onClick={() => loadRatioReport(selectedJob.id)}
-                        variant="outline"
-                        size="sm"
-                        className="text-purple-700 border-purple-300 hover:bg-purple-100"
-                      >
-                        <BarChart3 className="w-4 h-4 mr-2" />
-                        View Report
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => previewRatioReport(selectedJob.id)}
+                          variant="outline"
+                          size="sm"
+                          className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          Preview
+                        </Button>
+                        <Button
+                          onClick={() => loadRatioReport(selectedJob.id)}
+                          variant="outline"
+                          size="sm"
+                          className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                        >
+                          <BarChart3 className="w-4 h-4 mr-2" />
+                          View Report
+                        </Button>
+                        {ratioReport && selectedJob.finalDesignLink && (
+                          <Button
+                            onClick={() => setIsComparisonOpen(true)}
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white shadow-md font-semibold"
+                            title="Compare ratio report with final layout PDF (with annotation support)"
+                          >
+                            <GitCompare className="w-4 h-4 mr-2" />
+                            Compare & Annotate
+                          </Button>
+                        )}
+                        {!ratioReport && selectedJob.finalDesignLink && (
+                          <Button
+                            onClick={async () => {
+                              await loadRatioReport(selectedJob.id);
+                              setIsComparisonOpen(true);
+                            }}
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-700 text-white shadow-md font-semibold"
+                            title="Load ratio report and compare with final layout PDF"
+                          >
+                            <GitCompare className="w-4 h-4 mr-2" />
+                            Compare & Annotate
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1551,6 +1671,18 @@ const ModernQADashboard: React.FC = () => {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
+                          {ratioReport.color_details?.[0]?.epNo !== undefined && (
+                            <th className="px-3 py-2 text-left">EP NO</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemCode !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Code</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.itemDescription !== undefined && (
+                            <th className="px-3 py-2 text-left">Item Description</th>
+                          )}
+                          {ratioReport.color_details?.[0]?.price !== undefined && (
+                            <th className="px-3 py-2 text-left">Price</th>
+                          )}
                           <th className="px-3 py-2 text-left">Color</th>
                           <th className="px-3 py-2 text-left">Size</th>
                           <th className="px-3 py-2 text-left">Required Qty</th>
@@ -1562,8 +1694,20 @@ const ModernQADashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {ratioReport.color_details.map((detail, index) => (
+                        {ratioReport.color_details.map((detail: any, index) => (
                           <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            {detail.epNo !== undefined && (
+                              <td className="px-3 py-2">{detail.epNo || 'N/A'}</td>
+                            )}
+                            {detail.itemCode !== undefined && (
+                              <td className="px-3 py-2">{detail.itemCode || 'N/A'}</td>
+                            )}
+                            {detail.itemDescription !== undefined && (
+                              <td className="px-3 py-2">{detail.itemDescription || 'N/A'}</td>
+                            )}
+                            {detail.price !== undefined && (
+                              <td className="px-3 py-2">{detail.price || 'N/A'}</td>
+                            )}
                             <td className="px-3 py-2">{detail.color || 'N/A'}</td>
                             <td className="px-3 py-2">{detail.size || 'N/A'}</td>
                             <td className="px-3 py-2">{detail.requiredQty !== null && detail.requiredQty !== undefined ? detail.requiredQty : 'N/A'}</td>
@@ -1589,12 +1733,18 @@ const ModernQADashboard: React.FC = () => {
                 <div className="bg-yellow-50 p-4 rounded-lg">
                   <h4 className="font-medium text-yellow-800 mb-3">Plate Distribution</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {Object.entries(ratioReport.plate_distribution).map(([plate, count]) => (
-                      <div key={plate} className="text-center">
-                        <div className="text-xl font-bold text-yellow-600">{count}</div>
-                        <div className="text-sm text-yellow-700">Plate {plate}</div>
-                      </div>
-                    ))}
+                    {Object.entries(ratioReport.plate_distribution).map(([plate, data]) => {
+                      // Handle both old format (number) and new format (object with sheets, colors, totalUPS)
+                      const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
+                        ? (data as any).sheets 
+                        : (typeof data === 'number' ? data : 0);
+                      return (
+                        <div key={plate} className="text-center">
+                          <div className="text-xl font-bold text-yellow-600">{sheets}</div>
+                          <div className="text-sm text-yellow-700">Plate {plate}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1618,6 +1768,118 @@ const ModernQADashboard: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Ratio Report Preview Modal */}
+      <Dialog open={isRatioPreviewOpen} onOpenChange={setIsRatioPreviewOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Ratio Report Preview - {ratioReport?.job_number}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {ratioReport && (
+            <div className="space-y-4">
+              {/* Key Metrics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {ratioReport.total_sheets !== null && ratioReport.total_sheets !== undefined ? ratioReport.total_sheets : 'N/A'}
+                  </div>
+                  <div className="text-sm text-blue-700">Total Sheets</div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {ratioReport.total_plates !== null && ratioReport.total_plates !== undefined ? ratioReport.total_plates : 'N/A'}
+                  </div>
+                  <div className="text-sm text-green-700">Total Plates</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {ratioReport.efficiency_percentage !== null && ratioReport.efficiency_percentage !== undefined && typeof ratioReport.efficiency_percentage === 'number'
+                      ? `${ratioReport.efficiency_percentage.toFixed(1)}%`
+                      : 'N/A'}
+                  </div>
+                  <div className="text-sm text-purple-700">Efficiency</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {ratioReport.excess_qty !== null && ratioReport.excess_qty !== undefined ? ratioReport.excess_qty : 'N/A'}
+                  </div>
+                  <div className="text-sm text-orange-700">Excess Qty</div>
+                </div>
+              </div>
+
+              {/* Order Info */}
+              <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><strong>Factory:</strong> {ratioReport.factory_name}</div>
+                  <div><strong>PO Number:</strong> {ratioReport.po_number}</div>
+                  <div><strong>Brand:</strong> {ratioReport.brand_name}</div>
+                  <div><strong>Item:</strong> {ratioReport.item_name}</div>
+                </div>
+              </div>
+
+              {/* Color Details Count */}
+              {ratioReport.color_details && ratioReport.color_details.length > 0 && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>{ratioReport.color_details.length}</strong> color/size combinations
+                  </p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsRatioPreviewOpen(false);
+                    setIsRatioReportOpen(true);
+                  }}
+                >
+                  View Full Report
+                </Button>
+                <Button
+                  onClick={() => {
+                    downloadRatioReportPDF();
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Ratio vs Final Layout Comparison Modal */}
+      {ratioReport && selectedJob && selectedJob.finalDesignLink && (
+        <RatioLayoutComparison
+          ratioReport={ratioReport}
+          finalLayoutUrl={selectedJob.finalDesignLink}
+          jobNumber={selectedJob.jobNumber}
+          jobCardId={parseInt(selectedJob.id)}
+          isOpen={isComparisonOpen}
+          onClose={() => setIsComparisonOpen(false)}
+        />
+      )}
+
+      {/* PDF Annotation Modal */}
+      {annotationPdfUrl && selectedJob && (
+        <PDFAnnotationModal
+          pdfUrl={annotationPdfUrl}
+          jobCardId={parseInt(selectedJob.id)}
+          jobNumber={selectedJob.jobNumber}
+          isOpen={isAnnotationModalOpen}
+          onClose={() => {
+            setIsAnnotationModalOpen(false);
+            setAnnotationPdfUrl('');
+          }}
+        />
+      )}
     </div>
   );
 };

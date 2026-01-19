@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, TrendingUp, AlertCircle, Package } from 'lucide-react';
 import { MaterialSize, OptimizationResult } from '@/types/inventory';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 
 interface MaterialSizeSelectorProps {
   materialId: string;
@@ -36,8 +37,9 @@ export const MaterialSizeSelector: React.FC<MaterialSizeSelectorProps> = ({
     try {
       setLoading(true);
       const token = localStorage.getItem('authToken');
+      const apiUrl = getApiUrl();
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/production/smart-dashboard/materials/${materialId}/sizes?blankWidth=${blankWidth}&blankHeight=${blankHeight}&quantity=${requiredQuantity}`,
+        `${apiUrl}/api/production/smart-dashboard/materials/${materialId}/sizes?blankWidth=${blankWidth}&blankHeight=${blankHeight}&quantity=${requiredQuantity}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`

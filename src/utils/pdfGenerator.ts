@@ -1500,13 +1500,50 @@ export class AdvancedJobCardPDFGenerator {
       // Add footer to all pages
       this.addFooterToAllPages();
       
-      // Generate filename and save
+      // Generate filename and save using secure download method
       const filename = this.generateFileName();
-      this.pdf.save(filename);
+      this.downloadPDF(this.pdf, filename);
       
     } catch (error) {
       console.error('PDF generation error:', error);
       throw new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Secure PDF download method that works on both HTTP and HTTPS
+   * Avoids browser "insecure download blocked" warnings
+   */
+  private downloadPDF(pdf: jsPDF, filename: string): void {
+    try {
+      // Get PDF as blob
+      const blob = pdf.output('blob');
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      
+      // Append to body, click, and remove
+      document.body.appendChild(link);
+      link.click();
+      
+      // Remove link and clean up URL after a short delay
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 100);
+    } catch (error) {
+      console.warn('Secure blob download failed, falling back to direct save:', error);
+      // Fallback to direct save if blob method fails
+      try {
+        pdf.save(filename);
+      } catch (fallbackError) {
+        console.error('PDF download failed completely:', fallbackError);
+        throw new Error(`PDF download failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`);
+      }
     }
   }
 

@@ -46,6 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useSocket } from '@/services/socketService.tsx';
 import { toast } from 'sonner';
+import { getApiUrl } from '@/utils/apiConfig';
 import BackendStatusIndicator from '../BackendStatusIndicator';
 
 interface JobLifecycleProps {
@@ -173,7 +174,8 @@ export const CompleteJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
       setIsLoading(true);
       console.log('🔄 Loading complete job lifecycle data...');
       
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/complete-job-lifecycle/all`, {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/complete-job-lifecycle/all`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
@@ -199,7 +201,7 @@ export const CompleteJobLifecycleDashboard: React.FC<JobLifecycleProps> = ({ onL
   const loadStats = async () => {
     try {
       console.log('🔄 Loading dashboard stats...');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api/complete-job-lifecycle/stats/dashboard`, {
+      const response = await fetch(`${apiUrl}/api/complete-job-lifecycle/stats/dashboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }

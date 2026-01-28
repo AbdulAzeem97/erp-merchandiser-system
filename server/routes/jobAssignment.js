@@ -14,7 +14,7 @@ router.use(authenticateToken);
  * @desc Assign a job to a designer with full lifecycle tracking
  * @access MERCHANDISER, HOD_PREPRESS, ADMIN
  */
-router.post('/assign', 
+router.post('/assign',
   requirePermission('ASSIGN_JOBS'),
   [
     body('jobCardId').isString().notEmpty().withMessage('Job card ID is required'),
@@ -38,95 +38,117 @@ router.post('/assign',
       const assignedBy = req.user.id;
 
       // Verify job card exists
-      const jobCard = await dbAdapter.query(`
-        SELECT jc.id, jc.job_card_id, jc.status, jc.priority as job_priority,
+      const jobCardResult = await dbAdapter.query(`
+        SELECT jc.id, jc."jobNumber" as job_card_number, jc.status, jc.priority as job_priority,
                c.name as company_name, p.brand as product_name, p.product_item_code
         FROM job_cards jc
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN products p ON jc.product_id = p.id
-        WHERE jc.job_card_id = ?
+        WHERE jc."jobNumber" = $1
       `, [jobCardId]);
 
-      if (!jobCard) {
+      if (jobCardResult.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job card not found'
         });
       }
 
+      const jobCard = jobCardResult.rows[0];
+
       // Verify designer exists and has correct role
-      const designer = await dbAdapter.query(`
+      const designerResult = await dbAdapter.query(`
         SELECT id, first_name, last_name, email, role
-        FROM users WHERE id = ? AND role = 'DESIGNER'
+        FROM users WHERE id = $1 AND role = 'DESIGNER'
       `, [designerId]);
 
-      if (!designer) {
+      if (designerResult.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Designer not found or invalid role'
         });
       }
 
+      const designer = designerResult.rows[0];
+
       // Check if job is already assigned to a designer
-      const existingAssignment = await dbAdapter.query(`
+      const existingAssignmentResult = await dbAdapter.query(`
         SELECT id, assigned_designer_id, status
-        FROM prepress_jobs WHERE job_card_id = ?
+        FROM prepress_jobs WHERE job_card_id = $1
       `, [jobCard.id]);
 
-      if (existingAssignment) {
-        return res.status(409).json({
-          success: false,
-          error: 'Job is already assigned to a designer',
-          currentDesigner: existingAssignment.assigned_designer_id,
-          status: existingAssignment.status
-        });
+      let prepressJobId;
+
+      if (existingAssignmentResult.rows.length > 0) {
+        const existingJob = existingAssignmentResult.rows[0];
+        // If already assigned to someone else
+        if (existingJob.assigned_designer_id) {
+          return res.status(409).json({
+            success: false,
+            error: 'Job is already assigned to a designer',
+            currentDesigner: existingJob.assigned_designer_id,
+            status: existingJob.status
+          });
+        }
+
+        // If exists but unassigned, UPDATE it
+        const prepressUpdateResult = await dbAdapter.query(`
+          UPDATE prepress_jobs
+          SET assigned_designer_id = $1, status = 'ASSIGNED', priority = $2, due_date = $3, 
+              hod_last_remark = $4, updated_by = $5, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $6
+          RETURNING id
+        `, [
+          designerId,
+          priority,
+          dueDate,
+          notes,
+          assignedBy,
+          existingJob.id
+        ]);
+        prepressJobId = prepressUpdateResult.rows[0].id;
+
+      } else {
+        // Create new prepress job assignment
+        const prepressInsertResult = await dbAdapter.query(`
+          INSERT INTO prepress_jobs (
+            job_card_id, assigned_designer_id, status, priority, due_date, 
+            hod_last_remark, created_by, updated_by, created_at, updated_at
+          ) VALUES ($1, $2, 'ASSIGNED', $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          RETURNING id
+        `, [
+          jobCard.id, // Use numeric ID here
+          designerId,
+          priority,
+          dueDate,
+          notes,
+          assignedBy,
+          assignedBy
+        ]);
+        prepressJobId = prepressInsertResult.rows[0].id;
       }
 
-      // Create prepress job assignment
-      const prepressJobId = `prep-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const insertPrepressJob = await dbAdapter.query(`
-        INSERT INTO prepress_jobs (
-          id, job_card_id, assigned_designer_id, status, priority, due_date, 
-          hod_last_remark, created_by, updated_by, created_at, updated_at
-        ) VALUES (?, ?, ?, 'ASSIGNED', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `);
-
-      insertPrepressJob.run(
-        prepressJobId,
-        jobCard.job_card_id,
-        designerId,
-        priority,
-        dueDate,
-        notes,
-        assignedBy,
-        assignedBy
-      );
-
       // Update job card status
-      const updateJobCard = await dbAdapter.query(`
+      await dbAdapter.query(`
         UPDATE job_cards SET status = 'IN_PROGRESS', updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `);
-      updateJobCard.run(jobCard.id);
+        WHERE id = $1
+      `, [jobCard.id]);
 
       // Create job lifecycle entry
-      const lifecycleId = `lifecycle-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const insertLifecycle = await dbAdapter.query(`
+      await dbAdapter.query(`
         INSERT INTO job_lifecycle (
-          id, job_card_id, status, prepress_job_id, prepress_status, 
+          job_card_id, status, prepress_job_id, prepress_status, 
           assigned_designer_id, created_by, created_at, updated_at
-        ) VALUES (?, ?, 'ASSIGNED', ?, 'ASSIGNED', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `);
-      insertLifecycle.run(
-        lifecycleId,
-        jobCard.job_card_id,
+        ) VALUES ($1, 'ASSIGNED', $2, 'ASSIGNED', $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [
+        jobCard.id, // Use numeric ID here
         prepressJobId,
         designerId,
         assignedBy
-      );
+      ]);
 
       // Get the complete assignment details
-      const assignmentDetails = await dbAdapter.query(`
+      const assignmentDetailsResult = await dbAdapter.query(`
         SELECT 
           pj.id as prepress_job_id,
           pj.status,
@@ -134,7 +156,7 @@ router.post('/assign',
           pj.due_date,
           pj.hod_last_remark as notes,
           pj.created_at as assigned_at,
-          jc.job_card_id,
+          jc."jobNumber" as job_card_id,
           jc.quantity,
           jc.delivery_date,
           c.name as company_name,
@@ -144,18 +166,18 @@ router.post('/assign',
           d.last_name as designer_last_name,
           d.email as designer_email
         FROM prepress_jobs pj
-        JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN users d ON pj.assigned_designer_id = d.id
-        WHERE pj.id = ?
+        WHERE pj.id = $1
       `, [prepressJobId]);
 
-      // Emit real-time updates via Socket.io
+      const assignmentDetails = assignmentDetailsResult.rows[0];
       const io = req.app.get('io');
       if (io) {
         console.log('🔌 Emitting Socket.io events for job assignment:', jobCardId);
-        
+
         // Notify all connected users about the job assignment
         io.emit('job_assigned', {
           jobCardId: jobCardId,
@@ -205,7 +227,7 @@ router.post('/assign',
           assignedAt: new Date().toISOString(),
           message: `Job ${jobCardId} assigned to ${designer.first_name} ${designer.last_name}`
         });
-        
+
         console.log('✅ Socket.io events emitted successfully');
       } else {
         console.log('❌ Socket.io instance not found');
@@ -232,7 +254,7 @@ router.post('/assign',
  * @desc Get all jobs assigned to a specific designer
  * @access DESIGNER, HOD_PREPRESS, ADMIN
  */
-router.get('/designer/:designerId', 
+router.get('/designer/:designerId',
   requirePermission('VIEW_PREPRESS_JOBS'),
   async (req, res) => {
     try {
@@ -240,20 +262,20 @@ router.get('/designer/:designerId',
       const { status, priority, limit = 50, offset = 0 } = req.query;
 
       // Build query conditions
-      let whereConditions = ['pj.assigned_designer_id = ?'];
+      let whereConditions = ['pj.assigned_designer_id = $1'];
       let queryParams = [designerId];
 
       if (status && status !== 'all') {
-        whereConditions.push('pj.status = ?');
         queryParams.push(status);
+        whereConditions.push(`pj.status = $${queryParams.length}`);
       }
 
       if (priority && priority !== 'all') {
-        whereConditions.push('pj.priority = ?');
         queryParams.push(priority);
+        whereConditions.push(`pj.priority = $${queryParams.length}`);
       }
 
-      const whereClause = whereConditions.join(' AND ');
+      const finalWhereClause = whereConditions.join(' AND ');
 
       // Get jobs with pagination
       const jobs = await dbAdapter.query(`
@@ -265,8 +287,11 @@ router.get('/designer/:designerId',
           pj.hod_last_remark as notes,
           pj.created_at as assigned_at,
           pj.updated_at,
+          pj.outsourcing_die_making_initiated,
+          pj.fil_initiated_request,
+          pj.blocks_initiated,
           jc.id as job_card_id,
-          jc.job_card_id as job_card_number,
+          jc."jobNumber" as job_card_number,
           jc.quantity,
           jc.delivery_date,
           jc.customer_notes,
@@ -278,11 +303,11 @@ router.get('/designer/:designerId',
           d.last_name as designer_last_name,
           d.email as designer_email
         FROM prepress_jobs pj
-        JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN users d ON pj.assigned_designer_id = d.id
-        WHERE ${whereClause}
+        WHERE ${finalWhereClause}
         ORDER BY pj.created_at DESC
         LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
       `, [...queryParams, parseInt(limit), parseInt(offset)]);
@@ -291,18 +316,18 @@ router.get('/designer/:designerId',
       const totalCount = await dbAdapter.query(`
         SELECT COUNT(*) as count
         FROM prepress_jobs pj
-        WHERE ${whereClause}
+        WHERE ${finalWhereClause}
       `, [...queryParams]);
 
       res.json({
         success: true,
         data: {
-          jobs,
+          jobs: jobs.rows,
           pagination: {
-            total: totalCount.count,
+            total: parseInt(totalCount.rows[0]?.count || 0),
             limit: parseInt(limit),
             offset: parseInt(offset),
-            hasMore: (parseInt(offset) + parseInt(limit)) < totalCount.count
+            hasMore: (parseInt(offset) + parseInt(limit)) < parseInt(totalCount.rows[0]?.count || 0)
           }
         }
       });
@@ -322,7 +347,7 @@ router.get('/designer/:designerId',
  * @desc Get all jobs for HOD dashboard with designer assignments
  * @access HOD_PREPRESS, ADMIN
  */
-router.get('/hod/dashboard', 
+router.get('/hod/dashboard',
   requirePermission('VIEW_PREPRESS_JOBS'),
   async (req, res) => {
     try {
@@ -343,11 +368,34 @@ router.get('/hod/dashboard',
       }
 
       if (designerId && designerId !== 'all') {
-        whereConditions.push('pj.assigned_designer_id = ?');
+        whereConditions.push(`pj.assigned_designer_id = $${queryParams.length + 1}`);
         queryParams.push(designerId);
       }
 
-      const whereClause = whereConditions.join(' AND ');
+      const whereClause = whereConditions.map((cond, i) => {
+        if (cond.includes('?')) {
+          return cond.replace('?', `$${i + 1}`);
+        }
+        return cond;
+      }).join(' AND ');
+
+      // Need to adjust queryParams logic because of multiple conditions
+      // Better to re-build whereClause properly
+      whereConditions = ['1=1'];
+      queryParams = [];
+      if (status && status !== 'all') {
+        queryParams.push(status);
+        whereConditions.push(`pj.status = $${queryParams.length}`);
+      }
+      if (priority && priority !== 'all') {
+        queryParams.push(priority);
+        whereConditions.push(`pj.priority = $${queryParams.length}`);
+      }
+      if (designerId && designerId !== 'all') {
+        queryParams.push(designerId);
+        whereConditions.push(`pj.assigned_designer_id = $${queryParams.length}`);
+      }
+      const finalWhereClause = whereConditions.join(' AND ');
 
       // Get all jobs with designer info
       const jobs = await dbAdapter.query(`
@@ -360,7 +408,7 @@ router.get('/hod/dashboard',
           pj.created_at as assigned_at,
           pj.updated_at,
           jc.id as job_card_id,
-          jc.job_card_id as job_card_number,
+          jc."jobNumber" as job_card_number,
           jc.quantity,
           jc.delivery_date,
           jc.customer_notes,
@@ -372,15 +420,18 @@ router.get('/hod/dashboard',
           d.last_name as designer_last_name,
           d.email as designer_email,
           d.id as designer_id,
+          pj.outsourcing_die_making_initiated,
+          pj.fil_initiated_request,
+          pj.blocks_initiated,
           hod.first_name as assigned_by_first_name,
           hod.last_name as assigned_by_last_name
         FROM prepress_jobs pj
-        JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN users d ON pj.assigned_designer_id = d.id
         LEFT JOIN users hod ON pj.assigned_by_hod_id = hod.id
-        WHERE ${whereClause}
+        WHERE ${finalWhereClause}
         ORDER BY pj.created_at DESC
         LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
       `, [...queryParams, parseInt(limit), parseInt(offset)]);
@@ -395,7 +446,7 @@ router.get('/hod/dashboard',
           SUM(CASE WHEN pj.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_jobs,
           SUM(CASE WHEN pj.status = 'PAUSED' THEN 1 ELSE 0 END) as paused_jobs
         FROM prepress_jobs pj
-        WHERE ${whereClause}
+        WHERE ${finalWhereClause}
       `, [...queryParams]);
 
       // Get designer productivity stats
@@ -414,19 +465,26 @@ router.get('/hod/dashboard',
         WHERE d.role = 'DESIGNER'
         GROUP BY d.id, d.first_name, d.last_name, d.email
         ORDER BY total_jobs DESC
-      `).all();
+      `);
 
       res.json({
         success: true,
         data: {
-          jobs,
-          statistics: stats,
-          designerStats,
+          jobs: jobs.rows,
+          statistics: stats.rows[0] || {
+            total_jobs: 0,
+            assigned_jobs: 0,
+            in_progress_jobs: 0,
+            hod_review_jobs: 0,
+            completed_jobs: 0,
+            paused_jobs: 0
+          },
+          designerStats: designerStats.rows,
           pagination: {
-            total: stats.total_jobs,
+            total: stats.rows[0]?.total_jobs || 0,
             limit: parseInt(limit),
             offset: parseInt(offset),
-            hasMore: (parseInt(offset) + parseInt(limit)) < stats.total_jobs
+            hasMore: (parseInt(offset) + parseInt(limit)) < (stats.rows[0]?.total_jobs || 0)
           }
         }
       });
@@ -467,20 +525,22 @@ router.put('/:prepressJobId/status',
       const updatedBy = req.user.id;
 
       // Verify job exists and user has permission
-      const job = await dbAdapter.query(`
-        SELECT pj.*, jc.job_card_id, d.first_name as designer_first_name, d.last_name as designer_last_name
+      const jobResult = await dbAdapter.query(`
+        SELECT pj.*, jc.id as job_card_id, jc."jobNumber" as job_card_number, d.first_name as designer_first_name, d.last_name as designer_last_name
         FROM prepress_jobs pj
-        JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN users d ON pj.assigned_designer_id = d.id
-        WHERE pj.id = ?
+        WHERE pj.id = $1
       `, [prepressJobId]);
 
-      if (!job) {
+      if (jobResult.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
         });
       }
+
+      const job = jobResult.rows[0];
 
       // Check permissions
       const isDesigner = req.user.role === 'DESIGNER' && job.assigned_designer_id === req.user.id;
@@ -496,50 +556,47 @@ router.put('/:prepressJobId/status',
 
       // Get current timestamp
       const currentTime = new Date().toISOString();
-      
+
       // Update job status with proper timestamps
-      const updateJob = await dbAdapter.query(`
+      await dbAdapter.query(`
         UPDATE prepress_jobs 
-        SET status = ?, hod_last_remark = ?, updated_at = CURRENT_TIMESTAMP,
-            started_at = CASE WHEN ? = 'IN_PROGRESS' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
-            completed_at = CASE WHEN ? IN ('COMPLETED', 'REJECTED') THEN CURRENT_TIMESTAMP ELSE completed_at END
-        WHERE id = ?
-      `);
-      updateJob.run(status, notes, status, status, prepressJobId);
+        SET status = $1, hod_last_remark = $2, updated_at = CURRENT_TIMESTAMP,
+            started_at = CASE WHEN $3 = 'IN_PROGRESS' AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END,
+            completed_at = CASE WHEN $4 IN ('COMPLETED', 'REJECTED') THEN CURRENT_TIMESTAMP ELSE completed_at END
+        WHERE id = $5
+      `, [status, notes, status, status, prepressJobId]);
 
       // Update existing lifecycle entry or create new one
-      const existingLifecycle = await dbAdapter.query(`
+      const existingLifecycleResult = await dbAdapter.query(`
         SELECT * FROM job_lifecycle 
-        WHERE job_card_id = ? AND prepress_job_id = ?
-      `, [job.job_card_id, prepressJobId]);
+        WHERE job_card_id = $1 AND prepress_job_id = $2
+      `, [job.rows[0].job_card_id, prepressJobId]);
+
+      const existingLifecycle = existingLifecycleResult.rows[0];
 
       if (existingLifecycle) {
         // Update existing lifecycle entry
-        const updateLifecycle = await dbAdapter.query(`
+        await dbAdapter.query(`
           UPDATE job_lifecycle 
-          SET status = ?, prepress_status = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE job_card_id = ? AND prepress_job_id = ?
-        `);
-        updateLifecycle.run(status, status, job.job_card_id, prepressJobId);
+          SET status = $1, prepress_status = $2, updated_at = CURRENT_TIMESTAMP
+          WHERE job_card_id = $3 AND prepress_job_id = $4
+        `, [status, status, job.rows[0].job_card_id, prepressJobId]);
       } else {
         // Create new lifecycle entry (simplified to avoid foreign key issues)
         try {
-          const lifecycleId = `lifecycle-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-          const insertLifecycle = await dbAdapter.query(`
+          await dbAdapter.query(`
             INSERT INTO job_lifecycle (
-              id, job_card_id, status, prepress_job_id, prepress_status, 
+              job_card_id, status, prepress_job_id, prepress_status, 
               assigned_designer_id, created_by, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `);
-          insertLifecycle.run(
-            lifecycleId,
-            job.job_card_id,
+            ) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `, [
+            job.rows[0].job_card_id,
             status,
             prepressJobId,
             status,
-            job.assigned_designer_id,
+            job.rows[0].assigned_designer_id,
             updatedBy
-          );
+          ]);
         } catch (lifecycleError) {
           console.log('Lifecycle insert error (non-critical):', lifecycleError.message);
         }
@@ -547,20 +604,17 @@ router.put('/:prepressJobId/status',
 
       // Create lifecycle history entry for tracking changes (simplified)
       try {
-        const historyId = `history-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const insertHistory = await dbAdapter.query(`
+        await dbAdapter.query(`
           INSERT INTO job_lifecycle_history (
-            id, job_lifecycle_id, status_from, status_to, notes, changed_by, changed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        `);
-        insertHistory.run(
-          historyId,
-          existingLifecycle?.id || 'unknown',
-          job.status,
+            job_lifecycle_id, status_from, status_to, notes, changed_by, changed_at
+          ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        `, [
+          existingLifecycle?.id || null,
+          job.rows[0].status,
           status,
-          notes || `Status updated from ${job.status} to ${status}`,
+          notes || `Status updated from ${job.rows[0].status} to ${status}`,
           updatedBy
-        );
+        ]);
       } catch (historyError) {
         console.log('History insert error (non-critical):', historyError.message);
       }
@@ -574,25 +628,27 @@ router.put('/:prepressJobId/status',
           pj.due_date,
           pj.hod_last_remark as notes,
           pj.updated_at,
-          jc.job_card_id as job_card_number,
+          jc."jobNumber" as job_card_number,
           c.name as company_name,
           p.brand as product_name,
           d.first_name as designer_first_name,
           d.last_name as designer_last_name
         FROM prepress_jobs pj
-        JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN users d ON pj.assigned_designer_id = d.id
-        WHERE pj.id = ?
+        WHERE pj.id = $1
       `, [prepressJobId]);
+
+      const updatedJobRow = updatedJob.rows[0];
 
       // Emit real-time updates via Socket.io
       const io = req.app.get('io');
       if (io) {
         // Notify all connected users about the status update
         io.emit('job_status_updated', {
-          jobCardId: job.job_card_id,
+          jobCardId: job.job_card_number,
           prepressJobId: prepressJobId,
           oldStatus: job.status,
           newStatus: status,
@@ -603,7 +659,7 @@ router.put('/:prepressJobId/status',
 
         // Notify role-specific rooms for status updates
         io.to('role:HOD_PREPRESS').emit('job_status_updated', {
-          jobCardId: job.job_card_id,
+          jobCardId: job.job_card_number,
           prepressJobId: prepressJobId,
           oldStatus: job.status,
           newStatus: status,
@@ -613,7 +669,7 @@ router.put('/:prepressJobId/status',
         });
 
         io.to('role:ADMIN').emit('job_status_updated', {
-          jobCardId: job.job_card_id,
+          jobCardId: job.job_card_number,
           prepressJobId: prepressJobId,
           oldStatus: job.status,
           newStatus: status,
@@ -623,7 +679,7 @@ router.put('/:prepressJobId/status',
         });
 
         io.to('role:HEAD_OF_MERCHANDISER').emit('job_status_updated', {
-          jobCardId: job.job_card_id,
+          jobCardId: job.job_card_number,
           prepressJobId: prepressJobId,
           oldStatus: job.status,
           newStatus: status,
@@ -635,11 +691,11 @@ router.put('/:prepressJobId/status',
         // Notify specific designer if they're connected
         if (job.assigned_designer_id) {
           io.to(`user:${job.assigned_designer_id}`).emit('my_job_updated', {
-            jobCardId: job.job_card_id,
+            jobCardId: job.job_card_number,
             prepressJobId: prepressJobId,
             status: status,
             updatedAt: currentTime,
-            message: `Your job ${job.job_card_id} status updated to ${status}`
+            message: `Your job ${job.job_card_number} status updated to ${status}`
           });
         }
       }
@@ -648,7 +704,7 @@ router.put('/:prepressJobId/status',
         success: true,
         message: 'Job status updated successfully',
         data: {
-          ...updatedJob,
+          ...updatedJobRow,
           updatedAt: currentTime,
           previousStatus: job.status,
           updatedBy: req.user.firstName + ' ' + req.user.lastName
@@ -670,26 +726,112 @@ router.put('/:prepressJobId/status',
  * @desc Get all available designers
  * @access HOD_PREPRESS, ADMIN
  */
-router.get('/designers', 
+router.get('/designers',
   requirePermission('VIEW_PREPRESS_JOBS'),
   async (req, res) => {
     try {
-      const designers = await dbAdapter.query(`
+      const result = await dbAdapter.query(`
         SELECT 
           id, first_name, last_name, email, role,
           (SELECT COUNT(*) FROM prepress_jobs WHERE assigned_designer_id = users.id AND status IN ('ASSIGNED', 'IN_PROGRESS')) as active_jobs
         FROM users 
         WHERE role = 'DESIGNER' AND is_active = true
         ORDER BY first_name, last_name
-      `).all();
+      `);
 
       res.json({
         success: true,
-        data: designers
+        data: result.rows
       });
 
     } catch (error) {
       console.error('Error fetching designers:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+);
+
+/**
+ * @route PUT /api/job-assignment/:prepressJobId/outsourcing
+ * @desc Update outsourcing status fields
+ * @access DESIGNER, HOD_PREPRESS, ADMIN
+ */
+router.put('/:prepressJobId/outsourcing',
+  [
+    body('outsourcing_die_making_initiated').optional().isBoolean(),
+    body('fil_initiated_request').optional().isBoolean(),
+    body('blocks_initiated').optional().isBoolean()
+  ],
+  async (req, res) => {
+    try {
+      const { prepressJobId } = req.params;
+      const { outsourcing_die_making_initiated, fil_initiated_request, blocks_initiated } = req.body;
+      const updatedBy = req.user.id;
+
+      // Build dynamic update query
+      let updateFields = ['updated_at = CURRENT_TIMESTAMP', 'updated_by = $1'];
+      let queryParams = [updatedBy];
+      let paramCount = 2;
+
+      if (outsourcing_die_making_initiated !== undefined) {
+        updateFields.push(`outsourcing_die_making_initiated = $${paramCount}`);
+        queryParams.push(outsourcing_die_making_initiated);
+        paramCount++;
+      }
+      if (fil_initiated_request !== undefined) {
+        updateFields.push(`fil_initiated_request = $${paramCount}`);
+        queryParams.push(fil_initiated_request);
+        paramCount++;
+      }
+      if (blocks_initiated !== undefined) {
+        updateFields.push(`blocks_initiated = $${paramCount}`);
+        queryParams.push(blocks_initiated);
+        paramCount++;
+      }
+
+      queryParams.push(prepressJobId);
+      const query = `
+        UPDATE prepress_jobs 
+        SET ${updateFields.join(', ')}
+        WHERE id = $${paramCount}
+        RETURNING *
+      `;
+
+      const result = await dbAdapter.query(query, queryParams);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Prepress job not found'
+        });
+      }
+
+      const updatedJob = result.rows[0];
+
+      // Emit real-time update
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('job_outsourcing_updated', {
+          prepressJobId,
+          outsourcing_die_making_initiated: updatedJob.outsourcing_die_making_initiated,
+          fil_initiated_request: updatedJob.fil_initiated_request,
+          blocks_initiated: updatedJob.blocks_initiated,
+          updatedBy: req.user.firstName + ' ' + req.user.lastName,
+          updatedAt: updatedJob.updated_at
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Outsourcing status updated successfully',
+        data: updatedJob
+      });
+
+    } catch (error) {
+      console.error('Error updating outsourcing status:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'

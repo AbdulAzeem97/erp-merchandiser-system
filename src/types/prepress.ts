@@ -1,30 +1,30 @@
-export type PrepressStatus = 
-  | 'PENDING' 
-  | 'ASSIGNED' 
-  | 'DESIGNING' 
+export type PrepressStatus =
+  | 'PENDING'
+  | 'ASSIGNED'
+  | 'DESIGNING'
   | 'DESIGNING_COMPLETED'
-  | 'DIE_MAKING' 
+  | 'DIE_MAKING'
   | 'DIE_MAKING_COMPLETED'
-  | 'PLATE_MAKING' 
+  | 'PLATE_MAKING'
   | 'PLATE_MAKING_COMPLETED'
   | 'PREPRESS_COMPLETED'
-  | 'IN_PROGRESS' 
-  | 'PAUSED' 
-  | 'HOD_REVIEW' 
-  | 'COMPLETED' 
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'HOD_REVIEW'
+  | 'COMPLETED'
   | 'REJECTED';
 
 export type PrepressPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
-export type PrepressAction = 
-  | 'ASSIGNED' 
-  | 'STARTED' 
-  | 'PAUSED' 
-  | 'RESUMED' 
-  | 'COMPLETED' 
-  | 'REJECTED' 
-  | 'REASSIGNED' 
-  | 'REMARK' 
+export type PrepressAction =
+  | 'ASSIGNED'
+  | 'STARTED'
+  | 'PAUSED'
+  | 'RESUMED'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'REASSIGNED'
+  | 'REMARK'
   | 'STATUS_CHANGED';
 
 export interface PrepressJob {
@@ -41,7 +41,7 @@ export interface PrepressJob {
   updated_by: string;
   created_at: string;
   updated_at: string;
-  
+
   // Joined data
   job_card_id_display?: string;
   po_number?: string;
@@ -61,6 +61,9 @@ export interface PrepressJob {
   designer_last_name?: string;
   creator_first_name?: string;
   creator_last_name?: string;
+  merchandiser_first_name?: string;
+  merchandiser_last_name?: string;
+  job_created_at?: string;
 }
 
 export interface PrepressActivity {
@@ -73,7 +76,7 @@ export interface PrepressActivity {
   remark?: string;
   metadata?: Record<string, any>;
   created_at: string;
-  
+
   // Joined data
   first_name?: string;
   last_name?: string;

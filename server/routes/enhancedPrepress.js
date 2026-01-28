@@ -39,11 +39,11 @@ const getPrepressService = () => {
  * @desc Create a new prepress job with real-time notifications
  * @access MERCHANDISER, HOD_PREPRESS, ADMIN
  */
-router.post('/jobs', 
+router.post('/jobs',
   requirePermission('CREATE_PREPRESS_JOBS'),
   [
-    body('jobCardId').isUUID().withMessage('Valid job card ID is required'),
-    body('assignedDesignerId').optional().isUUID().withMessage('Valid designer ID is required'),
+    body('jobCardId').isInt().withMessage('Valid job card ID is required'),
+    body('assignedDesignerId').optional().isInt().withMessage('Valid designer ID is required'),
     body('priority').optional().isIn(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).withMessage('Invalid priority'),
     body('dueDate').optional().isISO8601().withMessage('Valid due date is required')
   ],
@@ -51,7 +51,7 @@ router.post('/jobs',
   async (req, res) => {
     try {
       const { jobCardId, assignedDesignerId, priority, dueDate } = req.body;
-      
+
       const prepressJob = await getPrepressService().createPrepressJob(
         jobCardId,
         assignedDesignerId,
@@ -85,7 +85,7 @@ router.get('/jobs',
   [
     query('status').optional().isIn(['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'HOD_REVIEW', 'COMPLETED', 'REJECTED']),
     query('priority').optional().isIn(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
-    query('designer').optional().isUUID(),
+    query('designer').optional().isInt().withMessage('Designer ID must be an integer'),
     query('search').optional().isString(),
     query('limit').optional().isInt({ min: 1, max: 100 })
   ],
@@ -174,13 +174,13 @@ router.put('/jobs/:id/assign',
   requirePermission('ASSIGN_PREPRESS_JOBS'),
   [
     param('id').isUUID().withMessage('Valid job ID is required'),
-    body('designerId').isUUID().withMessage('Valid designer ID is required')
+    body('designerId').isInt().withMessage('Valid designer ID is required')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { designerId } = req.body;
-      
+
       const updatedJob = await getPrepressService().assignDesigner(
         req.params.id,
         designerId,
@@ -250,7 +250,7 @@ router.put('/jobs/:id/pause',
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const updatedJob = await getPrepressService().pauseWork(
         req.params.id,
         req.user.id,
@@ -320,7 +320,7 @@ router.put('/jobs/:id/submit',
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const updatedJob = await getPrepressService().submitForReview(
         req.params.id,
         req.user.id,
@@ -357,7 +357,7 @@ router.put('/jobs/:id/complete',
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const updatedJob = await getPrepressService().completeJob(
         req.params.id,
         req.user.id,
@@ -394,7 +394,7 @@ router.put('/jobs/:id/reject',
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const updatedJob = await getPrepressService().updatePrepressJobStatus(
         req.params.id,
         'REJECTED',
@@ -433,7 +433,7 @@ router.post('/jobs/:id/remarks',
   async (req, res) => {
     try {
       const { remark, isHodRemark = false } = req.body;
-      
+
       const updatedJob = await getPrepressService().addRemark(
         req.params.id,
         remark,

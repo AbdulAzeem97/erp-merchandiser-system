@@ -8,7 +8,7 @@ const getApiUrl = () => getApiBaseUrl();
 // Helper function for API calls
 async function apiCall(endpoint: string, options: RequestInit = {}) {
   const token = localStorage.getItem('authToken');
-  
+
   const config: RequestInit = {
     headers: {
       'Content-Type': 'application/json',
@@ -21,24 +21,24 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
   try {
     const apiBaseUrl = getApiUrl();
     const fullUrl = `${apiBaseUrl}${endpoint}`;
-    
+
     console.log(`🌐 Making API call:`);
     console.log(`   Endpoint: ${endpoint}`);
     console.log(`   Base URL: ${apiBaseUrl}`);
     console.log(`   Full URL: ${fullUrl}`);
     console.log(`   Method: ${options.method || 'GET'}`);
-    
+
     const response = await fetch(fullUrl, config);
-    
+
     console.log(`📊 Response received:`);
     console.log(`   Status: ${response.status}`);
     console.log(`   Status Text: ${response.statusText}`);
     console.log(`   URL: ${response.url}`);
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('❌ API Error Response:', errorData);
-      
+
       // Handle authentication errors
       if (response.status === 401 || (errorData.error === 'Invalid token' && errorData.message === 'User not found')) {
         console.log('🔐 Invalid token detected, clearing authentication...');
@@ -47,14 +47,14 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
         window.location.href = '/';
         return;
       }
-      
+
       // Create a custom error object that preserves the error details
       const apiError = new Error(errorData.error || `HTTP error! status: ${response.status}`) as any;
       apiError.response = errorData;
       apiError.status = response.status;
       throw apiError;
     }
-    
+
     const data = await response.json();
     console.log('✅ API call successful');
     return data;
@@ -63,7 +63,7 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
     console.error('   Error type:', error instanceof Error ? error.constructor.name : typeof error);
     console.error('   Error message:', error instanceof Error ? error.message : String(error));
     console.error('   Full error:', error);
-    
+
     // Handle network errors
     if (error instanceof TypeError && error.message.includes('fetch')) {
       const apiBaseUrl = getApiUrl();
@@ -75,7 +75,7 @@ async function apiCall(endpoint: string, options: RequestInit = {}) {
       console.error('   4. CORS is properly configured');
       throw new Error('Network error: Unable to connect to server. Please check your connection and try again.');
     }
-    
+
     throw error;
   }
 }
@@ -86,15 +86,15 @@ export const authAPI = {
     try {
       console.log('🔐 Starting login process:');
       console.log('   Email:', email);
-      
+
       const apiBaseUrl = getApiUrl();
       const loginUrl = `${apiBaseUrl}/auth/login`;
-      
+
       console.log('🔐 Login API details:');
       console.log('   Base URL:', apiBaseUrl);
       console.log('   Login URL:', loginUrl);
       console.log('   Window location:', typeof window !== 'undefined' ? window.location.href : 'N/A');
-      
+
       // Special login API call that handles 401 as normal response
       const response = await fetch(loginUrl, {
         method: 'POST',
@@ -103,15 +103,15 @@ export const authAPI = {
         },
         body: JSON.stringify({ email, password }),
       });
-      
+
       console.log(`📊 Login response received:`);
       console.log(`   Status: ${response.status}`);
       console.log(`   Status Text: ${response.statusText}`);
       console.log(`   Response URL: ${response.url}`);
-      
+
       const data = await response.json();
       console.log('📋 Login response data:', data);
-      
+
       if (!response.ok) {
         // Handle login failure
         if (response.status === 401) {
@@ -122,10 +122,10 @@ export const authAPI = {
           throw new Error(data.error || data.message || 'Login failed. Please try again.');
         }
       }
-      
+
       // Handle successful login
       const token = data.token || data.tokens?.access_token || data.tokens?.token;
-      
+
       if (token) {
         localStorage.setItem('authToken', token);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -135,13 +135,13 @@ export const authAPI = {
         console.error('❌ No token found in response:', data);
         throw new Error('No authentication token received from server');
       }
-      
+
     } catch (error) {
       console.error('❌ Login error occurred:');
       console.error('   Error type:', error instanceof Error ? error.constructor.name : typeof error);
       console.error('   Error message:', error instanceof Error ? error.message : String(error));
       console.error('   Full error:', error);
-      
+
       // Provide more specific error messages
       if (error instanceof TypeError && error.message.includes('fetch')) {
         const apiBaseUrl = getApiUrl();
@@ -198,7 +198,7 @@ export const productsAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/products?${queryParams.toString()}`);
   },
 
@@ -317,7 +317,7 @@ export const jobsAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/jobs?${queryParams.toString()}`);
   },
 
@@ -391,7 +391,7 @@ export const jobsAPI = {
   },
 
   // Update plate count and machine for a job
-  updatePlateInfo: async (jobId: string, plateInfo: { required_plate_count?: number; ctp_machine_id?: string | number; machines?: Array<{ctp_machine_id: number; plate_count: number}> }) => {
+  updatePlateInfo: async (jobId: string, plateInfo: { required_plate_count?: number; ctp_machine_id?: string | number; machines?: Array<{ ctp_machine_id: number; plate_count: number }> }) => {
     return await apiCall(`/jobs/${jobId}/plate-info`, {
       method: 'PUT',
       body: JSON.stringify(plateInfo),
@@ -417,7 +417,7 @@ export const jobsAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/jobs/report?${queryParams.toString()}`);
   },
 
@@ -448,21 +448,21 @@ export const jobsAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     const token = localStorage.getItem('authToken');
     const apiBaseUrl = getApiBaseUrl();
     const url = `${apiBaseUrl}/jobs/report/export/csv?${queryParams.toString()}`;
-    
+
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to export CSV');
     }
-    
+
     const blob = await response.blob();
     return blob;
   },
@@ -484,21 +484,21 @@ export const jobsAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     const token = localStorage.getItem('authToken');
     const apiBaseUrl = getApiBaseUrl();
     const url = `${apiBaseUrl}/jobs/report/export/pdf?${queryParams.toString()}`;
-    
+
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to export PDF');
     }
-    
+
     const blob = await response.blob();
     return blob;
   }
@@ -519,7 +519,7 @@ export const companiesAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/companies?${queryParams.toString()}`);
   },
 
@@ -572,7 +572,7 @@ export const usersAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/users?${queryParams.toString()}`);
   },
 
@@ -668,7 +668,7 @@ export const uploadAPI = {
 
     const token = localStorage.getItem('authToken');
     const apiBaseUrl = getApiUrl();
-    
+
     const response = await fetch(`${apiBaseUrl}/upload`, {
       method: 'POST',
       headers: {
@@ -694,7 +694,7 @@ export const uploadAPI = {
   downloadFile: async (fileId: string) => {
     const token = localStorage.getItem('authToken');
     const apiBaseUrl = getApiUrl();
-    
+
     const response = await fetch(`${apiBaseUrl}/upload/download/${fileId}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -789,7 +789,7 @@ export const inventoryAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/inventory/materials?${queryParams.toString()}`);
   },
 
@@ -853,7 +853,7 @@ export const inventoryAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/inventory/purchase-requests?${queryParams.toString()}`);
   },
 
@@ -878,7 +878,7 @@ export const inventoryAPI = {
         queryParams.append(key, value.toString());
       }
     });
-    
+
     return await apiCall(`/inventory/alerts?${queryParams.toString()}`);
   }
 };
@@ -906,13 +906,37 @@ export const prepressWorkflowAPI = {
         if (value) queryParams.append(key, value);
       });
     }
-    
+
     return await apiCall(`/prepress-workflow?${queryParams.toString()}`);
   },
 
   // Get prepress workflow statistics
   async getStats() {
     return await apiCall('/prepress-workflow/stats/overview');
+  }
+};
+
+// Job Assignment API
+export const jobAssignmentAPI = {
+  // Update outsourcing status fields
+  updateOutsourcingStatus: async (prepressJobId: string, outsourcingData: {
+    outsourcing_die_making_initiated?: boolean;
+    fil_initiated_request?: boolean;
+    blocks_initiated?: boolean;
+  }) => {
+    return await apiCall(`/job-assignment/${prepressJobId}/outsourcing`, {
+      method: 'PUT',
+      body: JSON.stringify(outsourcingData),
+    });
+  },
+
+  // Get jobs for HOD dashboard
+  getHODDashboard: async (filters: { status?: string; priority?: string; designerId?: string } = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) queryParams.append(key, value);
+    });
+    return await apiCall(`/job-assignment/hod/dashboard?${queryParams.toString()}`);
   }
 };
 
@@ -982,6 +1006,7 @@ export default {
   health: healthAPI,
   inventory: inventoryAPI,
   prepressWorkflow: prepressWorkflowAPI,
+  jobAssignmentAPI: jobAssignmentAPI,
   jobAssignmentHistory: jobAssignmentHistoryAPI,
   director: directorAPI,
 };

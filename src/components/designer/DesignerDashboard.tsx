@@ -62,6 +62,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
@@ -70,7 +71,7 @@ import { toast } from 'sonner';
 import { getApiUrl, getApiBaseUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
-import { authAPI, processSequencesAPI, jobsAPI } from '@/services/api';
+import { authAPI, processSequencesAPI, jobsAPI, jobAssignmentAPI } from '@/services/api';
 import { getProcessSequence } from '@/data/processSequences';
 import ProcessSequenceModal from './ProcessSequenceModal';
 
@@ -147,6 +148,8 @@ interface DesignerJob {
   po_number: string;
   delivery_address: string;
   assigned_designer_name: string;
+  created_by_name?: string;
+  created_at?: string;
   // Process sequence information
   process_sequence: {
     id: string | null;
@@ -220,6 +223,10 @@ interface DesignerJob {
   blank_width_inches?: number;
   blank_height_inches?: number;
   blank_size_unit?: 'mm' | 'inches';
+  // Outsourcing Information
+  outsourcing_die_making_initiated?: boolean;
+  fil_initiated_request?: boolean;
+  blocks_initiated?: boolean;
 }
 
 interface DesignerStats {
@@ -283,15 +290,15 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const [activeTab, setActiveTab] = useState('overview');
   const [isProcessSequenceModalOpen, setIsProcessSequenceModalOpen] = useState(false);
   const [selectedJobForProcessEdit, setSelectedJobForProcessEdit] = useState<DesignerJob | null>(null);
-  const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
+  const [jobProcessSequences, setJobProcessSequences] = useState<{ [jobId: string]: any }>({});
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [isSubmitToQADialogOpen, setIsSubmitToQADialogOpen] = useState(false);
   const [finalDesignLink, setFinalDesignLink] = useState('');
-  const [ctpMachines, setCtpMachines] = useState<Array<{id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string}>>([]);
+  const [ctpMachines, setCtpMachines] = useState<Array<{ id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string }>>([]);
   const [isPlateInfoDialogOpen, setIsPlateInfoDialogOpen] = useState(false);
   const [selectedJobForPlateInfo, setSelectedJobForPlateInfo] = useState<DesignerJob | null>(null);
-  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{machineId: string; plateCount: number | ''}>>([{machineId: '', plateCount: ''}]);
+  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{ machineId: string; plateCount: number | '' }>>([{ machineId: '', plateCount: '' }]);
   // Blank size state
   const [blankWidth, setBlankWidth] = useState<string>('');
   const [blankHeight, setBlankHeight] = useState<string>('');
@@ -346,7 +353,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     try {
       setJobDetailsData(job);
       setIsJobDetailsOpen(true);
-      
+
       // Fetch process sequence for this job
       await fetchJobProcessSequence(job.id);
     } catch (error) {
@@ -361,11 +368,11 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
       setIsLoading(true);
       const token = localStorage.getItem('authToken');
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      
+
       console.log('🔄 Designer Dashboard: Loading jobs...');
       console.log('🔄 User ID:', user.id);
       console.log('🔄 Token present:', !!token);
-      
+
       if (!user.id) {
         toast.error('User information not found');
         return;
@@ -373,18 +380,18 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
 
       // Fetch jobs assigned to this designer using the new API endpoint
       const response = await jobsAPI.getAssignedToDesigner(user.id.toString());
-      
+
       console.log('🔄 API Response:', response);
-      
+
       if (response.success) {
         const assignedJobs = response.jobs || [];
         console.log('🔄 Assigned Jobs Count:', assignedJobs.length);
-        
+
         // Fetch complete product information and process sequence for each assigned job
         const designerJobsWithCompleteInfo = await Promise.all(assignedJobs.map(async (job: any) => {
           let completeProductInfo = null;
           let processSequence = null;
-          
+
           try {
             // Fetch complete product information
             if (job.productId) {
@@ -448,7 +455,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           }
 
           const product = completeProductInfo?.product || completeProductInfo || {};
-          
+
           // Return job with complete product information and process sequence
           return {
             ...job,
@@ -482,6 +489,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             delivery_address: job.delivery_address || 'N/A',
             special_instructions: job.special_instructions || '',
             assigned_designer_name: job.assigned_designer_name || 'N/A',
+            created_by_name: job.createdBy || job.created_by_name || 'N/A',
+            created_at: job.createdAt || job.created_at,
             // Process sequence information
             process_sequence: processSequence || {
               id: null,
@@ -507,6 +516,11 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             blank_size_unit: job.blank_size_unit || 'mm',
             // Prepress workflow information
             prepress_status: job.prepress_status || 'PENDING',
+            prepress_job_id: job.prepress_job_id || undefined,
+            // Outsourcing status fields (FIX: Add these to persist checkbox states)
+            outsourcing_die_making_initiated: job.outsourcing_die_making_initiated || false,
+            fil_initiated_request: job.fil_initiated_request || false,
+            blocks_initiated: job.blocks_initiated || false,
             workflow_progress: job.workflow_progress || {
               stages: [
                 { key: 'designing', label: 'Designing', status: 'pending' as const },
@@ -518,7 +532,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             }
           };
         }));
-        
+
         // Filter jobs to only show: PENDING, ASSIGNED, IN_PROGRESS, PAUSED, REJECTED, and REVISIONS_REQUIRED (revised from QA)
         // Exclude: APPROVED_BY_QA, SUBMITTED_TO_QA, COMPLETED, HOD_REVIEW, and other statuses
         const allowedStatuses = ['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'REJECTED', 'REVISIONS_REQUIRED'];
@@ -532,14 +546,14 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           // Only include allowed statuses
           return allowedStatuses.includes(jobStatus);
         });
-        
+
         console.log(`📊 Filtered jobs: ${filteredDesignerJobs.length} out of ${designerJobsWithCompleteInfo.length} total jobs`);
         console.log('📊 Allowed statuses:', allowedStatuses);
         console.log('📊 Filtered job statuses:', filteredDesignerJobs.map((j: DesignerJob) => j.status || j.prepress_status));
-        
+
         setJobs(filteredDesignerJobs);
         setFilteredJobs(filteredDesignerJobs);
-        
+
         // Calculate stats based on filtered jobs only
         const jobStats = {
           total_jobs: filteredDesignerJobs.length,
@@ -551,7 +565,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           revised_jobs: filteredDesignerJobs.filter((job: DesignerJob) => job.status === 'REJECTED').length
         };
         setStats(jobStats);
-        
+
         console.log('✅ Jobs loaded successfully with complete information:', jobStats);
         console.log('✅ Current jobs state:', designerJobsWithCompleteInfo);
         console.log('✅ Looking for JC-1757336985212:', designerJobsWithCompleteInfo.find((job: any) => job.jobNumber === 'JC-1757336985212'));
@@ -574,7 +588,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
       // Ensure jobId is numeric (job_card_id from database)
       const numericJobId = typeof jobId === 'string' ? parseInt(jobId, 10) : jobId;
       console.log('🔍 Loading ratio report for job ID:', numericJobId, '(original:', jobId, ')');
-      
+
       toast.info('Loading ratio report...');
       const token = localStorage.getItem('authToken');
       const apiUrl = getApiUrl();
@@ -590,7 +604,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
           console.log('📊 Ratio Report Data:', data.ratioReport);
           console.log('📊 Raw Excel Data:', data.ratioReport.raw_excel_data);
           console.log('📊 Color Details:', data.ratioReport.color_details);
-          
+
           // Open modal with report data
           setRatioReport(data.ratioReport);
           setMarkedItems(new Set()); // Reset marked items
@@ -693,11 +707,34 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     }
   };
 
+  // Handle outsourcing status update
+  const handleOutsourcingUpdate = async (jobId: string, field: string, value: boolean) => {
+    try {
+      if (!jobId) {
+        console.warn('Cannot update outsourcing status: invalid jobId');
+        toast.error('Cannot update status: Prepress job not found');
+        return;
+      }
+      console.log(`🔄 Updating outsourcing field ${field} to ${value} for job ${jobId}`);
+      await jobAssignmentAPI.updateOutsourcingStatus(jobId, { [field]: value });
+
+      // Update local state
+      setJobs(prevJobs => prevJobs.map(job =>
+        job.prepress_job_id === jobId ? { ...job, [field]: value } : job
+      ));
+
+      toast.success('Outsourcing status updated');
+    } catch (error) {
+      console.error('Error updating outsourcing status:', error);
+      toast.error('Failed to update outsourcing status');
+    }
+  };
+
   // Socket event handlers
   useEffect(() => {
     if (socket && isConnected) {
       console.log('🎧 Designer Dashboard: Setting up Socket.io event listeners');
-      
+
       // Listen for job assignments
       socket.on('job_assigned', (data) => {
         console.log('📨 Designer Dashboard: Received job_assigned event:', data);
@@ -857,7 +894,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
   const handleSaveProcessSequence = (steps: any[]) => {
     console.log('Process sequence saved:', steps);
     toast.success('Process sequence updated successfully');
-    
+
     // Update the job process sequence in state
     if (selectedJobForProcessEdit) {
       setJobProcessSequences(prev => ({
@@ -869,7 +906,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
         }
       }));
     }
-    
+
     // Reload jobs to get updated data
     loadJobs();
   };
@@ -879,14 +916,14 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
       console.log('🔄 Fetching process sequence for job:', jobId);
       const response = await processSequencesAPI.getForJob(jobId);
       console.log('✅ Process sequence fetched:', response);
-      
+
       const processSequence = (response as any).process_sequence || response;
-      
+
       setJobProcessSequences(prev => ({
         ...prev,
         [jobId]: processSequence
       }));
-      
+
       return processSequence;
     } catch (error) {
       console.error('❌ Error fetching process sequence:', error);
@@ -907,8 +944,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     // Try to find "Designing" or "Prepress" step in process sequence
     if (job.process_sequence?.steps) {
       const designStep = job.process_sequence.steps.find(
-        step => step.name.toLowerCase().includes('design') || 
-                step.name.toLowerCase().includes('prepress')
+        step => step.name.toLowerCase().includes('design') ||
+          step.name.toLowerCase().includes('prepress')
       );
       if (designStep && designStep.estimatedHours) {
         return designStep.estimatedHours * 60; // Convert hours to minutes
@@ -947,7 +984,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
     >
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         {/* Beautiful Enhanced Header Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -965,30 +1002,30 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     <span className="text-sm font-medium">{user?.firstName} {user?.lastName}</span>
                   </div>
                   <Badge className={`${isConnected ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white border-0`}>
-            {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
-          </Badge>
+                    {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
+                  </Badge>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <Button 
-                  onClick={loadJobs} 
-                  variant="secondary" 
+                <Button
+                  onClick={loadJobs}
+                  variant="secondary"
                   size="sm"
                   className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
                 >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh Jobs
-          </Button>
-                <Button 
-                  onClick={() => onNavigate('profile')} 
-                  variant="secondary" 
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh Jobs
+                </Button>
+                <Button
+                  onClick={() => onNavigate('profile')}
+                  variant="secondary"
                   size="sm"
                   className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
                 >
                   <User className="h-4 w-4 mr-2" />
                   Profile
-          </Button>
-        </div>
+                </Button>
+              </div>
             </div>
           </div>
           {/* Decorative elements */}
@@ -999,375 +1036,443 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
         </motion.div>
 
         <div className="p-6 space-y-8">
-        {/* Enhanced Stats Cards */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"
-        >
+          {/* Enhanced Stats Cards */}
           <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"
           >
-            <Card className="bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-blue-100 text-sm font-medium">Total Jobs</p>
-                  <p className="text-3xl font-bold">{stats.total_jobs}</p>
-                </div>
-                <Package className="h-8 w-8 text-blue-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Card className="bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                      <p className="text-emerald-100 text-sm font-medium">In Progress</p>
-                  <p className="text-3xl font-bold">{stats.in_progress_jobs}</p>
-                </div>
-                    <Play className="h-8 w-8 text-emerald-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Card className="bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                      <p className="text-amber-100 text-sm font-medium">Assigned</p>
-                  <p className="text-3xl font-bold">{stats.assigned_jobs}</p>
-                </div>
-                    <Clock className="h-8 w-8 text-amber-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Card className="bg-gradient-to-br from-violet-500 via-violet-600 to-violet-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                      <p className="text-violet-100 text-sm font-medium">HOD Review</p>
-                  <p className="text-3xl font-bold">{stats.hod_review_jobs}</p>
-                </div>
-                    <Eye className="h-8 w-8 text-violet-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Card className="bg-gradient-to-br from-green-500 via-green-600 to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                      <p className="text-green-100 text-sm font-medium">Completed</p>
-                  <p className="text-3xl font-bold">{stats.completed_jobs}</p>
-                </div>
-                    <CheckCircle className="h-8 w-8 text-green-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-
-          <motion.div
-            whileHover={{ scale: 1.05, y: -5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <Card className="bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
-              <CardContent className="p-6 relative">
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
-                <div className="relative z-10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-orange-100 text-sm font-medium">Paused</p>
-                  <p className="text-3xl font-bold">{stats.paused_jobs}</p>
-                </div>
-                <Pause className="h-8 w-8 text-orange-200" />
-                  </div>
-              </div>
-            </CardContent>
-          </Card>
-          </motion.div>
-        </motion.div>
-
-        {/* Enhanced Filters */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-        >
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-          <CardContent className="p-6">
-              <div className="flex flex-col lg:flex-row gap-6">
-              <div className="flex-1">
-                  <Label htmlFor="search" className="text-sm font-semibold text-gray-700 mb-2 block">Search Jobs</Label>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                      id="search"
-                      placeholder="Search by job number, product name, or customer..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-                <div className="flex-1">
-                  <Label htmlFor="status-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
-                      <SelectValue placeholder="All Statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="ASSIGNED">Assigned</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="REJECTED">Revised from QA</SelectItem>
-                </SelectContent>
-              </Select>
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="priority-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Priority</Label>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                    <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
-                      <SelectValue placeholder="All Priorities" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priority</SelectItem>
-                  <SelectItem value="LOW">Low</SelectItem>
-                  <SelectItem value="MEDIUM">Medium</SelectItem>
-                  <SelectItem value="HIGH">High</SelectItem>
-                  <SelectItem value="CRITICAL">Critical</SelectItem>
-                </SelectContent>
-              </Select>
-                </div>
-            </div>
-          </CardContent>
-        </Card>
-        </motion.div>
-
-        {/* Enhanced Jobs List */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-        >
-          <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
-            <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-3 text-xl">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Package className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <span className="text-gray-900">My Jobs</span>
-                    <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-800">
-                      {filteredJobs.length}
-              </Badge>
-                  </div>
-            </CardTitle>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
-                    {filteredJobs.filter(job => job.status === 'IN_PROGRESS').length} Active
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (expandedJobId) {
-                        setExpandedJobId(null);
-                      } else {
-                        // Expand first job if none are expanded
-                        if (filteredJobs.length > 0) {
-                          setExpandedJobId(filteredJobs[0].prepress_job_id);
-                        }
-                      }
-                    }}
-                    className="bg-white/50 hover:bg-white/80 border-gray-200"
-                  >
-                    <Eye className="w-4 h-4 mr-1" />
-                    {expandedJobId ? 'Collapse All' : 'Expand First'}
-                  </Button>
-                </div>
-              </div>
-          </CardHeader>
-          <CardContent>
-            {filteredJobs.length === 0 ? (
-              <div className="text-center py-12">
-                <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
-                <p className="text-gray-500">No jobs match your current filters.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredJobs.map((job, index) => (
-                  <motion.div
-                    key={job.prepress_job_id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    whileHover={{ scale: 1.02, y: -4 }}
-                    onClick={() => setSelectedJob(job)}
-                    className="bg-white border border-gray-200 rounded-lg overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all duration-300"
-                  >
-                    {/* Card Header with Status Banner */}
-                    <div className={`${statusColors[job.status]} px-4 py-2 flex items-center justify-between`}>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(job.status)}
-                        <span className="font-semibold text-sm">{job.status.replace('_', ' ')}</span>
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-blue-100 text-sm font-medium">Total Jobs</p>
+                        <p className="text-3xl font-bold">{stats.total_jobs}</p>
                       </div>
-                      <Badge className={`${priorityColors[job.priority]} border-0`}>
-                        {getPriorityIcon(job.priority)}
-                        <span className="ml-1">{job.priority}</span>
+                      <Package className="h-8 w-8 text-blue-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-emerald-100 text-sm font-medium">In Progress</p>
+                        <p className="text-3xl font-bold">{stats.in_progress_jobs}</p>
+                      </div>
+                      <Play className="h-8 w-8 text-emerald-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-amber-100 text-sm font-medium">Assigned</p>
+                        <p className="text-3xl font-bold">{stats.assigned_jobs}</p>
+                      </div>
+                      <Clock className="h-8 w-8 text-amber-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-violet-500 via-violet-600 to-violet-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-violet-100 text-sm font-medium">HOD Review</p>
+                        <p className="text-3xl font-bold">{stats.hod_review_jobs}</p>
+                      </div>
+                      <Eye className="h-8 w-8 text-violet-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-green-500 via-green-600 to-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-green-100 text-sm font-medium">Completed</p>
+                        <p className="text-3xl font-bold">{stats.completed_jobs}</p>
+                      </div>
+                      <CheckCircle className="h-8 w-8 text-green-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              whileHover={{ scale: 1.05, y: -5 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="bg-gradient-to-br from-orange-500 via-orange-600 to-orange-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden">
+                <CardContent className="p-6 relative">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-10 translate-x-10"></div>
+                  <div className="relative z-10">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-orange-100 text-sm font-medium">Paused</p>
+                        <p className="text-3xl font-bold">{stats.paused_jobs}</p>
+                      </div>
+                      <Pause className="h-8 w-8 text-orange-200" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </motion.div>
+
+          {/* Enhanced Filters */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+              <CardContent className="p-6">
+                <div className="flex flex-col lg:flex-row gap-6">
+                  <div className="flex-1">
+                    <Label htmlFor="search" className="text-sm font-semibold text-gray-700 mb-2 block">Search Jobs</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="search"
+                        placeholder="Search by job number, product name, or customer..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <Label htmlFor="status-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
+                        <SelectValue placeholder="All Statuses" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="PENDING">Pending</SelectItem>
+                        <SelectItem value="ASSIGNED">Assigned</SelectItem>
+                        <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                        <SelectItem value="REJECTED">Revised from QA</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1">
+                    <Label htmlFor="priority-filter" className="text-sm font-semibold text-gray-700 mb-2 block">Filter by Priority</Label>
+                    <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                      <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
+                        <SelectValue placeholder="All Priorities" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Priority</SelectItem>
+                        <SelectItem value="LOW">Low</SelectItem>
+                        <SelectItem value="MEDIUM">Medium</SelectItem>
+                        <SelectItem value="HIGH">High</SelectItem>
+                        <SelectItem value="CRITICAL">Critical</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Enhanced Jobs List */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.6 }}
+          >
+            <Card className="bg-white/80 backdrop-blur-sm border-0 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-gray-50 to-blue-50 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-3 text-xl">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <Package className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <span className="text-gray-900">My Jobs</span>
+                      <Badge variant="secondary" className="ml-3 bg-blue-100 text-blue-800">
+                        {filteredJobs.length}
                       </Badge>
                     </div>
+                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                      {filteredJobs.filter(job => job.status === 'IN_PROGRESS').length} Active
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (expandedJobId) {
+                          setExpandedJobId(null);
+                        } else {
+                          // Expand first job if none are expanded
+                          if (filteredJobs.length > 0) {
+                            setExpandedJobId(filteredJobs[0].prepress_job_id);
+                          }
+                        }
+                      }}
+                      className="bg-white/50 hover:bg-white/80 border-gray-200"
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      {expandedJobId ? 'Collapse All' : 'Expand First'}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {filteredJobs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No jobs found</h3>
+                    <p className="text-gray-500">No jobs match your current filters.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredJobs.map((job, index) => (
+                      <motion.div
+                        key={job.prepress_job_id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        whileHover={{ scale: 1.02, y: -4 }}
+                        onClick={() => setSelectedJob(job)}
+                        className="bg-white border border-gray-200 rounded-lg overflow-hidden cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all duration-300"
+                      >
+                        {/* Card Header with Status Banner */}
+                        <div className={`${statusColors[job.status]} px-4 py-2 flex items-center justify-between`}>
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(job.status)}
+                            <span className="font-semibold text-sm">{job.status.replace('_', ' ')}</span>
+                          </div>
+                          <Badge className={`${priorityColors[job.priority]} border-0`}>
+                            {getPriorityIcon(job.priority)}
+                            <span className="ml-1">{job.priority}</span>
+                          </Badge>
+                        </div>
 
-                    {/* Card Body */}
-                    <div className="p-4 space-y-3">
-                      {/* Job ID */}
-                      <div className="flex items-center gap-2 border-b pb-2">
-                        <Package className="h-4 w-4 text-blue-600" />
-                        <h3 className="font-bold text-lg text-gray-900">{job.job_card_id || job.job_card_number}</h3>
-                      </div>
+                        {/* Card Body */}
+                        <div className="p-4 space-y-3">
+                          {/* Job ID */}
+                          <div className="flex items-center gap-2 border-b pb-2">
+                            <Package className="h-4 w-4 text-blue-600" />
+                            <h3 className="font-bold text-lg text-gray-900">{job.job_card_id || job.job_card_number}</h3>
+                          </div>
 
-                      {/* Key Info Grid */}
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Product:</span>
-                          <span className="font-medium text-gray-900 text-right">{job.product_item_code}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Brand:</span>
-                          <span className="font-medium text-gray-900 text-right">{job.product_brand || 'N/A'}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Customer:</span>
-                          <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.customer_name || job.company_name}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Quantity:</span>
-                          <span className="font-medium text-gray-900">{job.quantity.toLocaleString()} units</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Material:</span>
-                          <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.product_material || 'N/A'}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-500">Color:</span>
-                          <span className="font-medium text-gray-900">{job.product_color || 'N/A'}</span>
-                        </div>
-                      </div>
+                          {/* Key Info Grid */}
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Product:</span>
+                              <span className="font-medium text-gray-900 text-right">{job.product_item_code}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Brand:</span>
+                              <span className="font-medium text-gray-900 text-right">{job.product_brand || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Customer:</span>
+                              <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.customer_name || job.company_name}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Quantity:</span>
+                              <span className="font-medium text-gray-900">{job.quantity.toLocaleString()} units</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Material:</span>
+                              <span className="font-medium text-gray-900 text-right truncate max-w-[150px]">{job.product_material || 'N/A'}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-500">Color:</span>
+                              <span className="font-medium text-gray-900">{job.product_color || 'N/A'}</span>
+                            </div>
+                          </div>
 
-                      {/* SLA Clock Timer - Always visible for active jobs */}
-                      <div className="flex items-center justify-center py-3 border-t border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">
-                        <ClockTimer
-                          startTime={getStartTime(job)}
-                          slaTimeMinutes={getSLATimeMinutes(job)}
-                          stageName="Design Stage"
-                          size="sm"
-                        />
-                      </div>
+                          {/* SLA Clock Timer - Always visible for active jobs */}
+                          <div className="flex items-center justify-center py-3 border-t border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">
+                            <ClockTimer
+                              startTime={getStartTime(job)}
+                              slaTimeMinutes={getSLATimeMinutes(job)}
+                              stageName="Design Stage"
+                              size="sm"
+                            />
+                          </div>
 
-                      {/* Due Date Highlight */}
-                      <div className={`flex items-center justify-between p-2 rounded ${getDaysUntilDue(job.due_date) <= 2 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                        <div className="flex items-center gap-1">
-                          <Clock className={`h-4 w-4 ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-600'}`} />
-                          <span className="text-xs text-gray-600">Due Date:</span>
-                        </div>
-                        <span className={`text-sm font-semibold ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-900'}`}>
-                          {formatDate(job.due_date)} ({getDaysUntilDue(job.due_date)}d)
-                        </span>
-                      </div>
+                          {/* Due Date Highlight */}
+                          <div className={`flex items-center justify-between p-2 rounded ${getDaysUntilDue(job.due_date) <= 2 ? 'bg-red-50' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-1">
+                              <Clock className={`h-4 w-4 ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-600'}`} />
+                              <span className="text-xs text-gray-600">Due Date:</span>
+                            </div>
+                            <span className={`text-sm font-semibold ${getDaysUntilDue(job.due_date) <= 2 ? 'text-red-600' : 'text-gray-900'}`}>
+                              {formatDate(job.due_date)} ({getDaysUntilDue(job.due_date)}d)
+                            </span>
+                          </div>
 
-                      {/* Quick Actions */}
-                      <div className="flex flex-col gap-2 pt-2">
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedJob(job);
-                            }}
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
-                          >
-                            <Eye className="h-3 w-3 mr-1" />
-                            Details
-                          </Button>
-                          {job.status === 'IN_PROGRESS' && (
+                          {/* Created By Info */}
+                          {job.created_by_name && (
+                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded mt-2">
+                              <span className="text-xs text-gray-500">Created By:</span>
+                              <span className="text-xs font-medium text-gray-700">{job.created_by_name}</span>
+                            </div>
+                          )}
+
+                          {/* Outsourcing Checkboxes */}
+                          {job.prepress_job_id && (
+                            <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 space-y-2 mt-1 shadow-sm">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[11px] font-bold text-blue-800 uppercase tracking-wider">Outsourcing Status</span>
+                                <ExternalLink className="h-3 w-3 text-blue-400" />
+                              </div>
+                              <div className="grid grid-cols-1 gap-2">
+                                <div className="flex items-center space-x-3 group">
+                                  <Checkbox
+                                    id={`die-making-${job.prepress_job_id}`}
+                                    checked={job.outsourcing_die_making_initiated}
+                                    onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'outsourcing_die_making_initiated', !!checked)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-4 w-4 data-[state=checked]:bg-blue-600 border-blue-300 ring-offset-white"
+                                  />
+                                  <Label
+                                    htmlFor={`die-making-${job.prepress_job_id}`}
+                                    className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-blue-700 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    Outsourcing Die Making Initiated
+                                  </Label>
+                                </div>
+                                <div className="flex items-center space-x-3 group">
+                                  <Checkbox
+                                    id={`fil-req-${job.prepress_job_id}`}
+                                    checked={job.fil_initiated_request}
+                                    onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'fil_initiated_request', !!checked)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-4 w-4 data-[state=checked]:bg-blue-600 border-blue-300 ring-offset-white"
+                                  />
+                                  <Label
+                                    htmlFor={`fil-req-${job.prepress_job_id}`}
+                                    className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-blue-700 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    Fil Initiated Request
+                                  </Label>
+                                </div>
+                                <div className="flex items-center space-x-3 group">
+                                  <Checkbox
+                                    id={`blocks-${job.prepress_job_id}`}
+                                    checked={job.blocks_initiated}
+                                    onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'blocks_initiated', !!checked)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="h-4 w-4 data-[state=checked]:bg-blue-600 border-blue-300 ring-offset-white"
+                                  />
+                                  <Label
+                                    htmlFor={`blocks-${job.prepress_job_id}`}
+                                    className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-blue-700 transition-colors"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    Blocks
+                                  </Label>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Quick Actions */}
+                          <div className="flex flex-col gap-2 pt-2">
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedJob(job);
+                                }}
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 text-blue-600 border-blue-300 hover:bg-blue-50"
+                              >
+                                <Eye className="h-3 w-3 mr-1" />
+                                Details
+                              </Button>
+                              {job.status === 'IN_PROGRESS' && (
+                                <Button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedJob(job);
+                                    setIsSubmitToQADialogOpen(true);
+                                  }}
+                                  size="sm"
+                                  className="flex-1 bg-green-600 hover:bg-green-700"
+                                >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Submit
+                                </Button>
+                              )}
+                            </div>
                             <Button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedJob(job);
-                                setIsSubmitToQADialogOpen(true);
+                                handleEditProcessSequence(job);
                               }}
+                              variant="outline"
                               size="sm"
-                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              className="w-full text-purple-600 border-purple-300 hover:bg-purple-50"
                             >
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Submit
+                              <Layers className="h-3 w-3 mr-1" />
+                              View Process Sequence
                             </Button>
-                          )}
+                          </div>
                         </div>
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEditProcessSequence(job);
-                          }}
-                          variant="outline"
-                          size="sm"
-                          className="w-full text-purple-600 border-purple-300 hover:bg-purple-50"
-                        >
-                          <Layers className="h-3 w-3 mr-1" />
-                          View Process Sequence
-                        </Button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        </motion.div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </div>
 
@@ -1413,63 +1518,63 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   <div><span className="font-medium">Category:</span> {selectedJob.product_category}</div>
                   <div><span className="font-medium">FSC:</span> {selectedJob.product_fsc}</div>
                   <div><span className="font-medium">FSC Claim:</span> {selectedJob.product_fsc_claim}</div>
-                                <div className="flex items-center justify-between">
-                                  <span className="font-medium">Color:</span> 
-                                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">Color:</span>
+                    <div className="flex items-center space-x-2">
                       <span className="text-sm">{selectedJob.product_color}</span>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => {
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
                           setSelectedColor(selectedJob.product_color);
-                                        setIsEditingColor(true);
-                                      }}
-                                      className="h-6 w-6 p-0"
-                                    >
-                                      <Palette className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                </div>
-                          </div>
+                          setIsEditingColor(true);
+                        }}
+                        className="h-6 w-6 p-0"
+                      >
+                        <Palette className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 {selectedJob.product_remarks && selectedJob.product_remarks !== 'N/A' && (
-                                <div className="mt-2 text-sm">
+                  <div className="mt-2 text-sm">
                     <span className="font-medium">Remarks:</span> {selectedJob.product_remarks}
-                          </div>
-                              )}
-                        </div>
+                  </div>
+                )}
+              </div>
 
-                            {/* Google Drive Links Section */}
+              {/* Google Drive Links Section */}
               {(selectedJob.client_layout_link || selectedJob.final_design_link) && (
-                              <div className="bg-blue-50 p-3 rounded-lg mt-3">
-                                <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
-                                  <ExternalLink className="h-4 w-4" />
-                                  Google Drive Links
-                                </h4>
-                                <div className="space-y-3">
+                <div className="bg-blue-50 p-3 rounded-lg mt-3">
+                  <h4 className="font-medium text-gray-800 mb-2 flex items-center gap-2">
+                    <ExternalLink className="h-4 w-4" />
+                    Google Drive Links
+                  </h4>
+                  <div className="space-y-3">
                     {selectedJob.client_layout_link && (
-                                    <GoogleDrivePreview
+                      <GoogleDrivePreview
                         url={selectedJob.client_layout_link}
-                                      label="Client Layout"
-                                      showThumbnail={true}
-                                      showPreview={true}
-                                    />
-                                  )}
+                        label="Client Layout"
+                        showThumbnail={true}
+                        showPreview={true}
+                      />
+                    )}
                     {selectedJob.final_design_link && (
-                                    <GoogleDrivePreview
+                      <GoogleDrivePreview
                         url={selectedJob.final_design_link}
-                                      label="Final Design"
-                                      showThumbnail={true}
-                                      showPreview={true}
-                                    />
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                        label="Final Design"
+                        showThumbnail={true}
+                        showPreview={true}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
 
-                            {/* Customer Information */}
-                            <div className="bg-purple-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              {/* Customer Information */}
+              <div className="bg-purple-50 p-3 rounded-lg">
+                <h4 className="font-medium text-gray-800 mb-2">Customer Information</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div><span className="font-medium">Name:</span> {selectedJob.customer_name || selectedJob.company_name}</div>
                   {selectedJob.customer_email && selectedJob.customer_email !== 'N/A' && (
                     <div><span className="font-medium">Email:</span> {selectedJob.customer_email}</div>
@@ -1478,119 +1583,118 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     <div><span className="font-medium">Phone:</span> {selectedJob.customer_phone}</div>
                   )}
                   {selectedJob.customer_address && selectedJob.customer_address !== 'N/A' && (
-                                  <div className="col-span-2">
+                    <div className="col-span-2">
                       <span className="font-medium">Address:</span> {selectedJob.customer_address}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                            {/* Item Specifications */}
-                            {selectedJob.itemSpecifications && (
-                              <ItemSpecificationsDisplay
-                                itemSpecifications={selectedJob.itemSpecifications}
-                                showHeader={true}
-                                compact={false}
-                                maxItems={100}
-                              />
-                            )}
+              {/* Item Specifications */}
+              {selectedJob.itemSpecifications && (
+                <ItemSpecificationsDisplay
+                  itemSpecifications={selectedJob.itemSpecifications}
+                  showHeader={true}
+                  compact={false}
+                  maxItems={100}
+                />
+              )}
 
-                            {/* Job Details */}
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                              <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              {/* Job Details */}
+              <div className="bg-blue-50 p-3 rounded-lg">
+                <h4 className="font-medium text-gray-800 mb-2">Job Details</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div><span className="font-medium">Quantity:</span> {selectedJob.quantity} units</div>
                   <div><span className="font-medium">PO Number:</span> {selectedJob.po_number}</div>
-                                <div><span className="font-medium">Priority:</span> 
-                                  <span className={`ml-1 px-2 py-1 rounded text-xs ${
-                      selectedJob.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
+                  <div><span className="font-medium">Priority:</span>
+                    <span className={`ml-1 px-2 py-1 rounded text-xs ${selectedJob.priority === 'HIGH' ? 'bg-red-100 text-red-800' :
                       selectedJob.priority === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-green-100 text-green-800'
-                                  }`}>
+                        'bg-green-100 text-green-800'
+                      }`}>
                       {selectedJob.priority}
-                                  </span>
-                                </div>
+                    </span>
+                  </div>
                   {selectedJob.delivery_address && selectedJob.delivery_address !== 'N/A' && (
-                                  <div className="col-span-2">
+                    <div className="col-span-2">
                       <span className="font-medium">Delivery Address:</span> {selectedJob.delivery_address}
-                                  </div>
-                                )}
+                    </div>
+                  )}
                   {selectedJob.special_instructions && selectedJob.special_instructions !== 'N/A' && (
-                                  <div className="col-span-2">
+                    <div className="col-span-2">
                       <span className="font-medium">Special Instructions:</span> {selectedJob.special_instructions}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                            {/* Ratio Report Section */}
-                            <div className="bg-purple-50 p-3 rounded-lg mt-3">
-                              <div className="flex items-center justify-between mb-2">
-                                <h4 className="font-medium text-gray-800 flex items-center gap-2">
-                                  <BarChart3 className="h-4 w-4" />
-                                  Production Ratio Report
-                                </h4>
-                                <Button
+              {/* Ratio Report Section */}
+              <div className="bg-purple-50 p-3 rounded-lg mt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-medium text-gray-800 flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Production Ratio Report
+                  </h4>
+                  <Button
                     onClick={() => loadRatioReport(selectedJob.job_card_id_numeric || selectedJob.id)}
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-purple-700 border-purple-300 hover:bg-purple-100"
-                                >
-                                  <BarChart3 className="h-3 w-3 mr-1" />
-                                  View Report
-                                </Button>
-                              </div>
-                              <p className="text-xs text-gray-600">
-                                View production metrics, color details, and efficiency data for this job
-                              </p>
-                            </div>
+                    variant="outline"
+                    size="sm"
+                    className="text-purple-700 border-purple-300 hover:bg-purple-100"
+                  >
+                    <BarChart3 className="h-3 w-3 mr-1" />
+                    View Report
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-600">
+                  View production metrics, color details, and efficiency data for this job
+                </p>
+              </div>
 
-                            {/* Process Sequence Display */}
+              {/* Process Sequence Display */}
               {selectedJob.process_sequence && selectedJob.process_sequence.steps && Array.isArray(selectedJob.process_sequence.steps) && selectedJob.process_sequence.steps.length > 0 && (
-                              <div className="p-2 bg-green-50 rounded-lg border border-green-200">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
+                <div className="p-2 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-green-800">Process Sequence</h4>
                     <span className="text-xs text-green-600">Product Type: {selectedJob.product_type}</span>
-                                </div>
-                                <div className="text-xs text-green-600 mb-2">
-                                  Process steps configured for this product type. You can modify as needed.
-                                </div>
-                                <div className="flex flex-wrap gap-1">
+                  </div>
+                  <div className="text-xs text-green-600 mb-2">
+                    Process steps configured for this product type. You can modify as needed.
+                  </div>
+                  <div className="flex flex-wrap gap-1">
                     {selectedJob.process_sequence.steps.map((step, idx) => (
                       <Badge key={step.id || idx} variant="outline" className="text-xs">
                         {typeof step === 'object' && step.name ? `${step.name} (${step.estimatedHours || 0}h)` : String(step)}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                            {/* Prepress Workflow Status */}
+              {/* Prepress Workflow Status */}
               {selectedJob.prepress_status && (
-                              <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
-                                <h4 className="text-sm font-medium text-blue-800 mb-2">Prepress Workflow</h4>
-                                <div className="text-xs text-blue-600">
+                <div className="p-2 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="text-sm font-medium text-blue-800 mb-2">Prepress Workflow</h4>
+                  <div className="text-xs text-blue-600">
                     Current Status: {selectedJob.prepress_status} | Progress: {typeof selectedJob.workflow_progress === 'object' && selectedJob.workflow_progress?.progress !== undefined ? selectedJob.workflow_progress.progress : 0}%
-                                </div>
-                              </div>
-                            )}
+                  </div>
+                </div>
+              )}
 
               {selectedJob.customer_notes && (
-                              <div className="mb-2">
-                                <span className="text-sm font-medium text-gray-700">Customer Notes:</span>
+                <div className="mb-2">
+                  <span className="text-sm font-medium text-gray-700">Customer Notes:</span>
                   <p className="text-sm text-gray-600">{selectedJob.customer_notes}</p>
-                          </div>
-                        )}
+                </div>
+              )}
 
               {selectedJob.progress > 0 && (
-                          <div className="mb-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm text-gray-600">Progress</span>
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm text-gray-600">Progress</span>
                     <span className="text-sm font-medium">{selectedJob.progress}%</span>
-                            </div>
+                  </div>
                   <Progress value={selectedJob.progress} className="h-2" />
-                          </div>
-                        )}
+                </div>
+              )}
 
               {/* Plate & Machine Info Display */}
               {((selectedJob.machines && selectedJob.machines.length > 0) || selectedJob.required_plate_count || selectedJob.ctp_machine) && (
@@ -1599,7 +1703,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     <MonitorSpeaker className="h-4 w-4" />
                     Plate & Machine Information
                   </h4>
-                  
+
                   {/* Multiple Machines Display */}
                   {selectedJob.machines && selectedJob.machines.length > 0 ? (
                     <div className="space-y-2">
@@ -1712,7 +1816,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         plateCount: selectedJob.required_plate_count
                       }]);
                     } else {
-                      setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                      setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                     }
                     // Initialize blank size if available
                     if (selectedJob.blank_width_mm && selectedJob.blank_height_mm) {
@@ -1739,7 +1843,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   {selectedJob.required_plate_count || selectedJob.ctp_machine ? 'Update Plate Info' : 'Add Plate Info'}
                 </Button>
               </div>
-                      </div>
+            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -1806,7 +1910,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
             <div>
               <Label>Job: {selectedJob?.job_card_number}</Label>
             </div>
-            
+
             {/* Client Layout Link Display */}
             {selectedJob?.client_layout_link && (
               <div>
@@ -1824,7 +1928,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 </div>
               </div>
             )}
-            
+
             <div>
               <Label htmlFor="finalDesignLink">Final Design Link (Google Drive)</Label>
               <Input
@@ -1839,7 +1943,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 Upload your final design (PDF/AI) to Google Drive and paste the shareable link here
               </p>
             </div>
-            
+
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
@@ -1868,7 +1972,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               Job Details: {jobDetailsData?.job_card_number}
             </DialogTitle>
           </DialogHeader>
-          
+
           {jobDetailsData && (
             <div className="space-y-6">
               <Tabs defaultValue="overview" className="w-full">
@@ -1973,7 +2077,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                             <div className="mt-1 p-3 bg-blue-50 rounded-lg border border-blue-200">
                               <p className="text-sm">{jobDetailsData.customer_notes}</p>
                             </div>
-                           </div>
+                          </div>
                         )}
                         {jobDetailsData.special_instructions && (
                           <div>
@@ -2077,12 +2181,12 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     <CardContent>
                       {(() => {
                         const savedProcessSequence = jobProcessSequences[jobDetailsData.id];
-                        
+
                         if (savedProcessSequence && savedProcessSequence.steps) {
                           // Show saved process sequence
                           const selectedSteps = savedProcessSequence.steps.filter((step: any) => step.isSelected);
                           const totalSteps = savedProcessSequence.steps.length;
-                          
+
                           return (
                             <div className="space-y-4">
                               <div className="flex items-center justify-between">
@@ -2105,23 +2209,21 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                   </Badge>
                                 </div>
                               </div>
-                              
+
                               <div className="grid gap-2">
                                 {savedProcessSequence.steps.map((step: any, index: number) => (
-                                  <div 
+                                  <div
                                     key={step.id}
-                                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                                      step.isSelected
-                                        ? 'bg-green-50 border-green-200' 
-                                        : 'bg-gray-50 border-gray-200'
-                                    }`}
+                                    className={`flex items-center justify-between p-3 rounded-lg border ${step.isSelected
+                                      ? 'bg-green-50 border-green-200'
+                                      : 'bg-gray-50 border-gray-200'
+                                      }`}
                                   >
                                     <div className="flex items-center gap-3">
-                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                                        step.isSelected
-                                          ? 'bg-green-600 text-white' 
-                                          : 'bg-gray-400 text-white'
-                                      }`}>
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${step.isSelected
+                                        ? 'bg-green-600 text-white'
+                                        : 'bg-gray-400 text-white'
+                                        }`}>
                                         {step.order}
                                       </div>
                                       <span className={`font-medium ${step.isSelected ? 'text-green-800' : 'text-gray-500'}`}>
@@ -2146,10 +2248,10 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                   </div>
                                 ))}
                               </div>
-                              
+
                               <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                                 <p className="text-sm text-blue-800">
-                                  <strong>Note:</strong> This shows the current process sequence configuration for this job. 
+                                  <strong>Note:</strong> This shows the current process sequence configuration for this job.
                                   You can edit it using the "Edit Process" button.
                                 </p>
                               </div>
@@ -2158,70 +2260,68 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         } else {
                           // Show default process sequence
                           const productType = jobDetailsData.product_type || 'Offset';
-                        const processSequence = getProcessSequence(productType);
-                        
-                        if (!processSequence) {
-                          return (
-                            <div className="text-center py-8">
-                              <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                              <p className="text-gray-500">No process sequence found for this product type</p>
-                              <p className="text-sm text-gray-400 mt-1">Product Type: {productType}</p>
-                            </div>
-                          );
-                        }
+                          const processSequence = getProcessSequence(productType);
 
-                        return (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <p className="text-sm text-gray-600">
-                                Product Type: <span className="font-semibold text-blue-600">{processSequence.productType}</span>
-                              </p>
-                              <Badge variant="outline">
-                                {processSequence.steps.length} Total Steps
-                              </Badge>
-                            </div>
-                            <div className="grid gap-2">
-                              {processSequence.steps.map((step, index) => (
-                                <div 
-                                  key={step.id}
-                                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                                    step.isCompulsory 
-                                      ? 'bg-blue-50 border-blue-200' 
+                          if (!processSequence) {
+                            return (
+                              <div className="text-center py-8">
+                                <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                                <p className="text-gray-500">No process sequence found for this product type</p>
+                                <p className="text-sm text-gray-400 mt-1">Product Type: {productType}</p>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm text-gray-600">
+                                  Product Type: <span className="font-semibold text-blue-600">{processSequence.productType}</span>
+                                </p>
+                                <Badge variant="outline">
+                                  {processSequence.steps.length} Total Steps
+                                </Badge>
+                              </div>
+                              <div className="grid gap-2">
+                                {processSequence.steps.map((step, index) => (
+                                  <div
+                                    key={step.id}
+                                    className={`flex items-center justify-between p-3 rounded-lg border ${step.isCompulsory
+                                      ? 'bg-blue-50 border-blue-200'
                                       : 'bg-gray-50 border-gray-200'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${
-                                      step.isCompulsory 
-                                        ? 'bg-blue-600 text-white' 
+                                      }`}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold ${step.isCompulsory
+                                        ? 'bg-blue-600 text-white'
                                         : 'bg-gray-400 text-white'
-                                    }`}>
-                                      {step.order}
+                                        }`}>
+                                        {step.order}
+                                      </div>
+                                      <span className="font-medium">{step.name}</span>
                                     </div>
-                                    <span className="font-medium">{step.name}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {step.isCompulsory && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        Required
+                                    <div className="flex items-center gap-2">
+                                      {step.isCompulsory && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          Required
+                                        </Badge>
+                                      )}
+                                      <Badge variant="outline" className="text-xs">
+                                        Step {step.order}
                                       </Badge>
-                                    )}
-                                    <Badge variant="outline" className="text-xs">
-                                      Step {step.order}
-                                    </Badge>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                              
+                                ))}
+                              </div>
+
                               <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                                 <p className="text-sm text-yellow-800">
-                                  <strong>Note:</strong> This shows the default process sequence. 
+                                  <strong>Note:</strong> This shows the default process sequence.
                                   No custom configuration has been saved for this job yet.
                                 </p>
+                              </div>
                             </div>
-                          </div>
-                        );
+                          );
                         }
                       })()}
                     </CardContent>
@@ -2252,7 +2352,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               Edit Color - {selectedJob?.job_card_number}
             </DialogTitle>
           </DialogHeader>
-          
+
           <div className="space-y-4">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium text-gray-800 mb-2">Product Information</h4>
@@ -2261,7 +2361,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 <div><strong>Current Color:</strong> {selectedJob?.product_color}</div>
               </div>
             </div>
-            
+
             <ModernColorPicker
               value={selectedColor}
               onChange={setSelectedColor}
@@ -2269,7 +2369,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               placeholder="Choose a color for this product"
               showPreview={true}
             />
-            
+
             <div className="bg-blue-50 p-3 rounded-lg">
               <h5 className="font-medium text-blue-800 mb-2">Color Guidelines</h5>
               <ul className="text-sm text-blue-700 space-y-1">
@@ -2294,8 +2394,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 setIsEditingColor(false);
                 // Update the job data with new color
                 if (selectedJob) {
-                  const updatedJobs = jobs.map(job => 
-                    job.id === selectedJob.id 
+                  const updatedJobs = jobs.map(job =>
+                    job.id === selectedJob.id
                       ? { ...job, product_color: selectedColor }
                       : job
                   );
@@ -2320,7 +2420,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               Production Ratio Report - {ratioReport?.job_number}
             </DialogTitle>
           </DialogHeader>
-          
+
           {ratioReport && (
             <div className="space-y-6">
               {/* Instructions and Actions */}
@@ -2462,49 +2562,48 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         {ratioReport.color_details.map((detail: any, index) => {
                           const isMarked = markedItems.has(index);
                           return (
-                          <tr 
-                            key={index} 
-                            onClick={() => toggleMarkedItem(index)}
-                            className={`cursor-pointer transition-all duration-200 ${
-                              isMarked 
-                                ? 'bg-green-100 hover:bg-green-200 border-l-4 border-green-500' 
-                                : index % 2 === 0 
-                                  ? 'bg-white hover:bg-blue-50' 
+                            <tr
+                              key={index}
+                              onClick={() => toggleMarkedItem(index)}
+                              className={`cursor-pointer transition-all duration-200 ${isMarked
+                                ? 'bg-green-100 hover:bg-green-200 border-l-4 border-green-500'
+                                : index % 2 === 0
+                                  ? 'bg-white hover:bg-blue-50'
                                   : 'bg-gray-50 hover:bg-blue-50'
-                            }`}
-                          >
-                            <td className="px-3 py-2 text-center">
-                              {isMarked ? (
-                                <span className="text-green-600 font-bold text-lg">✓</span>
-                              ) : (
-                                <span className="text-gray-300">○</span>
+                                }`}
+                            >
+                              <td className="px-3 py-2 text-center">
+                                {isMarked ? (
+                                  <span className="text-green-600 font-bold text-lg">✓</span>
+                                ) : (
+                                  <span className="text-gray-300">○</span>
+                                )}
+                              </td>
+                              {detail.epNo !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.epNo)}</td>
                               )}
-                            </td>
-                            {detail.epNo !== undefined && (
-                              <td className="px-3 py-2">{safeRender(detail.epNo)}</td>
-                            )}
-                            {detail.itemCode !== undefined && (
-                              <td className="px-3 py-2">{safeRender(detail.itemCode)}</td>
-                            )}
-                            {detail.itemDescription !== undefined && (
-                              <td className="px-3 py-2">{safeRender(detail.itemDescription)}</td>
-                            )}
-                            {detail.price !== undefined && (
-                              <td className="px-3 py-2">{safeRender(detail.price)}</td>
-                            )}
-                            <td className="px-3 py-2">{safeRender(detail.color)}</td>
-                            <td className="px-3 py-2">{safeRender(detail.size)}</td>
-                            <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
-                            <td className="px-3 py-2 font-medium text-blue-600">{safeRender(detail.plate)}</td>
-                            <td className="px-3 py-2">{safeRender(detail.ups)}</td>
-                            <td className="px-3 py-2">{safeRender(detail.sheets)}</td>
-                            <td className="px-3 py-2">{safeRender(detail.qtyProduced)}</td>
-                            <td className="px-3 py-2">
-                              <span className={(typeof detail.excessQty === 'number' && detail.excessQty > 0) ? 'text-orange-600 font-medium' : 'text-green-600'}>
-                                {safeRender(detail.excessQty)}
-                              </span>
-                            </td>
-                          </tr>
+                              {detail.itemCode !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.itemCode)}</td>
+                              )}
+                              {detail.itemDescription !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.itemDescription)}</td>
+                              )}
+                              {detail.price !== undefined && (
+                                <td className="px-3 py-2">{safeRender(detail.price)}</td>
+                              )}
+                              <td className="px-3 py-2">{safeRender(detail.color)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.size)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.requiredQty)}</td>
+                              <td className="px-3 py-2 font-medium text-blue-600">{safeRender(detail.plate)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.ups)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.sheets)}</td>
+                              <td className="px-3 py-2">{safeRender(detail.qtyProduced)}</td>
+                              <td className="px-3 py-2">
+                                <span className={(typeof detail.excessQty === 'number' && detail.excessQty > 0) ? 'text-orange-600 font-medium' : 'text-green-600'}>
+                                  {safeRender(detail.excessQty)}
+                                </span>
+                              </td>
+                            </tr>
                           );
                         })}
                       </tbody>
@@ -2517,8 +2616,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               {ratioReport.plate_distribution && typeof ratioReport.plate_distribution === 'object' && Object.keys(ratioReport.plate_distribution).length > 0 && (() => {
                 const plateEntries = Object.entries(ratioReport.plate_distribution);
                 const totalCount = plateEntries.reduce((sum, [, data]) => {
-                  const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
-                    ? (data as any).sheets 
+                  const sheets = typeof data === 'object' && data !== null && 'sheets' in data
+                    ? (data as any).sheets
                     : (typeof data === 'number' ? data : 0);
                   return sum + sheets;
                 }, 0);
@@ -2532,33 +2631,33 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   'from-red-500 to-red-600',
                   'from-green-500 to-green-600'
                 ];
-                
+
                 return (
                   <div className="bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 p-6 rounded-xl border-2 border-orange-200 shadow-lg">
                     <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center gap-3">
                         <div className="p-3 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg shadow-md">
                           <BarChart3 className="w-6 h-6 text-white" />
-                      </div>
+                        </div>
                         <div>
                           <h4 className="text-xl font-bold text-gray-800">Plate Distribution Analysis</h4>
                           <p className="text-sm text-gray-600">Total of {totalCount} items across {plateEntries.length} plates</p>
-                  </div>
-                </div>
+                        </div>
+                      </div>
                       <Badge className="bg-gradient-to-r from-orange-500 to-red-500 text-white border-0 shadow-md px-4 py-2 text-sm">
                         {plateEntries.length} Plates
                       </Badge>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                       {plateEntries.map(([plate, data], index) => {
                         // Handle both old format (number) and new format (object with sheets, colors, totalUPS)
-                        const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
-                          ? (data as any).sheets 
+                        const sheets = typeof data === 'object' && data !== null && 'sheets' in data
+                          ? (data as any).sheets
                           : (typeof data === 'number' ? data : 0);
                         const percentage = totalCount > 0 ? (sheets / totalCount * 100).toFixed(1) : 0;
                         const colorGradient = plateColors[index % plateColors.length];
-                        
+
                         return (
                           <motion.div
                             key={plate}
@@ -2572,7 +2671,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                               {/* Background decoration */}
                               <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-12 translate-x-12"></div>
                               <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/10 rounded-full translate-y-8 -translate-x-8"></div>
-                              
+
                               {/* Content */}
                               <div className="relative z-10">
                                 <div className="flex items-center justify-between mb-3">
@@ -2586,7 +2685,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                     {percentage}%
                                   </Badge>
                                 </div>
-                                
+
                                 <div className="text-center py-4">
                                   <div className="text-5xl font-black text-white mb-1 drop-shadow-lg">
                                     {safeRender(plate)}
@@ -2598,7 +2697,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                     items
                                   </div>
                                 </div>
-                                
+
                                 {/* Progress bar */}
                                 <div className="mt-4 bg-white/20 rounded-full h-2 overflow-hidden">
                                   <motion.div
@@ -2609,7 +2708,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                                   />
                                 </div>
                               </div>
-                              
+
                               {/* Hover effect overlay */}
                               <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all duration-300 rounded-xl"></div>
                             </div>
@@ -2617,7 +2716,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                         );
                       })}
                     </div>
-                    
+
                     {/* Summary footer */}
                     <div className="mt-6 pt-4 border-t-2 border-orange-200">
                       <div className="flex items-center justify-between text-sm">
@@ -2638,9 +2737,9 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
               {ratioReport.excel_file_link && (
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h4 className="font-medium text-gray-800 mb-2">Source File</h4>
-                  <a 
-                    href={ratioReport.excel_file_link} 
-                    target="_blank" 
+                  <a
+                    href={ratioReport.excel_file_link}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:text-blue-800 underline flex items-center gap-2"
                   >
@@ -2688,7 +2787,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setMachinePlatePairs([...machinePlatePairs, {machineId: '', plateCount: ''}]);
+                      setMachinePlatePairs([...machinePlatePairs, { machineId: '', plateCount: '' }]);
                     }}
                     className="text-xs"
                   >
@@ -2698,8 +2797,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                 </div>
 
                 {machinePlatePairs.map((pair, index) => {
-                  const filteredMachines = ctpMachines.filter(machine => 
-                    !machineSearchTerm || 
+                  const filteredMachines = ctpMachines.filter(machine =>
+                    !machineSearchTerm ||
                     machine.machine_name.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
                     machine.machine_code.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
                     (machine.model && machine.model.toLowerCase().includes(machineSearchTerm.toLowerCase())) ||
@@ -2713,8 +2812,8 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                           <Label htmlFor={`machine-${index}`} className="text-xs text-gray-600">
                             CTP Machine {index + 1} *
                           </Label>
-                          <Select 
-                            value={pair.machineId} 
+                          <Select
+                            value={pair.machineId}
                             onValueChange={(value) => {
                               const updated = [...machinePlatePairs];
                               updated[index].machineId = value;
@@ -2820,7 +2919,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       {blankSizeUnit === 'mm' ? '1 inch = 25.4 mm' : '1 mm = 0.0394 inches'}
                     </p>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label htmlFor="blank-width" className="text-xs text-gray-600">
@@ -2853,7 +2952,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       />
                     </div>
                   </div>
-                  
+
                   {blankWidth && blankHeight && (
                     <div className="p-2 bg-blue-50 rounded text-xs text-blue-700">
                       <strong>Preview:</strong> {blankWidth} × {blankHeight} {blankSizeUnit}
@@ -2878,7 +2977,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                   onClick={() => {
                     setIsPlateInfoDialogOpen(false);
                     setSelectedJobForPlateInfo(null);
-                    setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                    setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                     setMachineSearchTerm('');
                     setBlankWidth('');
                     setBlankHeight('');
@@ -2934,14 +3033,14 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
 
                       if (response.success) {
                         toast.success(`Plate information updated successfully for ${machines.length} machine(s)! 🎨`);
-                        
+
                         // Reload data to get updated info
                         loadJobs();
-                        
+
                         // Close dialog and reset form
                         setIsPlateInfoDialogOpen(false);
                         setSelectedJobForPlateInfo(null);
-                        setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                        setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                         setMachineSearchTerm('');
                         setBlankWidth('');
                         setBlankHeight('');
@@ -2956,7 +3055,7 @@ const DesignerDashboard: React.FC<DesignerDashboardProps> = ({ onLogout, onNavig
                       setIsLoading(false);
                     }
                   }}
-                  disabled={isLoading || 
+                  disabled={isLoading ||
                     machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0) ||
                     !blankWidth || !blankHeight || parseFloat(blankWidth) <= 0 || parseFloat(blankHeight) <= 0}
                   className="bg-indigo-600 hover:bg-indigo-700"

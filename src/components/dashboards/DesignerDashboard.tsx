@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   Palette,
   Clock,
   CheckCircle,
@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { getApiUrl } from '@/utils/apiConfig';
 import { MainLayout } from '../layout/MainLayout';
-import { prepressAPI, authAPI, jobsAPI, processSequencesAPI, prepressWorkflowAPI } from '@/services/api';
+import { authAPI, jobsAPI, processSequencesAPI, prepressWorkflowAPI } from '@/services/api';
 import { useSocket } from '@/services/socketService.tsx';
 import { ProcessSequenceSection } from '../ProcessSequenceSection';
 import PrepressWorkflowDisplay from '../prepress/PrepressWorkflowDisplay';
@@ -61,6 +61,8 @@ interface DesignerJob {
   submitted_at?: string;
   product_type?: string;
   product_id?: string;
+  created_by_name?: string;
+  assigned_at?: string;
   prepress_status?: string;
   workflow_progress?: {
     stages: Array<{
@@ -99,11 +101,11 @@ const ProcessSequenceModal: React.FC<ProcessSequenceModalProps> = ({ isOpen, onC
     setIsLoading(true);
     try {
       console.log('🔄 Loading process sequence for product:', productId);
-      
+
       // Try to get process sequence for the specific product
       const response = await processSequencesAPI.getForProduct(productId);
       console.log('📋 Process sequence response:', response);
-      
+
       if (response.process_sequence?.steps) {
         setProcessSteps(response.process_sequence.steps);
       }
@@ -121,15 +123,15 @@ const ProcessSequenceModal: React.FC<ProcessSequenceModalProps> = ({ isOpen, onC
 
   const handleSaveProcessSequence = async () => {
     if (!job || !job.product_id) return;
-    
+
     setIsSaving(true);
     try {
       console.log('💾 Saving process sequence for job:', job.job_card_id);
-      
+
       // Save the selected process steps
       const selectedSteps = processSteps.filter(step => step.isSelected);
       console.log('✅ Selected steps:', selectedSteps);
-      
+
       // Here you would call an API to save the process sequence
       // For now, just show success message
       toast.success('Process sequence updated successfully');
@@ -184,7 +186,7 @@ const ProcessSequenceModal: React.FC<ProcessSequenceModalProps> = ({ isOpen, onC
               onProcessStepsChange={handleProcessStepsChange}
               initialSelectedSteps={processSteps}
             />
-            
+
             <div className="flex gap-3 pt-4 border-t">
               <Button
                 onClick={handleSaveProcessSequence}
@@ -214,8 +216,8 @@ const ProcessSequenceModal: React.FC<ProcessSequenceModalProps> = ({ isOpen, onC
 };
 
 export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
-  onNavigate = () => {},
-  onLogout = () => {},
+  onNavigate = () => { },
+  onLogout = () => { },
   currentPage = 'prepressDesigner',
   isLoading = false
 }) => {
@@ -234,25 +236,25 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
     setDashboardLoading(true);
     try {
       console.log('🔄 Loading designer jobs...');
-      
+
       // Get current user info
       const userStr = localStorage.getItem('user');
       if (!userStr) {
         console.error('No user found in localStorage');
         return;
       }
-      
+
       const user = JSON.parse(userStr);
       console.log('👤 Current user:', user);
       console.log('👤 User ID:', user.id, 'Type:', typeof user.id);
       console.log('👤 User ID as string:', user.id?.toString());
-      
+
       // Fetch all jobs and filter for designer assignments
       const response = await jobsAPI.getAll();
       console.log('📋 All jobs response:', response);
       console.log('📋 Jobs count:', response.jobs?.length);
       console.log('📋 First few jobs:', response.jobs?.slice(0, 3));
-      
+
       if (response.jobs) {
         // Filter jobs assigned to this designer
         console.log('🔍 Debug - User ID:', user.id, 'Type:', typeof user.id);
@@ -262,7 +264,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
             console.log(`Job ${index}: ID=${job.id}, assignedToId=${job.assignedToId}, Type=${typeof job.assignedToId}`);
           }
         });
-        
+
         const assignedJobs = response.jobs.filter((job: any) => {
           const jobAssignedToId = job.assignedToId ? job.assignedToId.toString() : null;
           const userId = user.id ? user.id.toString() : null;
@@ -270,9 +272,9 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
           console.log(`🔍 Job ${job.id}: assignedToId=${jobAssignedToId}, userId=${userId}, match=${isAssigned}`);
           return isAssigned;
         });
-        
+
         console.log('🔍 Debug - Filtered assigned jobs:', assignedJobs.length);
-        
+
         const jobs: DesignerJob[] = assignedJobs.map((job: any) => {
           return {
             id: job.id.toString(),
@@ -300,11 +302,13 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                 { key: 'PREPRESS_COMPLETED', label: 'Prepress Completed', status: 'pending' }
               ],
               currentStage: 'Designing',
-              progress: 0
+              progress: 0,
+              created_by_name: job.created_by_name,
+              assigned_at: job.assigned_at
             }
           };
         });
-        
+
         console.log('✅ Designer jobs loaded:', jobs);
         console.log(`📊 Total jobs: ${response.jobs.length}, Assigned to me: ${jobs.length}`);
         setDesignerJobs(jobs);
@@ -319,13 +323,13 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
 
   useEffect(() => {
     loadDesignerJobs();
-    
+
     if (socket && isConnected) {
       console.log('🔌 Setting up real-time job updates for designer...');
-      
+
       // Join job updates room
       socket.emit('join_job_updates');
-      
+
       // Listen for new jobs created by merchandiser
       socket.on('job_created', (data) => {
         console.log('🆕 New job created:', data);
@@ -409,7 +413,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
       if (!job) return;
 
       console.log(`🚀 Starting job ${job.job_card_id} for designer`);
-      
+
       // Update job status in backend
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/jobs/${jobId}/status`, {
@@ -425,23 +429,23 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
       });
 
       if (response.ok) {
-      setActiveTimer(jobId);
-      setTimerMinutes(0);
-      
+        setActiveTimer(jobId);
+        setTimerMinutes(0);
+
         // Update local state
-      setDesignerJobs(prev => 
-        prev.map(job => 
-          job.id === jobId ? { 
-            ...job, 
-            status: 'IN_PROGRESS',
+        setDesignerJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
+              status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
               progress: 10
-          } : job
-        )
-      );
-      
+            } : job
+          )
+        );
+
         toast.success(`Job ${job.job_card_id} started successfully`);
-        
+
         // Emit real-time update
         if (socket) {
           socket.emit('job_status_update', {
@@ -463,10 +467,10 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
 
   const submitForReview = async (jobId: string) => {
     try {
-      setDesignerJobs(prev => 
-        prev.map(job => 
-          job.id === jobId ? { 
-            ...job, 
+      setDesignerJobs(prev =>
+        prev.map(job =>
+          job.id === jobId ? {
+            ...job,
             status: 'PENDING_HOD_REVIEW',
             submitted_at: new Date().toISOString(),
             submission_notes: submissionNotes,
@@ -474,7 +478,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
           } : job
         )
       );
-      
+
       setSubmissionNotes('');
       toast.success('Job submitted for HOD review');
     } catch (error) {
@@ -489,21 +493,21 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
       if (!job) return;
 
       console.log(`🔄 Updating prepress status for job ${job.job_card_id} to ${newStatus}`);
-      
+
       const response = await prepressWorkflowAPI.updateStatus(job.job_card_id, newStatus, notes);
-      
+
       if (response.success) {
         // Update local state
-        setDesignerJobs(prev => 
-          prev.map(j => 
-            j.id === jobId ? { 
-              ...j, 
+        setDesignerJobs(prev =>
+          prev.map(j =>
+            j.id === jobId ? {
+              ...j,
               prepress_status: newStatus,
               workflow_progress: response.data.workflowProgress
             } : j
           )
         );
-        
+
         toast.success(`Status updated to ${newStatus.replace(/_/g, ' ')}`);
       }
     } catch (error) {
@@ -552,7 +556,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
       pageTitle="Designer Dashboard"
       pageDescription="Manage your design tasks and track progress"
     >
-      <motion.div 
+      <motion.div
         className="p-6 bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 min-h-full"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -565,9 +569,9 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
               {isConnected ? 'Real-time connected' : 'Disconnected'}
             </span>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={loadDesignerJobs}
             disabled={dashboardLoading}
             className="gap-2"
@@ -644,7 +648,7 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                 <div className="space-y-4">
                   {designerJobs.map((job, index) => {
                     const isActive = activeTimer === job.id;
-                    
+
                     return (
                       <div
                         key={job.id}
@@ -655,6 +659,18 @@ export const DesignerDashboard: React.FC<DesignerDashboardProps> = ({
                             <h3 className="font-semibold text-lg text-gray-900">{job.job_card_id}</h3>
                             <p className="text-gray-600">{job.product_name} ({job.product_code})</p>
                             <p className="text-sm text-gray-500">{job.company_name}</p>
+                            <div className="flex flex-col gap-1 mt-2 pt-2 border-t border-gray-100">
+                              <p className="text-xs text-gray-500 flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Created: {new Date(job.created_at).toLocaleString()} by <span className="font-medium">{job.created_by_name || 'System'}</span>
+                              </p>
+                              {job.assigned_at && (
+                                <p className="text-xs text-blue-600 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  Assigned: {new Date(job.assigned_at).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Badge className={`${getStatusColor(job.status)} border`}>

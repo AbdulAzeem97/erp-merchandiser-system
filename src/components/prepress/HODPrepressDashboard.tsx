@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Users, 
+import {
+  Users,
   Clock,
   AlertCircle,
   CheckCircle,
@@ -31,14 +31,14 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -49,22 +49,22 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { 
-  LineChart, 
-  Line, 
-  AreaChart, 
-  Area, 
-  BarChart, 
-  Bar, 
-  PieChart as RechartsPieChart, 
-  Pie, 
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart as RechartsPieChart,
+  Pie,
   Cell,
-  ResponsiveContainer, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend 
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend
 } from 'recharts';
 import { usePrepressJobs, usePrepressStatistics, usePrepressJobActivity } from '@/hooks/usePrepress';
 import { useDesignerProductivity } from '@/hooks/useReports';
@@ -411,6 +411,11 @@ const HODPrepressDashboard: React.FC<HODPrepressDashboardProps> = ({ onLogout })
                                 📅 Due: {new Date(job.due_date).toLocaleDateString()}
                               </p>
                             )}
+                            {job.merchandiser_first_name && (
+                              <p className="text-xs text-gray-500 mt-1" title={`Created: ${new Date(job.job_created_at || '').toLocaleString()}`}>
+                                By: {job.merchandiser_first_name} {job.merchandiser_last_name}
+                              </p>
+                            )}
                           </div>
                         </motion.div>
                       ))}
@@ -474,9 +479,9 @@ const HODPrepressDashboard: React.FC<HODPrepressDashboardProps> = ({ onLogout })
                       <span>Completion Rate</span>
                       <span>{designer.total_jobs > 0 ? Math.round((designer.completed_jobs / designer.total_jobs) * 100) : 0}%</span>
                     </div>
-                    <Progress 
-                      value={designer.total_jobs > 0 ? (designer.completed_jobs / designer.total_jobs) * 100 : 0} 
-                      className="h-2" 
+                    <Progress
+                      value={designer.total_jobs > 0 ? (designer.completed_jobs / designer.total_jobs) * 100 : 0}
+                      className="h-2"
                     />
                   </div>
                 </motion.div>
@@ -494,7 +499,7 @@ const HODPrepressDashboard: React.FC<HODPrepressDashboardProps> = ({ onLogout })
                 Manage this prepress job and view its activity history
               </DialogDescription>
             </DialogHeader>
-            
+
             {selectedJob && (
               <div className="space-y-6">
                 {/* Job Information */}
@@ -520,8 +525,8 @@ const HODPrepressDashboard: React.FC<HODPrepressDashboardProps> = ({ onLogout })
                   <div>
                     <Label className="text-sm font-medium">Assigned Designer</Label>
                     <p className="text-sm text-gray-600">
-                      {selectedJob.designer_first_name ? 
-                        `${selectedJob.designer_first_name} ${selectedJob.designer_last_name}` : 
+                      {selectedJob.designer_first_name ?
+                        `${selectedJob.designer_first_name} ${selectedJob.designer_last_name}` :
                         'Not assigned'
                       }
                     </p>

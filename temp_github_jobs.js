@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import { body, validationResult, query } from 'express-validator';
 import jwt from 'jsonwebtoken';
 import dbAdapter from '../database/adapter.js';
@@ -28,17 +28,17 @@ const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-
+    
     if (token) {
       // Try to authenticate
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-
+      
       const userResult = await dbAdapter.query(
         'SELECT id, username, email, "firstName", "lastName", role, "isActive" FROM users WHERE id = $1',
         [decoded.id]
       );
       const user = userResult.rows?.[0] || null;
-
+      
       if (user && user.isActive) {
         req.user = {
           id: user.id,
@@ -63,12 +63,12 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
   try {
     console.log('Getting jobs...');
     console.log('Query params:', req.query);
-
+    
     // Get pagination parameters
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const offset = (page - 1) * limit;
-
+    
     // Check if workflow columns exist
     const columnCheck = await dbAdapter.query(`
       SELECT column_name 
@@ -78,19 +78,19 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
     `);
     const existingColumns = columnCheck.rows.map(r => r.column_name);
     const hasWorkflowColumns = existingColumns.length > 0;
-
+    
     console.log('Workflow columns exist:', hasWorkflowColumns, existingColumns);
-
+    
     // Build WHERE clause based on query parameters
     const whereConditions = [];
     const queryParams = [];
     let paramIndex = 1;
-
+    
     // Check user role for job filtering
     // Admin/manager roles can see all jobs, regular users only see their own
-    const canViewAll = ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'DIRECTOR', 'HOD_PREPRESS'].includes(req.user?.role);
+    const canViewAll = ['ADMIN', 'HEAD_OF_MERCHANDISER', 'HEAD_OF_PRODUCTION', 'DIRECTOR'].includes(req.user?.role);
     const isSeniorMerchandiser = req.user?.role === 'SENIOR_MERCHANDISER';
-
+    
     // Add user-based filtering for jobs (unless admin/manager)
     if (!canViewAll && req.user?.id) {
       if (isSeniorMerchandiser) {
@@ -113,23 +113,23 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
         paramIndex++;
       }
     }
-
+    
     if (req.query.status) {
       whereConditions.push(`jc.status = $${paramIndex}`);
       queryParams.push(req.query.status);
       paramIndex++;
     }
-
+    
     if (req.query.search) {
       whereConditions.push(`(jc."jobNumber" ILIKE $${paramIndex} OR jc.customer_name ILIKE $${paramIndex} OR p.name ILIKE $${paramIndex})`);
       queryParams.push(`%${req.query.search}%`);
       paramIndex++;
     }
-
+    
     const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-
+    
     // Build workflow columns part conditionally
-    const workflowColumns = hasWorkflowColumns
+    const workflowColumns = hasWorkflowColumns 
       ? `jc.current_department,
          jc.current_step,
          jc.workflow_status,
@@ -138,7 +138,7 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
          NULL as current_step,
          NULL as workflow_status,
          NULL as status_message`;
-
+    
     // Get total count for pagination
     const countQuery = `
       SELECT COUNT(*) as total
@@ -149,9 +149,9 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
     const countResult = await dbAdapter.query(countQuery, queryParams);
     const total = parseInt(countResult.rows[0]?.total || 0);
     const totalPages = Math.ceil(total / limit);
-
+    
     // Enhanced query with proper joins to get complete job information including workflow data
-    const jobsQuery = `
+  const jobsQuery = `
     SELECT 
       jc.*,
         p.sku as product_code,
@@ -168,23 +168,18 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
         jc.customer_email,
         jc.customer_phone,
         jc.customer_address,
-        COALESCE(u."firstName", '') || ' ' || COALESCE(u."lastName", '') as assigned_designer_name,
+        u."firstName" || ' ' || u."lastName" as assigned_designer_name,
         u.email as assigned_designer_email,
         u.phone as assigned_designer_phone,
-        COALESCE(creator."firstName", '') || ' ' || COALESCE(creator."lastName", '') as created_by_name,
+        creator."firstName" || ' ' || creator."lastName" as created_by_name,
         pj.id as prepress_job_id,
-        pj.assigned_at,
         pj.required_plate_count,
         pj.ctp_machine_id,
         pj.blank_width_mm,
         pj.blank_height_mm,
         pj.blank_width_inches,
         pj.blank_height_inches,
-        pj.blank_height_inches,
         pj.blank_size_unit,
-        pj.outsourcing_die_making_initiated,
-        pj.fil_initiated_request,
-        pj.blocks_initiated,
         cm.machine_code as ctp_machine_code,
         cm.machine_name as ctp_machine_name,
         cm.machine_type as ctp_machine_type,
@@ -234,7 +229,7 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
             WHERE jcm.prepress_job_id = $1
             ORDER BY jcm.created_at
           `, [job.prepress_job_id]);
-
+          
           machines = machinesResult.rows.map(m => ({
             id: m.ctp_machine_id,
             machine_code: m.machine_code,
@@ -277,9 +272,9 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
       };
     }));
 
-    res.json({
-      jobs: enhancedJobs,
-      pagination: {
+  res.json({
+    jobs: enhancedJobs,
+    pagination: {
         page: page,
         limit: limit,
         total: total,
@@ -302,7 +297,7 @@ router.get('/', optionalAuth, asyncHandler(async (req, res) => {
 router.post('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { jobId } = req.params;
-    console.log(`💾 Creating ratio report for job ID: ${jobId}`);
+    console.log(`≡ƒÆ╛ Creating ratio report for job ID: ${jobId}`);
     const {
       excel_file_link,
       excel_file_name,
@@ -351,8 +346,8 @@ router.post('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, 
       JSON.stringify(color_efficiency), JSON.stringify(raw_excel_data), req.user.id
     ]);
 
-    console.log(`✅ Ratio report created successfully for job ${jobId}`);
-
+    console.log(`Γ£à Ratio report created successfully for job ${jobId}`);
+    
     res.status(201).json({
       success: true,
       message: 'Ratio report added successfully',
@@ -369,23 +364,23 @@ router.post('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, 
 router.get('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { jobId } = req.params;
-    console.log(`🔍 Looking for ratio report for job ID: ${jobId}`);
-    console.log(`🔍 User making request:`, req.user);
-    console.log(`🔍 Database adapter initialized:`, dbAdapter.initialized);
+    console.log(`≡ƒöì Looking for ratio report for job ID: ${jobId}`);
+    console.log(`≡ƒöì User making request:`, req.user);
+    console.log(`≡ƒöì Database adapter initialized:`, dbAdapter.initialized);
 
-    console.log(`🔍 About to query ratio_reports table...`);
+    console.log(`≡ƒöì About to query ratio_reports table...`);
     const result = await dbAdapter.query(`
       SELECT * FROM ratio_reports 
       WHERE job_card_id = $1 
       ORDER BY created_at DESC 
       LIMIT 1
     `, [jobId]);
-    console.log(`🔍 Database query completed successfully`);
+    console.log(`≡ƒöì Database query completed successfully`);
 
-    console.log(`📊 Found ${result.rows.length} ratio reports for job ${jobId}`);
-
+    console.log(`≡ƒôè Found ${result.rows.length} ratio reports for job ${jobId}`);
+    
     if (result.rows.length > 0) {
-      console.log(`📊 Ratio report data types:`, {
+      console.log(`≡ƒôè Ratio report data types:`, {
         total_ups: typeof result.rows[0].total_ups,
         total_ups_value: result.rows[0].total_ups,
         total_sheets: typeof result.rows[0].total_sheets,
@@ -397,20 +392,20 @@ router.get('/:jobId/ratio-report', authenticateToken, asyncHandler(async (req, r
     if (result.rows.length === 0) {
       // Let's also check if there are any ratio reports at all
       const allReports = await dbAdapter.query('SELECT job_card_id, job_number, brand_name FROM ratio_reports LIMIT 5');
-      console.log('📝 Available ratio reports:', allReports.rows);
-
+      console.log('≡ƒô¥ Available ratio reports:', allReports.rows);
+      
       // Also check if the job exists in job_cards
       const jobExists = await dbAdapter.query('SELECT id, "jobNumber" FROM job_cards WHERE id = $1', [jobId]);
-      console.log(`🔍 Job ${jobId} exists in job_cards:`, jobExists.rows.length > 0);
+      console.log(`≡ƒöì Job ${jobId} exists in job_cards:`, jobExists.rows.length > 0);
       if (jobExists.rows.length > 0) {
         console.log('Job details:', jobExists.rows[0]);
       }
-
+      
       return res.status(404).json({ error: 'No ratio report found for this job' });
     }
 
     const ratioReport = result.rows[0];
-
+    
     // Parse JSON fields if they are strings, otherwise keep as objects
     if (ratioReport.color_details && typeof ratioReport.color_details === 'string') {
       ratioReport.color_details = JSON.parse(ratioReport.color_details);
@@ -471,9 +466,9 @@ router.get('/:jobId/annotations', authenticateToken, asyncHandler(async (req, re
     `, [jobId, pdf_url]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         success: false,
-        error: 'No annotations found for this PDF'
+        error: 'No annotations found for this PDF' 
       });
     }
 
@@ -494,8 +489,8 @@ router.post('/:jobId/annotations', authenticateToken, asyncHandler(async (req, r
     const { pdf_url, annotations } = req.body;
 
     if (!pdf_url || !annotations || !Array.isArray(annotations)) {
-      return res.status(400).json({
-        error: 'pdf_url and annotations array are required'
+      return res.status(400).json({ 
+        error: 'pdf_url and annotations array are required' 
       });
     }
 
@@ -529,7 +524,7 @@ router.post('/:jobId/annotations', authenticateToken, asyncHandler(async (req, r
       `, [jobId, pdf_url, JSON.stringify(annotations), req.user.id]);
     }
 
-    console.log(`✅ PDF annotations ${existing.rows.length > 0 ? 'updated' : 'created'} successfully for job ${jobId}`);
+    console.log(`Γ£à PDF annotations ${existing.rows.length > 0 ? 'updated' : 'created'} successfully for job ${jobId}`);
     res.json({
       success: true,
       annotations: result.rows[0]
@@ -716,7 +711,7 @@ router.get('/report/export/pdf', authenticateToken, asyncHandler(async (req, res
     };
 
     const result = await jobReportService.getFilteredJobs(filters, req.user);
-
+    
     if (!result.jobs || result.jobs.length === 0) {
       return res.status(404).json({
         success: false,
@@ -730,7 +725,7 @@ router.get('/report/export/pdf', authenticateToken, asyncHandler(async (req, res
       filters,
       result.statistics
     );
-
+    
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().split('T')[0];
     const filename = `job_report_${timestamp}.pdf`;
@@ -863,7 +858,7 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
   const urgencyMap = {
     'LOW': 'LOW',
     'MEDIUM': 'NORMAL',
-    'NORMAL': 'NORMAL',
+    'NORMAL': 'NORMAL', 
     'HIGH': 'HIGH',
     'URGENT': 'URGENT'
   };
@@ -899,8 +894,8 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
   } catch (error) {
     // Check if it's a duplicate key error on the id column (sequence out of sync)
     if (error.code === '23505' && error.message && error.message.includes('Key (id)=')) {
-      console.warn('⚠️ Sequence out of sync detected. Attempting auto-fix...');
-
+      console.warn('ΓÜá∩╕Å Sequence out of sync detected. Attempting auto-fix...');
+      
       try {
         // Auto-fix the sequence
         await dbAdapter.query(`
@@ -910,9 +905,9 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
             false
           )
         `);
-
-        console.log('✅ Sequence auto-fixed. Retrying job creation...');
-
+        
+        console.log('Γ£à Sequence auto-fixed. Retrying job creation...');
+        
         // Retry the insert once
         result = await dbAdapter.query(query, [
           job_card_id,
@@ -939,7 +934,7 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
         ]);
         job = result.rows[0];
       } catch (retryError) {
-        console.error('❌ Auto-fix failed:', retryError);
+        console.error('Γ¥î Auto-fix failed:', retryError);
         return res.status(500).json({
           error: 'Database sequence error',
           message: 'Failed to create job. Please contact administrator.',
@@ -970,7 +965,7 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
   try {
     const PrepressService = (await import('../services/prepressService.js')).default;
     const prepressService = new PrepressService();
-
+    
     await prepressService.createPrepressJob(
       job.id,
       assigned_designer_id || null,
@@ -978,13 +973,13 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
       delivery_date ? new Date(delivery_date) : null,
       req.user?.id || 1
     );
-    console.log(`✅ Prepress job created automatically for job ${job.id}`);
+    console.log(`Γ£à Prepress job created automatically for job ${job.id}`);
   } catch (prepressError) {
     // If prepress job already exists, that's okay
     if (prepressError.message && prepressError.message.includes('already exists')) {
-      console.log('ℹ️ Prepress job already exists for this job');
+      console.log('Γä╣∩╕Å Prepress job already exists for this job');
     } else {
-      console.error('⚠️ Error creating prepress job (non-critical):', prepressError);
+      console.error('ΓÜá∩╕Å Error creating prepress job (non-critical):', prepressError);
       // Don't fail job creation if prepress job creation fails
     }
   }
@@ -1009,10 +1004,10 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
           [job.id, selection.stepId, selection.is_selected]
         );
       }
-      console.log(`✅ Copied ${productSelections.rows.length} process sequence selections from product to job ${job.id}`);
+      console.log(`Γ£à Copied ${productSelections.rows.length} process sequence selections from product to job ${job.id}`);
     }
   } catch (selectionError) {
-    console.error('⚠️ Error copying product process selections (non-critical):', selectionError);
+    console.error('ΓÜá∩╕Å Error copying product process selections (non-critical):', selectionError);
     // Don't fail job creation if copying selections fails
   }
 
@@ -1020,17 +1015,17 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
   try {
     const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
     const workflowService = new UnifiedWorkflowService();
-
+    
     // Set socket handler if available
     const io = req.app.get('io');
     if (io) {
       workflowService.setSocketHandler(io);
     }
-
+    
     await workflowService.generateWorkflowFromProduct(job.id, product_id);
-    console.log(`✅ Workflow generated for job ${job.id}`);
+    console.log(`Γ£à Workflow generated for job ${job.id}`);
   } catch (workflowError) {
-    console.error('⚠️ Error generating workflow (non-critical):', workflowError);
+    console.error('ΓÜá∩╕Å Error generating workflow (non-critical):', workflowError);
     // Don't fail job creation if workflow generation fails
   }
 
@@ -1047,8 +1042,8 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
   // Emit real-time updates via Socket.io
   const io = req.app.get('io');
   if (io) {
-    console.log('🔌 Emitting Socket.io events for job creation:', job.job_card_id);
-
+    console.log('≡ƒöî Emitting Socket.io events for job creation:', job.job_card_id);
+    
     // Notify all connected users about the new job
     // Emit team performance update for directors
     if (req.user?.role === 'DIRECTOR' || true) { // Always emit, let frontend filter
@@ -1099,10 +1094,10 @@ router.post('/', authenticateToken, jobValidation, asyncHandler(async (req, res)
       createdAt: new Date().toISOString(),
       message: `New job ${job.job_card_id} is ready for assignment`
     });
-
-    console.log('✅ Socket.io events emitted successfully for job creation');
+    
+    console.log('Γ£à Socket.io events emitted successfully for job creation');
   } else {
-    console.log('❌ Socket.io instance not found for job creation');
+    console.log('Γ¥î Socket.io instance not found for job creation');
   }
 
   res.status(201).json({
@@ -1167,7 +1162,7 @@ router.put('/:id', jobValidation, asyncHandler(async (req, res) => {
   const urgencyMap = {
     'LOW': 'LOW',
     'MEDIUM': 'NORMAL',
-    'NORMAL': 'NORMAL',
+    'NORMAL': 'NORMAL', 
     'HIGH': 'HIGH',
     'URGENT': 'URGENT'
   };
@@ -1327,7 +1322,7 @@ router.get('/:id/pdf', asyncHandler(async (req, res) => {
   // Set headers for PDF download
   res.setHeader('Content-Type', 'text/html');
   res.setHeader('Content-Disposition', `attachment; filename="job-${job.jobNumber}.html"`);
-
+  
   res.send(pdfContent);
 }));
 
@@ -1373,7 +1368,7 @@ router.get('/stats/summary', asyncHandler(async (req, res) => {
 router.get('/:id/attachments', asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-
+    
     const query = `
       SELECT 
         ja.*,
@@ -1383,10 +1378,10 @@ router.get('/:id/attachments', asyncHandler(async (req, res) => {
       WHERE ja.job_card_id = $1
       ORDER BY ja.created_at DESC
     `;
-
+    
     const result = await dbAdapter.query(query, [id]);
     const attachments = result.rows;
-
+    
     res.json({
       success: true,
       attachments: attachments.map(attachment => ({
@@ -1410,132 +1405,132 @@ router.get('/:id/attachments', asyncHandler(async (req, res) => {
 }));
 
 // Job assignment endpoint for HOD Prepress
-router.post('/job-assignment/assign',
+router.post('/job-assignment/assign', 
   authenticateToken,
   requirePermission('ASSIGN_PREPRESS_JOBS'),
   asyncHandler(async (req, res) => {
-    try {
-      const { jobCardId, assignedDesignerId, isReassignment = false, priority = 'MEDIUM', dueDate, notes } = req.body;
-
-      console.log('🔄 Job assignment request:', { jobCardId, assignedDesignerId, isReassignment, priority, dueDate, notes });
-      console.log('🔐 User info:', req.user);
-      console.log('🔐 User role:', req.user?.role);
-
-      // Verify job exists
-      const jobResult = await dbAdapter.query(
-        'SELECT id, "jobNumber", "assignedToId" FROM job_cards WHERE id = $1',
-        [jobCardId]
-      );
-
-      if (jobResult.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Job not found'
-        });
-      }
-
-      const job = jobResult.rows[0];
-      const previousDesignerId = job.assignedToId;
-
-      // Update job assignment
-      const updateQuery = `
+  try {
+    const { jobCardId, assignedDesignerId, isReassignment = false, priority = 'MEDIUM', dueDate, notes } = req.body;
+    
+    console.log('≡ƒöä Job assignment request:', { jobCardId, assignedDesignerId, isReassignment, priority, dueDate, notes });
+    console.log('≡ƒöÉ User info:', req.user);
+    console.log('≡ƒöÉ User role:', req.user?.role);
+    
+    // Verify job exists
+    const jobResult = await dbAdapter.query(
+      'SELECT id, "jobNumber", "assignedToId" FROM job_cards WHERE id = $1',
+      [jobCardId]
+    );
+    
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Job not found'
+      });
+    }
+    
+    const job = jobResult.rows[0];
+    const previousDesignerId = job.assignedToId;
+    
+    // Update job assignment
+    const updateQuery = `
       UPDATE job_cards 
       SET "assignedToId" = $1, "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING *
     `;
-
-      const updateResult = await dbAdapter.query(updateQuery, [assignedDesignerId, jobCardId]);
-      const updatedJob = updateResult.rows[0];
-
-      // Create or update prepress job
-      let prepressJob;
-      try {
-        // Check if prepress job already exists
-        const existingPrepressResult = await dbAdapter.query(
-          'SELECT id FROM prepress_jobs WHERE job_card_id = $1',
-          [jobCardId]
-        );
-
-        if (existingPrepressResult.rows.length > 0) {
-          // Update existing prepress job
-          const updatePrepressQuery = `
+    
+    const updateResult = await dbAdapter.query(updateQuery, [assignedDesignerId, jobCardId]);
+    const updatedJob = updateResult.rows[0];
+    
+    // Create or update prepress job
+    let prepressJob;
+    try {
+      // Check if prepress job already exists
+      const existingPrepressResult = await dbAdapter.query(
+        'SELECT id FROM prepress_jobs WHERE job_card_id = $1',
+        [jobCardId]
+      );
+      
+      if (existingPrepressResult.rows.length > 0) {
+        // Update existing prepress job
+        const updatePrepressQuery = `
           UPDATE prepress_jobs 
           SET assigned_designer_id = $1, status = 'ASSIGNED', updated_by = $2, updated_at = CURRENT_TIMESTAMP
           WHERE job_card_id = $3
           RETURNING *
         `;
-          const updatePrepressResult = await dbAdapter.query(updatePrepressQuery, [assignedDesignerId, req.user?.id || 1, jobCardId]);
-          prepressJob = updatePrepressResult.rows[0];
-        } else {
-          // Create new prepress job
-          const createPrepressQuery = `
+        const updatePrepressResult = await dbAdapter.query(updatePrepressQuery, [assignedDesignerId, req.user?.id || 1, jobCardId]);
+        prepressJob = updatePrepressResult.rows[0];
+      } else {
+        // Create new prepress job
+        const createPrepressQuery = `
           INSERT INTO prepress_jobs (job_card_id, assigned_designer_id, status, priority, due_date, created_by, updated_by)
           VALUES ($1, $2, 'ASSIGNED', $3, $4, $5, $6)
           RETURNING *
         `;
-          const createPrepressResult = await dbAdapter.query(createPrepressQuery, [
-            jobCardId, assignedDesignerId, priority, dueDate, req.user?.id || 1, req.user?.id || 1
-          ]);
-          prepressJob = createPrepressResult.rows[0];
-        }
-
-        // Log activity
-        const activityQuery = `
+        const createPrepressResult = await dbAdapter.query(createPrepressQuery, [
+          jobCardId, assignedDesignerId, priority, dueDate, req.user?.id || 1, req.user?.id || 1
+        ]);
+        prepressJob = createPrepressResult.rows[0];
+      }
+      
+      // Log activity
+      const activityQuery = `
         INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
         VALUES ($1, $2, $3, $4, $5, $6)
       `;
-
-        const action = isReassignment ? 'REASSIGNED' : 'ASSIGNED';
-        const remark = notes || (isReassignment ? `Reassigned to designer ${assignedDesignerId}` : `Assigned to designer ${assignedDesignerId}`);
-
-        await dbAdapter.query(activityQuery, [
-          prepressJob.id,
-          req.user?.id || 1,
-          action,
-          isReassignment ? 'ASSIGNED' : null,
-          'ASSIGNED',
-          remark
-        ]);
-
-      } catch (prepressError) {
-        console.log('⚠️ Prepress job handling failed, but job assignment succeeded:', prepressError);
-      }
-
-      console.log('✅ Job assignment successful:', {
+      
+      const action = isReassignment ? 'REASSIGNED' : 'ASSIGNED';
+      const remark = notes || (isReassignment ? `Reassigned to designer ${assignedDesignerId}` : `Assigned to designer ${assignedDesignerId}`);
+      
+      await dbAdapter.query(activityQuery, [
+        prepressJob.id, 
+        req.user?.id || 1, 
+        action, 
+        isReassignment ? 'ASSIGNED' : null, 
+        'ASSIGNED', 
+        remark
+      ]);
+      
+    } catch (prepressError) {
+      console.log('ΓÜá∩╕Å Prepress job handling failed, but job assignment succeeded:', prepressError);
+    }
+    
+    console.log('Γ£à Job assignment successful:', {
+      jobId: jobCardId,
+      jobNumber: job.jobNumber,
+      previousDesigner: previousDesignerId,
+      newDesigner: assignedDesignerId,
+      isReassignment
+    });
+    
+    res.json({
+      success: true,
+      message: isReassignment ? 'Job reassigned successfully' : 'Job assigned successfully',
+      data: {
         jobId: jobCardId,
         jobNumber: job.jobNumber,
-        previousDesigner: previousDesignerId,
-        newDesigner: assignedDesignerId,
+        assignedDesignerId,
+        previousDesignerId,
         isReassignment
-      });
-
-      res.json({
-        success: true,
-        message: isReassignment ? 'Job reassigned successfully' : 'Job assigned successfully',
-        data: {
-          jobId: jobCardId,
-          jobNumber: job.jobNumber,
-          assignedDesignerId,
-          previousDesignerId,
-          isReassignment
-        }
-      });
-
-    } catch (error) {
-      console.error('❌ Job assignment error:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to assign job'
-      });
-    }
-  }));
+      }
+    });
+    
+  } catch (error) {
+    console.error('Γ¥î Job assignment error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to assign job'
+    });
+  }
+}));
 
 // Get jobs assigned to a specific designer
 router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
   try {
     const { designerId } = req.params;
-
+    
     const query = `
       SELECT 
         jc.*,
@@ -1569,11 +1564,11 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
       WHERE jc."assignedToId" = $1
       ORDER BY jc."createdAt" DESC
     `;
-
+    
     const result = await dbAdapter.query(query, [designerId]);
     const jobs = result.rows;
-
-    // Enhance jobs with complete product data, multiple machines, and blank size
+    
+      // Enhance jobs with complete product data, multiple machines, and blank size
     const enhancedJobs = await Promise.all(jobs.map(async (job) => {
       let productData = {
         productCode: 'N/A',
@@ -1587,7 +1582,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         colorSpecifications: '',
         remarks: ''
       };
-
+      
       // Fetch complete product data if productId exists
       if (job.productId) {
         try {
@@ -1602,7 +1597,7 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
             LEFT JOIN categories c ON p."categoryId" = c.id
             WHERE p.id = $1
           `, [job.productId]);
-
+          
           if (productResult.rows.length > 0) {
             const product = productResult.rows[0];
             productData = {
@@ -1623,11 +1618,11 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         }
       }
 
-      // Fetch multiple machines from job_ctp_machines if prepress_job exists
-      let machines = [];
-      if (job.prepress_job_id) {
-        try {
-          const machinesResult = await dbAdapter.query(`
+        // Fetch multiple machines from job_ctp_machines if prepress_job exists
+        let machines = [];
+        if (job.prepress_job_id) {
+          try {
+            const machinesResult = await dbAdapter.query(`
               SELECT 
                 jcm.*,
                 cm.machine_code,
@@ -1642,38 +1637,38 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
               WHERE jcm.prepress_job_id = $1
               ORDER BY jcm.created_at
             `, [job.prepress_job_id]);
-
-          machines = machinesResult.rows.map(m => ({
-            id: m.ctp_machine_id,
-            machine_code: m.machine_code,
-            machine_name: m.machine_name,
-            machine_type: m.machine_type,
-            manufacturer: m.manufacturer,
-            model: m.model,
-            location: m.location,
-            max_plate_size: m.max_plate_size,
-            plate_count: m.plate_count
-          }));
-        } catch (error) {
-          console.error(`Error fetching machines for job ${job.id}:`, error);
+            
+            machines = machinesResult.rows.map(m => ({
+              id: m.ctp_machine_id,
+              machine_code: m.machine_code,
+              machine_name: m.machine_name,
+              machine_type: m.machine_type,
+              manufacturer: m.manufacturer,
+              model: m.model,
+              location: m.location,
+              max_plate_size: m.max_plate_size,
+              plate_count: m.plate_count
+            }));
+          } catch (error) {
+            console.error(`Error fetching machines for job ${job.id}:`, error);
+          }
         }
-      }
 
-      // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
-      if (machines.length === 0 && job.ctp_machine_id) {
-        machines = [{
-          id: job.ctp_machine_id,
-          machine_code: job.ctp_machine_code,
-          machine_name: job.ctp_machine_name,
-          machine_type: job.ctp_machine_type,
-          manufacturer: job.ctp_machine_manufacturer,
-          model: job.ctp_machine_model,
-          location: job.ctp_machine_location,
-          max_plate_size: job.ctp_machine_max_plate_size,
-          plate_count: job.required_plate_count || 0
-        }];
-      }
-
+        // If no machines found in job_ctp_machines, use single machine from prepress_jobs (backward compatibility)
+        if (machines.length === 0 && job.ctp_machine_id) {
+          machines = [{
+            id: job.ctp_machine_id,
+            machine_code: job.ctp_machine_code,
+            machine_name: job.ctp_machine_name,
+            machine_type: job.ctp_machine_type,
+            manufacturer: job.ctp_machine_manufacturer,
+            model: job.ctp_machine_model,
+            location: job.ctp_machine_location,
+            max_plate_size: job.ctp_machine_max_plate_size,
+            plate_count: job.required_plate_count || 0
+          }];
+        }
+      
       return {
         id: job.id,
         jobNumber: job.jobNumber,
@@ -1717,23 +1712,18 @@ router.get('/assigned-to/:designerId', asyncHandler(async (req, res) => {
         ctp_machine_manufacturer: job.ctp_machine_manufacturer || null,
         ctp_machine_model: job.ctp_machine_model || null,
         ctp_machine_location: job.ctp_machine_location || null,
-        ctp_machine_max_plate_size: job.ctp_machine_max_plate_size || null,
-        // Multiple machines array
-        machines: machines,
-        // Blank size information
-        blank_width_mm: job.blank_width_mm || null,
-        blank_height_mm: job.blank_height_mm || null,
-        blank_width_inches: job.blank_width_inches || null,
-        blank_height_inches: job.blank_height_inches || null,
-        blank_size_unit: job.blank_size_unit || 'mm',
-        // Prepress Job ID and Outsourcing status
-        prepress_job_id: job.prepress_job_id,
-        outsourcing_die_making_initiated: job.outsourcing_die_making_initiated || false,
-        fil_initiated_request: job.fil_initiated_request || false,
-        blocks_initiated: job.blocks_initiated || false
+          ctp_machine_max_plate_size: job.ctp_machine_max_plate_size || null,
+          // Multiple machines array
+          machines: machines,
+          // Blank size information
+          blank_width_mm: job.blank_width_mm || null,
+          blank_height_mm: job.blank_height_mm || null,
+          blank_width_inches: job.blank_width_inches || null,
+          blank_height_inches: job.blank_height_inches || null,
+          blank_size_unit: job.blank_size_unit || 'mm'
       };
     }));
-
+    
     res.json({
       success: true,
       jobs: enhancedJobs
@@ -1750,9 +1740,9 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { assigned_designer_id, notes } = req.body;
 
-    console.log(`🔧 Assigning job ${id} to designer ${assigned_designer_id}`);
-    console.log(`🔧 Request body:`, req.body);
-    console.log(`🔧 User info:`, req.user);
+    console.log(`≡ƒöº Assigning job ${id} to designer ${assigned_designer_id}`);
+    console.log(`≡ƒöº Request body:`, req.body);
+    console.log(`≡ƒöº User info:`, req.user);
 
     const query = `
       UPDATE job_cards 
@@ -1764,14 +1754,14 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
       RETURNING *
     `;
 
-    console.log(`🔧 Executing query: ${query}`);
-    console.log(`🔧 Parameters: [${assigned_designer_id}, ${id}]`);
-
+    console.log(`≡ƒöº Executing query: ${query}`);
+    console.log(`≡ƒöº Parameters: [${assigned_designer_id}, ${id}]`);
+    
     const result = await dbAdapter.query(query, [assigned_designer_id, id]);
-    console.log(`🔧 Query result:`, result.rows);
-
+    console.log(`≡ƒöº Query result:`, result.rows);
+    
     if (result.rows.length === 0) {
-      console.log(`❌ Job ${id} not found`);
+      console.log(`Γ¥î Job ${id} not found`);
       return res.status(404).json({ error: 'Job not found' });
     }
 
@@ -1779,22 +1769,22 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
 
     // Record assignment history in job_lifecycles table
     try {
-      console.log('📝 Recording job assignment history...');
-
-      // Get the first process step for this job (using default 'Offset' product type)
-      const processStepQuery = `
+      console.log('≡ƒô¥ Recording job assignment history...');
+      
+        // Get the first process step for this job (using default 'Offset' product type)
+        const processStepQuery = `
           SELECT ps.id FROM process_steps ps
           JOIN process_sequences pseq ON ps.process_sequence_id = pseq.id
           WHERE pseq.product_type = 'Offset'
           ORDER BY ps.step_order ASC 
           LIMIT 1
         `;
-
-      const processStepResult = await dbAdapter.query(processStepQuery);
-
-      if (processStepResult.rows.length > 0) {
-        const processStepId = processStepResult.rows[0].id;
-
+        
+        const processStepResult = await dbAdapter.query(processStepQuery);
+        
+        if (processStepResult.rows.length > 0) {
+          const processStepId = processStepResult.rows[0].id;
+        
         // Insert assignment record in job_lifecycles
         const lifecycleQuery = `
           INSERT INTO job_lifecycles (
@@ -1815,7 +1805,7 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
             "updatedAt" = NOW()
           RETURNING *
         `;
-
+        
         const lifecycleResult = await dbAdapter.query(lifecycleQuery, [
           job.id,
           processStepId,
@@ -1823,19 +1813,19 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
           assigned_designer_id,
           notes || `Job assigned to designer by ${req.user?.firstName || 'System'}`
         ]);
-
-        console.log('📝 Job assignment history recorded:', lifecycleResult.rows[0]);
+        
+        console.log('≡ƒô¥ Job assignment history recorded:', lifecycleResult.rows[0]);
       }
     } catch (historyError) {
-      console.error('⚠️ Failed to record assignment history:', historyError);
+      console.error('ΓÜá∩╕Å Failed to record assignment history:', historyError);
       // Don't fail the assignment if history recording fails
     }
 
     // Emit real-time updates via Socket.io
     const io = req.app.get('io');
     if (io) {
-      console.log('🔌 Emitting Socket.io events for job assignment:', job.jobNumber);
-
+      console.log('≡ƒöî Emitting Socket.io events for job assignment:', job.jobNumber);
+      
       // Get the socket handler instance
       const socketHandler = req.app.get('socketHandler');
       if (socketHandler) {
@@ -1863,12 +1853,12 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
           message: `You have been assigned job ${job.jobNumber}`
         });
       }
-
-      console.log('✅ Socket.io events emitted successfully for job assignment');
+      
+      console.log('Γ£à Socket.io events emitted successfully for job assignment');
     }
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       job: {
         id: job.id,
         jobNumber: job.jobNumber,
@@ -1877,9 +1867,9 @@ router.put('/:id/assign', asyncHandler(async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Error assigning job:', error);
-    console.error('❌ Error details:', error.message);
-    console.error('❌ Error stack:', error.stack);
+    console.error('Γ¥î Error assigning job:', error);
+    console.error('Γ¥î Error details:', error.message);
+    console.error('Γ¥î Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to assign job', details: error.message });
   }
 }));
@@ -1902,7 +1892,7 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
     `;
 
     const result = await dbAdapter.query(query, [status, id]);
-
+    
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Job not found' });
     }
@@ -1912,8 +1902,8 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
     // Emit real-time updates via Socket.io
     const io = req.app.get('io');
     if (io) {
-      console.log('🔌 Emitting Socket.io events for job status update:', job.jobNumber);
-
+      console.log('≡ƒöî Emitting Socket.io events for job status update:', job.jobNumber);
+      
       // Get the socket handler instance
       const socketHandler = req.app.get('socketHandler');
       if (socketHandler) {
@@ -1932,12 +1922,12 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
           message: `Job ${job.jobNumber} status updated to ${job.status}`
         });
       }
-
-      console.log('✅ Socket.io events emitted successfully for job status update');
+      
+      console.log('Γ£à Socket.io events emitted successfully for job status update');
     }
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       job: {
         id: job.id,
         jobNumber: job.jobNumber,
@@ -1951,16 +1941,16 @@ router.put('/:id/status', asyncHandler(async (req, res) => {
 }));
 
 // QA Approve Job
-router.post('/:id/qa-approve',
+router.post('/:id/qa-approve', 
   authenticateToken,
   requirePermission('APPROVE_QA_JOBS'),
   asyncHandler(async (req, res) => {
     try {
       const { id } = req.params;
       const { qaNotes } = req.body;
-
-      console.log('✅ QA Approving job:', id);
-
+      
+      console.log('Γ£à QA Approving job:', id);
+      
       // Check which columns exist in job_cards table
       const columnCheck = await dbAdapter.query(`
         SELECT column_name 
@@ -1969,114 +1959,114 @@ router.post('/:id/qa-approve',
         AND column_name IN ('current_department', 'current_step', 'workflow_status', 'status_message')
       `);
       const existingColumns = columnCheck.rows.map(r => r.column_name);
-      console.log('📋 Available columns in job_cards:', existingColumns);
-
+      console.log('≡ƒôï Available columns in job_cards:', existingColumns);
+      
       // Build dynamic update query based on available columns
       const updateFields = [];
       const updateValues = [];
       let paramIndex = 1;
-
+      
       updateFields.push(`status = $${paramIndex}`);
       updateValues.push('APPROVED_BY_QA');
       paramIndex++;
-
+      
       updateFields.push(`qa_notes = $${paramIndex}`);
       updateValues.push(qaNotes || '');
       paramIndex++;
-
+      
       updateFields.push(`qa_approved_by = $${paramIndex}`);
       updateValues.push(req.user?.id || 1);
       paramIndex++;
-
+      
       if (existingColumns.includes('current_department')) {
         updateFields.push(`current_department = $${paramIndex}`);
         updateValues.push('Prepress');
         paramIndex++;
       }
-
+      
       if (existingColumns.includes('current_step')) {
         updateFields.push(`current_step = $${paramIndex}`);
         updateValues.push('In CTP');
         paramIndex++;
       }
-
+      
       if (existingColumns.includes('workflow_status')) {
         updateFields.push(`workflow_status = $${paramIndex}`);
         updateValues.push('in_progress');
         paramIndex++;
       }
-
+      
       if (existingColumns.includes('status_message')) {
         updateFields.push(`status_message = $${paramIndex}`);
         updateValues.push('Approved by QA, ready for CTP');
         paramIndex++;
       }
-
+      
       updateFields.push(`qa_approved_at = CURRENT_TIMESTAMP`);
       updateFields.push(`"updatedAt" = CURRENT_TIMESTAMP`);
-
+      
       updateValues.push(id); // Last parameter for WHERE clause
-
+      
       const updateQuery = `
         UPDATE job_cards 
         SET ${updateFields.join(', ')}
         WHERE id = $${paramIndex}
         RETURNING *
       `;
-
+      
       const result = await dbAdapter.query(updateQuery, updateValues);
-
+      
       if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
         });
       }
-
+      
       // Update workflow step using UnifiedWorkflowService
       try {
         const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
         const workflowService = new UnifiedWorkflowService();
-
+        
         // Set socket handler if available
         const io = req.app.get('io');
         if (io) {
           workflowService.setSocketHandler(io);
         }
-
+        
         // Find current workflow step that needs QA approval
         const workflowSteps = await workflowService.getJobWorkflow(id);
-        const currentStep = workflowSteps.find(step =>
+        const currentStep = workflowSteps.find(step => 
           ['submitted', 'qa_review'].includes(step.status) && step.requires_qa
         );
-
+        
         if (currentStep) {
           await workflowService.approveStep(id, currentStep.sequence_number, req.user?.id || 1, qaNotes || '');
-          console.log(`✅ Workflow step ${currentStep.sequence_number} approved via unified workflow`);
-
+          console.log(`Γ£à Workflow step ${currentStep.sequence_number} approved via unified workflow`);
+          
           // Activate CTP workflow step after QA approval
-          const ctpStep = workflowSteps.find(step =>
+          const ctpStep = workflowSteps.find(step => 
             (step.department === 'Prepress' || step.department === 'CTP') &&
             (step.step_name.toLowerCase().includes('ctp') || step.step_name.toLowerCase().includes('plate'))
           );
-
+          
           if (ctpStep) {
             if (ctpStep.status === 'inactive' || ctpStep.status === 'pending') {
               await workflowService.startStep(id, ctpStep.sequence_number, req.user?.id || 1);
-              console.log(`✅ CTP workflow step activated: ${ctpStep.step_name}`);
+              console.log(`Γ£à CTP workflow step activated: ${ctpStep.step_name}`);
             } else {
-              console.log(`ℹ️ CTP workflow step already active: ${ctpStep.step_name} (${ctpStep.status})`);
+              console.log(`Γä╣∩╕Å CTP workflow step already active: ${ctpStep.step_name} (${ctpStep.status})`);
             }
           } else {
-            console.log('⚠️ No CTP workflow step found to activate');
+            console.log('ΓÜá∩╕Å No CTP workflow step found to activate');
           }
         } else {
-          console.log('⚠️ No workflow step found for QA approval, using legacy update');
+          console.log('ΓÜá∩╕Å No workflow step found for QA approval, using legacy update');
         }
       } catch (workflowError) {
-        console.error('⚠️ Workflow approval failed, falling back to legacy update:', workflowError);
+        console.error('ΓÜá∩╕Å Workflow approval failed, falling back to legacy update:', workflowError);
       }
-
+      
       // Update prepress job status if exists (backward compatibility)
       // IMPORTANT: Only update status, preserve all other fields (required_plate_count, ctp_machine_id, etc.)
       try {
@@ -2086,33 +2076,33 @@ router.post('/:id/qa-approve',
           FROM prepress_jobs 
           WHERE job_card_id = $1
         `, [id]);
-
+        
         if (prepressCheck.rows.length > 0) {
           const prepressJob = prepressCheck.rows[0];
-          console.log('🔍 QA Approval - Prepress job data before update:', {
+          console.log('≡ƒöì QA Approval - Prepress job data before update:', {
             prepress_job_id: prepressJob.id,
             required_plate_count: prepressJob.required_plate_count,
             ctp_machine_id: prepressJob.ctp_machine_id,
             current_status: prepressJob.status
           });
-
+          
           // Update ONLY the status, preserving all other fields
           await dbAdapter.query(`
             UPDATE prepress_jobs 
             SET status = 'APPROVED_BY_QA', updated_at = CURRENT_TIMESTAMP
             WHERE job_card_id = $1
           `, [id]);
-
+          
           // Verify data is preserved after update
           const verifyQuery = await dbAdapter.query(`
             SELECT id, required_plate_count, ctp_machine_id, status
             FROM prepress_jobs 
             WHERE job_card_id = $1
           `, [id]);
-
+          
           if (verifyQuery.rows.length > 0) {
             const verified = verifyQuery.rows[0];
-            console.log('✅ QA Approval - Prepress job data after update (preserved):', {
+            console.log('Γ£à QA Approval - Prepress job data after update (preserved):', {
               prepress_job_id: verified.id,
               required_plate_count: verified.required_plate_count,
               ctp_machine_id: verified.ctp_machine_id,
@@ -2120,7 +2110,7 @@ router.post('/:id/qa-approve',
             });
           }
         }
-
+        
         // Log QA activity
         await dbAdapter.query(`
           INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
@@ -2128,19 +2118,19 @@ router.post('/:id/qa-approve',
           FROM prepress_jobs pj WHERE pj.job_card_id = $3
         `, [req.user?.id || 1, qaNotes || 'Approved by QA', id]);
       } catch (prepressError) {
-        console.log('⚠️ Prepress update failed, but job approval succeeded:', prepressError);
+        console.log('ΓÜá∩╕Å Prepress update failed, but job approval succeeded:', prepressError);
       }
-
-      console.log('✅ Job approved by QA successfully');
-
+      
+      console.log('Γ£à Job approved by QA successfully');
+      
       res.json({
         success: true,
         message: 'Job approved by QA',
         data: result.rows[0]
       });
-
+      
     } catch (error) {
-      console.error('❌ QA approval error:', error);
+      console.error('Γ¥î QA approval error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to approve job'
@@ -2150,16 +2140,16 @@ router.post('/:id/qa-approve',
 );
 
 // QA Reject Job
-router.post('/:id/qa-reject',
+router.post('/:id/qa-reject', 
   authenticateToken,
   requirePermission('REJECT_QA_JOBS'),
   asyncHandler(async (req, res) => {
     try {
       const { id } = req.params;
       const { qaNotes } = req.body;
-
-      console.log('❌ QA Rejecting job:', id);
-
+      
+      console.log('Γ¥î QA Rejecting job:', id);
+      
       // Update job status to REVISIONS_REQUIRED
       const updateQuery = `
         UPDATE job_cards 
@@ -2169,46 +2159,46 @@ router.post('/:id/qa-reject',
         WHERE id = $2
         RETURNING *
       `;
-
+      
       const result = await dbAdapter.query(updateQuery, [
         qaNotes || '',
         id
       ]);
-
+      
       if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
         });
       }
-
+      
       // Update workflow step using UnifiedWorkflowService
       try {
         const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
         const workflowService = new UnifiedWorkflowService();
-
+        
         // Set socket handler if available
         const io = req.app.get('io');
         if (io) {
           workflowService.setSocketHandler(io);
         }
-
+        
         // Find current workflow step that needs QA rejection
         const workflowSteps = await workflowService.getJobWorkflow(id);
-        const currentStep = workflowSteps.find(step =>
+        const currentStep = workflowSteps.find(step => 
           ['submitted', 'qa_review'].includes(step.status) && step.requires_qa
         );
-
+        
         if (currentStep) {
           await workflowService.rejectStep(id, currentStep.sequence_number, req.user?.id || 1, qaNotes || '');
-          console.log(`✅ Workflow step ${currentStep.sequence_number} rejected via unified workflow`);
+          console.log(`Γ£à Workflow step ${currentStep.sequence_number} rejected via unified workflow`);
         } else {
-          console.log('⚠️ No workflow step found for QA rejection, using legacy update');
+          console.log('ΓÜá∩╕Å No workflow step found for QA rejection, using legacy update');
         }
       } catch (workflowError) {
-        console.error('⚠️ Workflow rejection failed, falling back to legacy update:', workflowError);
+        console.error('ΓÜá∩╕Å Workflow rejection failed, falling back to legacy update:', workflowError);
       }
-
+      
       // Update prepress job status if exists (backward compatibility)
       try {
         await dbAdapter.query(`
@@ -2216,7 +2206,7 @@ router.post('/:id/qa-reject',
           SET status = 'REVISIONS_REQUIRED', updated_at = CURRENT_TIMESTAMP
           WHERE job_card_id = $1
         `, [id]);
-
+        
         // Log QA activity
         await dbAdapter.query(`
           INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
@@ -2224,19 +2214,19 @@ router.post('/:id/qa-reject',
           FROM prepress_jobs pj WHERE pj.job_card_id = $3
         `, [req.user?.id || 1, qaNotes || 'Revisions required by QA', id]);
       } catch (prepressError) {
-        console.log('⚠️ Prepress update failed, but job rejection succeeded:', prepressError);
+        console.log('ΓÜá∩╕Å Prepress update failed, but job rejection succeeded:', prepressError);
       }
-
-      console.log('✅ Job rejected by QA successfully');
-
+      
+      console.log('Γ£à Job rejected by QA successfully');
+      
       res.json({
         success: true,
         message: 'Job returned for revisions',
         data: result.rows[0]
       });
-
+      
     } catch (error) {
-      console.error('❌ QA rejection error:', error);
+      console.error('Γ¥î QA rejection error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to reject job'
@@ -2246,16 +2236,16 @@ router.post('/:id/qa-reject',
 );
 
 // Submit to QA
-router.post('/:id/submit-to-qa',
+router.post('/:id/submit-to-qa', 
   authenticateToken,
   requirePermission('SUBMIT_TO_QA'),
   asyncHandler(async (req, res) => {
     try {
       const { id } = req.params;
       const { finalDesignLink, status } = req.body;
-
-      console.log('🎨 Designer submitting job to QA:', id);
-
+      
+      console.log('≡ƒÄ¿ Designer submitting job to QA:', id);
+      
       // Update job with final design link and status
       const updateQuery = `
         UPDATE job_cards 
@@ -2265,47 +2255,47 @@ router.post('/:id/submit-to-qa',
         WHERE id = $3
         RETURNING *
       `;
-
+      
       const result = await dbAdapter.query(updateQuery, [
         finalDesignLink || '',
         status || 'SUBMITTED_TO_QA',
         id
       ]);
-
+      
       if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Job not found'
         });
       }
-
+      
       // Update workflow step using UnifiedWorkflowService
       try {
         const UnifiedWorkflowService = (await import('../services/unifiedWorkflowService.js')).default;
         const workflowService = new UnifiedWorkflowService();
-
+        
         // Set socket handler if available
         const io = req.app.get('io');
         if (io) {
           workflowService.setSocketHandler(io);
         }
-
+        
         // Find current workflow step that needs to be submitted
         const workflowSteps = await workflowService.getJobWorkflow(id);
-        const currentStep = workflowSteps.find(step =>
+        const currentStep = workflowSteps.find(step => 
           step.status === 'in_progress' && step.requires_qa
         );
-
+        
         if (currentStep) {
           await workflowService.submitToQA(id, currentStep.sequence_number, req.user?.id || 1);
-          console.log(`✅ Workflow step ${currentStep.sequence_number} submitted to QA via unified workflow`);
+          console.log(`Γ£à Workflow step ${currentStep.sequence_number} submitted to QA via unified workflow`);
         } else {
-          console.log('⚠️ No workflow step found for submission, using legacy update');
+          console.log('ΓÜá∩╕Å No workflow step found for submission, using legacy update');
         }
       } catch (workflowError) {
-        console.error('⚠️ Workflow submission failed, falling back to legacy update:', workflowError);
+        console.error('ΓÜá∩╕Å Workflow submission failed, falling back to legacy update:', workflowError);
       }
-
+      
       // Update prepress job status if exists (backward compatibility)
       try {
         await dbAdapter.query(`
@@ -2313,7 +2303,7 @@ router.post('/:id/submit-to-qa',
           SET status = 'SUBMITTED_TO_QA', updated_at = CURRENT_TIMESTAMP
           WHERE job_card_id = $1
         `, [id]);
-
+        
         // Log activity
         await dbAdapter.query(`
           INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
@@ -2321,19 +2311,19 @@ router.post('/:id/submit-to-qa',
           FROM prepress_jobs pj WHERE pj.job_card_id = $2
         `, [req.user?.id || 1, id]);
       } catch (prepressError) {
-        console.log('⚠️ Prepress update failed, but job submission succeeded:', prepressError);
+        console.log('ΓÜá∩╕Å Prepress update failed, but job submission succeeded:', prepressError);
       }
-
-      console.log('✅ Job submitted to QA successfully');
-
+      
+      console.log('Γ£à Job submitted to QA successfully');
+      
       res.json({
         success: true,
         message: 'Job submitted to QA',
         data: result.rows[0]
       });
-
+      
     } catch (error) {
-      console.error('❌ Submit to QA error:', error);
+      console.error('Γ¥î Submit to QA error:', error);
       res.status(500).json({
         success: false,
         error: 'Failed to submit job to QA',
@@ -2366,16 +2356,16 @@ router.get('/ctp/machines', authenticateToken, asyncHandler(async (req, res) => 
     `;
 
     const result = await dbAdapter.query(query);
-
+    
     res.json({
       success: true,
       machines: result.rows
     });
   } catch (error) {
     console.error('Error fetching CTP machines:', error);
-    res.status(500).json({
-      error: 'Failed to fetch CTP machines',
-      message: error.message
+    res.status(500).json({ 
+      error: 'Failed to fetch CTP machines', 
+      message: error.message 
     });
   }
 }));
@@ -2384,9 +2374,9 @@ router.get('/ctp/machines', authenticateToken, asyncHandler(async (req, res) => 
 router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      required_plate_count,
-      ctp_machine_id,
+    const { 
+      required_plate_count, 
+      ctp_machine_id, 
       machines,
       blank_width_mm,
       blank_height_mm,
@@ -2396,9 +2386,9 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
     } = req.body;
     const userId = req.user?.id;
 
-    console.log(`Updating plate info for job ${id}:`, {
-      required_plate_count,
-      ctp_machine_id,
+    console.log(`Updating plate info for job ${id}:`, { 
+      required_plate_count, 
+      ctp_machine_id, 
       machines,
       blank_width_mm,
       blank_height_mm,
@@ -2423,7 +2413,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         'SELECT id FROM ctp_machines WHERE id = $1 AND is_active = true',
         [ctp_machine_id]
       );
-
+      
       if (machineCheck.rows.length === 0) {
         return res.status(400).json({
           error: 'Invalid machine',
@@ -2448,12 +2438,12 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
     }
 
     // Process blank size with auto-conversion
-    if (blank_width_mm !== undefined && blank_width_mm !== null &&
-      blank_height_mm !== undefined && blank_height_mm !== null) {
+    if (blank_width_mm !== undefined && blank_width_mm !== null && 
+        blank_height_mm !== undefined && blank_height_mm !== null) {
       // MM provided
       const widthMm = parseFloat(blank_width_mm);
       const heightMm = parseFloat(blank_height_mm);
-
+      
       if (isNaN(widthMm) || isNaN(heightMm) || widthMm <= 0 || heightMm <= 0) {
         return res.status(400).json({
           error: 'Invalid blank size',
@@ -2466,12 +2456,12 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
       finalBlankWidthInches = widthMm / 25.4;
       finalBlankHeightInches = heightMm / 25.4;
       finalBlankSizeUnit = 'mm';
-    } else if (blank_width_inches !== undefined && blank_width_inches !== null &&
-      blank_height_inches !== undefined && blank_height_inches !== null) {
+    } else if (blank_width_inches !== undefined && blank_width_inches !== null && 
+               blank_height_inches !== undefined && blank_height_inches !== null) {
       // Inches provided
       const widthInches = parseFloat(blank_width_inches);
       const heightInches = parseFloat(blank_height_inches);
-
+      
       if (isNaN(widthInches) || isNaN(heightInches) || widthInches <= 0 || heightInches <= 0) {
         return res.status(400).json({
           error: 'Invalid blank size',
@@ -2484,8 +2474,8 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
       finalBlankWidthMm = widthInches * 25.4;
       finalBlankHeightMm = heightInches * 25.4;
       finalBlankSizeUnit = 'inches';
-    } else if (blank_width_mm !== undefined || blank_height_mm !== undefined ||
-      blank_width_inches !== undefined || blank_height_inches !== undefined) {
+    } else if (blank_width_mm !== undefined || blank_height_mm !== undefined || 
+               blank_width_inches !== undefined || blank_height_inches !== undefined) {
       // Partial data provided - invalid
       return res.status(400).json({
         error: 'Invalid blank size',
@@ -2516,7 +2506,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         `SELECT id FROM ctp_machines WHERE id = ANY($1::int[]) AND is_active = true`,
         [machineIds]
       );
-
+      
       if (machineCheck.rows.length !== machineIds.length) {
         return res.status(400).json({
           error: 'Invalid machine(s)',
@@ -2620,7 +2610,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
         });
       }
 
-      console.log('✅ Plate info updated successfully with multiple machines');
+      console.log('Γ£à Plate info updated successfully with multiple machines');
 
       res.json({
         success: true,
@@ -2737,7 +2727,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
       });
     }
 
-    console.log('✅ Plate info updated successfully');
+    console.log('Γ£à Plate info updated successfully');
 
     res.json({
       success: true,
@@ -2776,7 +2766,7 @@ router.put('/:id/plate-info', authenticateToken, asyncHandler(async (req, res) =
 
 // Update PO number for a job
 // PATCH /api/jobs/:id/po-number
-router.patch('/:id/po-number',
+router.patch('/:id/po-number', 
   authenticateToken,
   requirePermission('UPDATE_JOB_PO_NUMBER'),
   [
@@ -2873,10 +2863,10 @@ router.get('/health/sequence', authenticateToken, requirePermission(['ADMIN', 'H
         (SELECT last_value FROM job_cards_id_seq) as sequence_value,
         (SELECT last_value FROM job_cards_id_seq) - (SELECT MAX(id) FROM job_cards) as difference
     `);
-
+    
     const { max_id, sequence_value, difference } = result.rows[0];
     const isHealthy = parseInt(difference) >= 0;
-
+    
     res.json({
       healthy: isHealthy,
       max_id: parseInt(max_id),

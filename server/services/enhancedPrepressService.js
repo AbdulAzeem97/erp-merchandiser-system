@@ -40,13 +40,13 @@ class EnhancedPrepressService {
     try {
       const prepressJobId = uuidv4();
       const currentTime = new Date().toISOString();
-      
+
       // Create prepress job entry
       const insertQuery = `
         INSERT INTO prepress_jobs (
           id, job_card_id, assigned_designer_id, priority, due_date, status,
-          design_status, die_plate_status, other_status, created_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          design_status, die_plate_status, other_status, created_by, created_at, updated_at, assigned_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       `;
 
       await dbAdapter.query(insertQuery, [
@@ -59,9 +59,11 @@ class EnhancedPrepressService {
         EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
         EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
         EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
+        EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
         createdBy,
         currentTime,
-        currentTime
+        currentTime,
+        assignedDesignerId ? currentTime : null
       ]);
 
       // Log activity
@@ -84,8 +86,8 @@ class EnhancedPrepressService {
         });
       }
 
-      return { 
-        id: prepressJobId, 
+      return {
+        id: prepressJobId,
         status: EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
         categories: {
           design: EnhancedPrepressService.PREPRESS_STATUSES.PENDING,
@@ -99,11 +101,57 @@ class EnhancedPrepressService {
     }
   }
 
+  // Assign designer to prepress job
+  async assignDesigner(prepressJobId, designerId, updatedBy) {
+    try {
+      const currentTime = new Date().toISOString();
+
+      const updateQuery = `
+        UPDATE prepress_jobs 
+        SET assigned_designer_id = $1, status = $2, assigned_at = $3, updated_at = $3
+        WHERE id = $4
+      `;
+
+      await dbAdapter.query(updateQuery, [
+        designerId,
+        EnhancedPrepressService.PREPRESS_STATUSES.ASSIGNED,
+        currentTime,
+        prepressJobId
+      ]);
+
+      // Log activity
+      await this.logPrepressActivity(
+        prepressJobId,
+        'DESIGNER_ASSIGNED',
+        'Designer assigned to job',
+        updatedBy,
+        { designerId }
+      );
+
+      // Emit real-time update
+      if (this.socketHandler) {
+        const jobCardId = await this.getJobCardId(prepressJobId);
+        this.socketHandler.emitPrepressUpdate(jobCardId, 'DESIGNER_ASSIGNED', {
+          prepressJobId,
+          assignedDesignerId: designerId,
+          status: EnhancedPrepressService.PREPRESS_STATUSES.ASSIGNED,
+          assignedAt: currentTime,
+          message: 'Designer assigned to job'
+        });
+      }
+
+      return this.getPrepressJob(prepressJobId);
+    } catch (error) {
+      console.error('Error assigning designer:', error);
+      throw error;
+    }
+  }
+
   // Update prepress category status
   async updateCategoryStatus(prepressJobId, category, status, updatedBy, notes = '') {
     try {
       const currentTime = new Date().toISOString();
-      
+
       // Validate category
       if (!Object.values(EnhancedPrepressService.PREPRESS_CATEGORIES).includes(category)) {
         throw new Error('Invalid prepress category');
@@ -118,7 +166,7 @@ class EnhancedPrepressService {
       // Update the specific category status
       let updateQuery = '';
       let statusColumn = '';
-      
+
       switch (category) {
         case EnhancedPrepressService.PREPRESS_CATEGORIES.DESIGN:
           statusColumn = 'design_status';
@@ -164,7 +212,7 @@ class EnhancedPrepressService {
 
       // Check if all categories are completed
       const isCompleted = await this.checkAllCategoriesCompleted(prepressJobId);
-      
+
       if (isCompleted) {
         // Update overall status to HOD_REVIEW
         await this.updateOverallStatus(prepressJobId, EnhancedPrepressService.PREPRESS_STATUSES.HOD_REVIEW, updatedBy);
@@ -203,7 +251,7 @@ class EnhancedPrepressService {
   async updateOverallStatus(prepressJobId, status, updatedBy, notes = '') {
     try {
       const currentTime = new Date().toISOString();
-      
+
       const updateQuery = `
         UPDATE prepress_jobs 
         SET status = $1, updated_at = $2
@@ -247,16 +295,16 @@ class EnhancedPrepressService {
         FROM prepress_jobs 
         WHERE id = $1
       `;
-      
+
       const result = await dbAdapter.query(query, [prepressJobId]);
       const job = result.rows?.[0];
-      
+
       if (!job) return false;
-      
+
       const designCompleted = job.design_status === EnhancedPrepressService.PREPRESS_STATUSES.DESIGN_COMPLETED;
       const diePlateCompleted = job.die_plate_status === EnhancedPrepressService.PREPRESS_STATUSES.DIE_PLATE_COMPLETED;
       const otherCompleted = job.other_status === EnhancedPrepressService.PREPRESS_STATUSES.OTHER_COMPLETED;
-      
+
       // At least design and die_plate must be completed, other is optional
       return designCompleted && diePlateCompleted;
     } catch (error) {
@@ -307,16 +355,22 @@ class EnhancedPrepressService {
   async getPrepressJob(prepressJobId) {
     try {
       const query = `
-        SELECT pj.*, jc.job_card_id as job_card_id_display, jc.product_item_code,
+        SELECT pj.*, pj.assigned_at, jc.job_card_id as job_card_id_display, jc."jobNumber" as job_card_number,
+               jc.product_item_code,
                jc.brand, jc.quantity, jc.delivery_date, jc.priority as job_priority,
-               c.name as company_name, u.first_name || ' ' || u.last_name as designer_name
+               jc."createdAt" as job_created_at,
+               c.name as company_name, 
+               u.first_name || ' ' || u.last_name as designer_name,
+               u_merchandiser.first_name as merchandiser_first_name,
+               u_merchandiser.last_name as merchandiser_last_name
         FROM prepress_jobs pj
         JOIN job_cards jc ON pj.job_card_id = jc.id
         JOIN companies c ON jc.company_id = c.id
         LEFT JOIN users u ON pj.assigned_designer_id = u.id
+        LEFT JOIN users u_merchandiser ON jc."createdById" = u_merchandiser.id
         WHERE pj.id = $1
       `;
-      
+
       const result = await dbAdapter.query(query, [prepressJobId]);
       return result.rows?.[0] || null;
     } catch (error) {
@@ -351,13 +405,19 @@ class EnhancedPrepressService {
       }
 
       const query = `
-        SELECT pj.*, jc.job_card_id as job_card_id_display, jc.product_item_code,
+        SELECT pj.*, pj.assigned_at, jc.job_card_id as job_card_id_display, jc."jobNumber" as job_card_number,
+               jc.product_item_code,
                jc.brand, jc.quantity, jc.delivery_date, jc.priority as job_priority,
-               c.name as company_name, u.first_name || ' ' || u.last_name as designer_name
+               jc."createdAt" as job_created_at,
+               c.name as company_name, 
+               u.first_name || ' ' || u.last_name as designer_name,
+               u_merchandiser.first_name as merchandiser_first_name,
+               u_merchandiser.last_name as merchandiser_last_name
         FROM prepress_jobs pj
         JOIN job_cards jc ON pj.job_card_id = jc.id
         JOIN companies c ON jc.company_id = c.id
         LEFT JOIN users u ON pj.assigned_designer_id = u.id
+        LEFT JOIN users u_merchandiser ON jc."createdById" = u_merchandiser.id
         ${whereClause}
         ORDER BY pj.updated_at DESC
       `;
@@ -375,7 +435,7 @@ class EnhancedPrepressService {
     try {
       const activityId = uuidv4();
       const currentTime = new Date().toISOString();
-      
+
       const insertQuery = `
         INSERT INTO prepress_activities (
           id, prepress_job_id, activity_type, description, metadata, user_id, created_at

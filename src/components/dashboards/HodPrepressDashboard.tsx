@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  PieChart, 
-  Pie, 
-  BarChart, 
-  Bar, 
-  LineChart, 
-  Line, 
+import {
+  PieChart,
+  Pie,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
   AreaChart,
   Area,
-  ResponsiveContainer, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  Cell 
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  Cell
 } from 'recharts';
-import { 
+import {
   Package,
   Clock,
   User,
@@ -111,6 +111,10 @@ interface RatioReport {
     sheets: number;
     qtyProduced: number;
     excessQty: number;
+    epNo?: string;
+    itemCode?: string;
+    itemDescription?: string;
+    price?: number;
   }>;
   plate_distribution: Record<string, number>;
   color_efficiency: Record<string, number>;
@@ -132,6 +136,11 @@ interface HODJob {
   assigned_designer?: string;
   assigned_designer_id?: string;
   designer_id?: string;
+  assigned_at?: string;
+  created_by_name?: string;
+  outsourcing_die_making_initiated?: boolean;
+  fil_initiated_request?: boolean;
+  blocks_initiated?: boolean;
   customer_name?: string;
   customer_email?: string;
   customer_phone?: string;
@@ -337,9 +346,9 @@ const weeklyProductivity = [
   { day: 'Sun', completed: 5, assigned: 8, inProgress: 4 }
 ];
 
-export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({ 
-  onNavigate = () => {}, 
-  onLogout = () => {},
+export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
+  onNavigate = () => { },
+  onLogout = () => { },
   currentPage = 'prepressHOD',
   isLoading = false
 }) => {
@@ -360,7 +369,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [isProcessSequenceModalOpen, setIsProcessSequenceModalOpen] = useState(false);
   const [selectedJobForProcessEdit, setSelectedJobForProcessEdit] = useState<HODJob | null>(null);
-  const [jobProcessSequences, setJobProcessSequences] = useState<{[jobId: string]: any}>({});
+  const [jobProcessSequences, setJobProcessSequences] = useState<{ [jobId: string]: any }>({});
   const [ratioReport, setRatioReport] = useState<RatioReport | null>(null);
   const [isRatioReportOpen, setIsRatioReportOpen] = useState(false);
   const [isRatioPreviewOpen, setIsRatioPreviewOpen] = useState(false);
@@ -379,10 +388,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const [selectedJobForItemSpecs, setSelectedJobForItemSpecs] = useState<HODJob | null>(null);
   const [isProcessSequenceViewModalOpen, setIsProcessSequenceViewModalOpen] = useState(false);
   const [selectedJobForProcessView, setSelectedJobForProcessView] = useState<HODJob | null>(null);
-  const [ctpMachines, setCtpMachines] = useState<Array<{id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string}>>([]);
+  const [ctpMachines, setCtpMachines] = useState<Array<{ id: string; machine_code: string; machine_name: string; machine_type: string; manufacturer?: string; model?: string; location?: string; max_plate_size?: string }>>([]);
   const [isPlateInfoDialogOpen, setIsPlateInfoDialogOpen] = useState(false);
   const [selectedJobForPlateInfo, setSelectedJobForPlateInfo] = useState<HODJob | null>(null);
-  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{machineId: string; plateCount: number | ''}>>([{machineId: '', plateCount: ''}]);
+  const [machinePlatePairs, setMachinePlatePairs] = useState<Array<{ machineId: string; plateCount: number | '' }>>([{ machineId: '', plateCount: '' }]);
   // Blank size state
   const [blankWidth, setBlankWidth] = useState<string>('');
   const [blankHeight, setBlankHeight] = useState<string>('');
@@ -416,22 +425,22 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     setLoading(true);
     try {
       console.log('🔄 Loading HOD data...');
-      
+
       // Load CTP machines if not already loaded
       if (ctpMachines.length === 0) {
         await loadCTPMachines();
       }
-      
+
       // Load all jobs with complete details
       const jobsResponse = await jobsAPI.getAll();
       console.log('📋 All jobs response:', jobsResponse);
-      
+
       if (jobsResponse.jobs) {
         const jobs: HODJob[] = await Promise.all(jobsResponse.jobs.map(async (job: any) => {
           // Fetch complete product information and process sequence for each job
           let completeProductInfo = null;
           let processSequence = null;
-          
+
           try {
             // Fetch complete product information
             if (job.productId) {
@@ -495,7 +504,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
           }
 
           const product = completeProductInfo?.product || completeProductInfo || {};
-          
+
           return {
             id: job.id.toString(),
             job_card_id: job.jobNumber || `JC-${job.id}`,
@@ -508,6 +517,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             created_at: job.createdAt || job.created_at || new Date().toISOString(),
             assigned_designer: job.assigned_designer_name || job.assigned_designer || null,
             assigned_designer_id: job.assigned_designer_id || null,
+            assigned_at: job.assigned_at || null,
+            created_by_name: job.created_by_name || null,
             customer_name: job.customer_name || job.company_name || 'N/A',
             customer_email: job.customer_email || 'N/A',
             customer_phone: job.customer_phone || 'N/A',
@@ -577,15 +588,19 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             blank_height_mm: job.blank_height_mm || undefined,
             blank_width_inches: job.blank_width_inches || undefined,
             blank_height_inches: job.blank_height_inches || undefined,
-            blank_size_unit: job.blank_size_unit || 'mm'
+            blank_size_unit: job.blank_size_unit || 'mm',
+            // Outsourcing Status
+            outsourcing_die_making_initiated: job.outsourcing_die_making_initiated || false,
+            fil_initiated_request: job.fil_initiated_request || false,
+            blocks_initiated: job.blocks_initiated || false
           };
         }));
-        
+
         console.log('✅ HOD jobs loaded:', jobs);
         setPrepressJobs(jobs);
         setFilteredJobs(jobs);
       }
-      
+
       // Load real designers from API
       try {
         console.log('👥 Fetching real designers from API...');
@@ -606,7 +621,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         console.log('⚠️ Error loading designers, using mock data:', designerError);
         setDesigners(mockDesigners);
       }
-      
+
     } catch (error) {
       console.error('Error loading HOD data:', error);
       toast.error('Failed to load data');
@@ -702,7 +717,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   // Download ratio report as PDF
   const downloadRatioReportPDF = async () => {
     if (!ratioReport) return;
-    
+
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${getApiUrl()}/api/jobs/${ratioReport.job_card_id}/ratio-report-pdf`, {
@@ -736,13 +751,13 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   // Load data on component mount
   useEffect(() => {
     loadHODData();
-    
+
     if (socket && isConnected) {
       console.log('🔌 Setting up real-time updates for HOD...');
-      
+
       // Join job updates room
       socket.emit('join_job_updates');
-      
+
       // Listen for new jobs created by merchandiser
       socket.on('job_created', (data) => {
         console.log('🆕 New job created:', data);
@@ -820,10 +835,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     name: status.replace('_', ' '),
     value: prepressJobs.filter(job => job.status === status).length,
     color: status === 'PENDING' ? '#6B7280' :
-           status === 'ASSIGNED' ? '#3B82F6' :
-           status === 'IN_PROGRESS' ? '#F59E0B' : 
-           status === 'HOD_REVIEW' ? '#8B5CF6' :
-           status === 'COMPLETED' ? '#10B981' : '#EF4444'
+      status === 'ASSIGNED' ? '#3B82F6' :
+        status === 'IN_PROGRESS' ? '#F59E0B' :
+          status === 'HOD_REVIEW' ? '#8B5CF6' :
+            status === 'COMPLETED' ? '#10B981' : '#EF4444'
   })).filter(item => item.value > 0);
 
   // Designer workload data
@@ -851,7 +866,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     }
 
     if (searchTerm) {
-      filtered = filtered.filter(job => 
+      filtered = filtered.filter(job =>
         job.job_card_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.product_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         job.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -867,11 +882,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     try {
       const job = prepressJobs.find(j => j.id === jobId);
       const designer = designers.find(d => d.id === designerId);
-      
+
       if (!job || !designer) return;
 
       console.log(`👤 Assigning job ${job.job_card_id} to designer ${designer.name}`);
-      
+
       // Update job assignment in backend
       const response = await fetch(`${getApiUrl()}/api/jobs/${jobId}/assign`, {
         method: 'PUT',
@@ -887,31 +902,31 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
       if (response.ok) {
         // Update local state
-      setPrepressJobs(prev => 
-        prev.map(job => 
-          job.id === jobId ? { 
-            ...job, 
-              assigned_designer_id: designerId,
-              assigned_designer: designer.name,
-              status: 'ASSIGNED'
-          } : job
-        )
-      );
-        
-        setFilteredJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+        setPrepressJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               assigned_designer_id: designerId,
               assigned_designer: designer.name,
               status: 'ASSIGNED'
             } : job
           )
         );
-        
-      setAssigningJobId(null);
+
+        setFilteredJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
+              assigned_designer_id: designerId,
+              assigned_designer: designer.name,
+              status: 'ASSIGNED'
+            } : job
+          )
+        );
+
+        setAssigningJobId(null);
         toast.success(`Job ${job.job_card_id} assigned to ${designer.name}`);
-        
+
         // Emit real-time update
         if (socket) {
           socket.emit('job_assigned', {
@@ -943,7 +958,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       const hodUserName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || 'HOD Prepress';
 
       console.log(`🚀 HOD starting job ${job.job_card_id} - HOD User ID: ${hodUserId}`);
-      
+
       // First, assign HOD as the designer
       const assignResponse = await fetch(`${getApiUrl()}/api/jobs/${jobId}/assign`, {
         method: 'PUT',
@@ -976,10 +991,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
       if (statusResponse.ok) {
         // Update local state
-        setPrepressJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+        setPrepressJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
               progress: 10,
@@ -988,11 +1003,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             } : job
           )
         );
-        
-        setFilteredJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+
+        setFilteredJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               status: 'IN_PROGRESS',
               started_at: new Date().toISOString(),
               progress: 10,
@@ -1001,9 +1016,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             } : job
           )
         );
-        
+
         toast.success(`Job ${job.job_card_id} started by HOD`);
-        
+
         // Emit real-time update
         if (socket) {
           socket.emit('job_status_update', {
@@ -1015,7 +1030,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             updatedBy: 'HOD',
             message: `HOD (${hodUserName}) started working on job ${job.job_card_id}`
           });
-          
+
           socket.emit('job_assigned', {
             jobId: jobId,
             jobCardId: job.job_card_id,
@@ -1025,7 +1040,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             message: `Job ${job.job_card_id} assigned to HOD (${hodUserName})`
           });
         }
-        
+
         // Reload data to get updated info from server
         loadHODData();
       } else {
@@ -1067,12 +1082,12 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
         if (submitResponse.ok) {
           toast.success('Job submitted to QA successfully! 🎨');
-          
+
           // Update local state
-          setPrepressJobs(prev => 
-            prev.map(job => 
-              job.id === jobId ? { 
-                ...job, 
+          setPrepressJobs(prev =>
+            prev.map(job =>
+              job.id === jobId ? {
+                ...job,
                 status: 'SUBMITTED_TO_QA',
                 final_design_link: designLink.trim(),
                 submitted_at: new Date().toISOString(),
@@ -1080,11 +1095,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               } : job
             )
           );
-          
-          setFilteredJobs(prev => 
-            prev.map(job => 
-              job.id === jobId ? { 
-                ...job, 
+
+          setFilteredJobs(prev =>
+            prev.map(job =>
+              job.id === jobId ? {
+                ...job,
                 status: 'SUBMITTED_TO_QA',
                 final_design_link: designLink.trim(),
                 submitted_at: new Date().toISOString(),
@@ -1092,7 +1107,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               } : job
             )
           );
-          
+
           // Emit real-time update
           if (socket) {
             socket.emit('job_status_update', {
@@ -1103,7 +1118,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               message: `Job ${job.job_card_id} submitted to QA by HOD`
             });
           }
-          
+
           // Close dialogs and reload data
           setIsStatusDialogOpen(false);
           setIsDesignUploadDialogOpen(false);
@@ -1144,10 +1159,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
       if (response.ok) {
         // Update local state
-        setPrepressJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+        setPrepressJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               status: status,
               final_design_link: designLink.trim() || job.final_design_link,
               ...(status === 'IN_PROGRESS' && !job.started_at ? { started_at: new Date().toISOString() } : {}),
@@ -1155,11 +1170,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             } : job
           )
         );
-        
-        setFilteredJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+
+        setFilteredJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               status: status,
               final_design_link: designLink.trim() || job.final_design_link,
               ...(status === 'IN_PROGRESS' && !job.started_at ? { started_at: new Date().toISOString() } : {}),
@@ -1167,9 +1182,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             } : job
           )
         );
-        
+
         toast.success(`Job status updated to ${status.replace('_', ' ')}`);
-        
+
         // Emit real-time update
         if (socket) {
           socket.emit('job_status_update', {
@@ -1180,7 +1195,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             message: `Job ${job.job_card_id} status updated to ${status} by HOD`
           });
         }
-        
+
         // Close dialogs and reload data
         setIsStatusDialogOpen(false);
         setIsDesignUploadDialogOpen(false);
@@ -1238,8 +1253,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     try {
       setLoading(true);
       // Real API call would go here
-      setPrepressJobs(prev => 
-        prev.map(job => 
+      setPrepressJobs(prev =>
+        prev.map(job =>
           job.id === jobId ? { ...job, status: 'COMPLETED' } : job
         )
       );
@@ -1255,8 +1270,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     try {
       setLoading(true);
       // Real API call would go here
-      setPrepressJobs(prev => 
-        prev.map(job => 
+      setPrepressJobs(prev =>
+        prev.map(job =>
           job.id === jobId ? { ...job, status: 'REJECTED' } : job
         )
       );
@@ -1279,7 +1294,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       toast.error('Please select a designer');
       return;
     }
-    
+
     await reassignJob(selectedJobForReassign.id, newDesignerId);
     setIsReassignDialogOpen(false);
     setSelectedJobForReassign(null);
@@ -1290,14 +1305,14 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
     try {
       setLoading(true);
       const designer = designers.find(d => d.id === newDesignerId);
-      
+
       if (!designer) {
         toast.error('Designer not found');
         return;
       }
 
       console.log(`🔄 Reassigning job ${jobId} to designer ${designer.name} (ID: ${newDesignerId})`);
-      
+
       // Call the reassignment API
       const apiBaseUrl = getApiBaseUrl();
       const response = await fetch(`${apiBaseUrl}/job-assignment/assign`, {
@@ -1319,19 +1334,19 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       if (response.ok) {
         const result = await response.json();
         console.log('✅ Job reassigned successfully:', result);
-        
+
         // Update local state
-        setPrepressJobs(prev => 
-          prev.map(job => 
-            job.id === jobId ? { 
-              ...job, 
+        setPrepressJobs(prev =>
+          prev.map(job =>
+            job.id === jobId ? {
+              ...job,
               designer_id: newDesignerId,
               assigned_designer: designer.name,
               status: 'ASSIGNED'
             } : job
           )
         );
-        
+
         toast.success(`Job reassigned to ${designer.name}`);
       } else {
         const errorData = await response.json();
@@ -1363,7 +1378,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
   const handleSaveProcessSequence = (steps: any[]) => {
     console.log('Process sequence saved:', steps);
     toast.success('Process sequence updated successfully');
-    
+
     // Update the job process sequence in state
     if (selectedJobForProcessEdit) {
       setJobProcessSequences(prev => ({
@@ -1375,7 +1390,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         }
       }));
     }
-    
+
     // Reload jobs to reflect changes
     loadHODData();
   };
@@ -1385,14 +1400,14 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       console.log('🔄 Fetching process sequence for job:', jobId);
       const response = await processSequencesAPI.getForJob(jobId);
       console.log('✅ Process sequence fetched:', response);
-      
+
       const processSequence = (response as any).process_sequence || response;
-      
+
       setJobProcessSequences(prev => ({
         ...prev,
         [jobId]: processSequence
       }));
-      
+
       return processSequence;
     } catch (error) {
       console.error('❌ Error fetching process sequence:', error);
@@ -1409,13 +1424,13 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
       pageTitle="Prepress HOD Dashboard"
       pageDescription="Manage design team, review jobs, and monitor progress"
     >
-      <motion.div 
+      <motion.div
         className="p-6 bg-gradient-to-br from-purple-50 via-pink-50 to-rose-50 min-h-full"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
       >
         {/* Beautiful Enhanced Header Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
@@ -1431,33 +1446,33 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   <div className="flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">
                     <Users className="h-4 w-4" />
                     <span className="text-sm font-medium">HOD Prepress Manager</span>
-              </div>
+                  </div>
                   <Badge className={`${isConnected ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'} text-white border-0`}>
                     {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
                   </Badge>
+                </div>
               </div>
-            </div>
               <div className="flex flex-wrap items-center gap-3">
-              <Button 
-                  onClick={loadHODData} 
-                  variant="secondary" 
-                size="sm" 
+                <Button
+                  onClick={loadHODData}
+                  variant="secondary"
+                  size="sm"
                   className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
                 >
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh Jobs
                 </Button>
-                <Button 
-                onClick={onLogout} 
-                  variant="secondary" 
+                <Button
+                  onClick={onLogout}
+                  variant="secondary"
                   size="sm"
                   className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm"
-              >
+                >
                   <LogOut className="h-4 w-4 mr-2" />
-                Logout
-              </Button>
+                  Logout
+                </Button>
+              </div>
             </div>
-          </div>
           </div>
           {/* Decorative elements */}
           <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -translate-y-20 translate-x-20"></div>
@@ -1467,7 +1482,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
         </motion.div>
 
         {/* Enhanced Stats Cards */}
-        <motion.div 
+        <motion.div
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-6 mb-8"
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -1483,17 +1498,17 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden h-full">
               <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100/50 rounded-full -translate-y-10 translate-x-10"></div>
               <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-blue-600 text-sm font-medium mb-1">Total Jobs</p>
                     <p className="text-3xl font-bold text-blue-900">{stats.total}</p>
-                </div>
+                  </div>
                   <div className="p-3 bg-blue-100 rounded-xl">
                     <Package className="w-6 h-6 text-blue-600" />
                   </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
 
           <motion.div
@@ -1506,17 +1521,17 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <Card className="bg-gradient-to-br from-gray-50 to-slate-50 border-gray-200 shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden h-full">
               <div className="absolute top-0 right-0 w-20 h-20 bg-gray-100/50 rounded-full -translate-y-10 translate-x-10"></div>
               <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-gray-600 text-sm font-medium mb-1">Pending</p>
                     <p className="text-3xl font-bold text-gray-900">{stats.pending}</p>
-                </div>
+                  </div>
                   <div className="p-3 bg-gray-100 rounded-xl">
                     <Clock className="w-6 h-6 text-gray-600" />
                   </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
 
           <motion.div
@@ -1529,17 +1544,17 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <Card className="bg-gradient-to-br from-blue-50 to-cyan-50 border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden h-full">
               <div className="absolute top-0 right-0 w-20 h-20 bg-blue-100/50 rounded-full -translate-y-10 translate-x-10"></div>
               <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-blue-600 text-sm font-medium mb-1">Assigned</p>
                     <p className="text-3xl font-bold text-blue-900">{stats.assigned}</p>
-                </div>
+                  </div>
                   <div className="p-3 bg-blue-100 rounded-xl">
                     <UserPlus className="w-6 h-6 text-blue-600" />
                   </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
 
           <motion.div
@@ -1552,17 +1567,17 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <Card className="bg-gradient-to-br from-yellow-50 to-orange-50 border-yellow-200 shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden h-full">
               <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-100/50 rounded-full -translate-y-10 translate-x-10"></div>
               <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-yellow-600 text-sm font-medium mb-1">In Progress</p>
                     <p className="text-3xl font-bold text-yellow-900">{stats.inProgress}</p>
-                </div>
+                  </div>
                   <div className="p-3 bg-yellow-100 rounded-xl">
                     <Activity className="w-6 h-6 text-yellow-600" />
                   </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
 
           <motion.div
@@ -1585,7 +1600,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   </div>
                 </div>
               </CardContent>
-          </Card>
+            </Card>
           </motion.div>
 
           <motion.div
@@ -1621,17 +1636,17 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <Card className="bg-gradient-to-br from-red-50 to-rose-50 border-red-200 shadow-lg hover:shadow-xl transition-all duration-300 border-0 overflow-hidden h-full">
               <div className="absolute top-0 right-0 w-20 h-20 bg-red-100/50 rounded-full -translate-y-10 translate-x-10"></div>
               <CardContent className="p-6 relative">
-              <div className="flex items-center justify-between">
-                <div>
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-red-600 text-sm font-medium mb-1">Overdue</p>
                     <p className="text-3xl font-bold text-red-900">{stats.overdue}</p>
-                </div>
+                  </div>
                   <div className="p-3 bg-red-100 rounded-xl">
                     <AlertCircle className="w-6 h-6 text-red-600" />
                   </div>
-              </div>
-            </CardContent>
-          </Card>
+                </div>
+              </CardContent>
+            </Card>
           </motion.div>
         </motion.div>
 
@@ -1664,7 +1679,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         className="pl-10 bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20"
                       />
                     </div>
-                    
+
                     <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                       <SelectTrigger className="bg-white/50 border-gray-200 focus:border-blue-500 focus:ring-blue-500/20">
                         <SelectValue placeholder="All Status" />
@@ -1805,9 +1820,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                   )}
                                 </div>
                               </div>
-                              
+
                               {/* Compact Summary View - Responsive Grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm text-gray-600 mb-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 text-sm text-gray-600 mb-4">
                                 <div className="flex flex-col">
                                   <span className="font-medium text-gray-500 mb-1 text-xs">Product</span>
                                   <span className="text-gray-900">{job.product_code}</span>
@@ -1817,9 +1832,19 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                   <span className="text-gray-900 truncate">{job.customer_name || job.company_name}</span>
                                 </div>
                                 <div className="flex flex-col">
+                                  <span className="font-medium text-gray-500 mb-1 text-xs">Created By</span>
+                                  <span className="text-gray-900 font-medium truncate">{job.created_by_name || 'N/A'}</span>
+                                  <span className="text-xs text-gray-400">{new Date(job.created_at).toLocaleString()}</span>
+                                </div>
+                                <div className="flex flex-col">
                                   <span className="font-medium text-gray-500 mb-1 text-xs">Designer</span>
                                   {job.assigned_designer ? (
-                                    <span className="text-blue-600 font-medium">{job.assigned_designer}</span>
+                                    <>
+                                      <span className="text-blue-600 font-medium">{job.assigned_designer}</span>
+                                      {job.assigned_at && (
+                                        <span className="text-xs text-gray-400">{new Date(job.assigned_at).toLocaleString()}</span>
+                                      )}
+                                    </>
                                   ) : (
                                     <span className="text-red-600 font-medium">Unassigned</span>
                                   )}
@@ -1858,13 +1883,65 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                       <h4 className="font-semibold text-gray-800 mb-3 text-sm">Job Details</h4>
                                       <div className="space-y-2 text-sm">
                                         <div><span className="font-medium text-gray-600">Quantity:</span> <span className="text-gray-900 ml-2">{job.quantity} units</span></div>
-                                        <div><span className="font-medium text-gray-600">PO Number:</span> <span className="text-gray-900 ml-2">{job.po_number}</span></div>
+                                        <div><span className="font-medium text-gray-600">Quantity:</span> <span className="text-gray-900 ml-2">{job.quantity} units</span></div>
+                                        <div><span className="font-medium text-gray-600">PO Number:</span> <span className="text-gray-900 ml-2">{job.po_number || 'N/A'}</span></div>
+                                        <div><span className="font-medium text-gray-600">Created By:</span> <span className="text-gray-900 ml-2">{job.created_by_name || 'N/A'}</span></div>
+                                        <div><span className="font-medium text-gray-600">Created At:</span> <span className="text-gray-900 ml-2">{new Date(job.created_at).toLocaleString()}</span></div>
+                                        {job.assigned_at && (
+                                          <div><span className="font-medium text-gray-600">Assigned At:</span> <span className="text-gray-900 ml-2">{new Date(job.assigned_at).toLocaleString()}</span></div>
+                                        )}
                                         {job.customer_email && job.customer_email !== 'N/A' && (
                                           <div><span className="font-medium text-gray-600">Email:</span> <span className="text-gray-900 ml-2">{job.customer_email}</span></div>
                                         )}
                                         {job.customer_phone && job.customer_phone !== 'N/A' && (
                                           <div><span className="font-medium text-gray-600">Phone:</span> <span className="text-gray-900 ml-2">{job.customer_phone}</span></div>
                                         )}
+                                      </div>
+                                    </div>
+
+                                    {/* Outsourcing Status */}
+                                    <div className="bg-orange-50 p-3 sm:p-4 rounded-lg">
+                                      <h4 className="font-semibold text-gray-800 mb-3 text-sm flex items-center gap-2">
+                                        <ExternalLink className="h-4 w-4" />
+                                        Outsourcing Status
+                                      </h4>
+                                      <div className="space-y-2 text-sm">
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-medium text-gray-600">Die Making:</span>
+                                          {job.outsourcing_die_making_initiated ? (
+                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 flex gap-1 items-center px-1.5 py-0.5">
+                                              <CheckCircle className="w-3 h-3" /> Initiated
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-gray-500 border-gray-300 font-normal px-1.5 py-0.5">
+                                              Not Started
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-medium text-gray-600">Fil Request:</span>
+                                          {job.fil_initiated_request ? (
+                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 flex gap-1 items-center px-1.5 py-0.5">
+                                              <CheckCircle className="w-3 h-3" /> Initiated
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-gray-500 border-gray-300 font-normal px-1.5 py-0.5">
+                                              Not Started
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-medium text-gray-600">Blocks:</span>
+                                          {job.blocks_initiated ? (
+                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-0 flex gap-1 items-center px-1.5 py-0.5">
+                                              <CheckCircle className="w-3 h-3" /> Initiated
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-gray-500 border-gray-300 font-normal px-1.5 py-0.5">
+                                              Not Started
+                                            </Badge>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
 
@@ -1987,7 +2064,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                             plateCount: job.required_plate_count
                                           }]);
                                         } else {
-                                          setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                                          setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                                         }
                                         // Initialize blank size if available
                                         if (job.blank_width_mm && job.blank_height_mm) {
@@ -2021,7 +2098,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                         <MonitorSpeaker className="h-4 w-4" />
                                         Plate & Machine Information
                                       </h4>
-                                      
+
                                       {/* Multiple Machines Display */}
                                       {job.machines && job.machines.length > 0 ? (
                                         <div className="space-y-2">
@@ -2151,8 +2228,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                           ))}
                                         </SelectContent>
                                       </Select>
-                                      <Button 
-                                        size="sm" 
+                                      <Button
+                                        size="sm"
                                         variant="outline"
                                         onClick={() => setAssigningJobId(null)}
                                         className="w-full text-xs"
@@ -2162,15 +2239,15 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                     </div>
                                   ) : (
                                     <div className="space-y-1">
-                                    <Button 
-                                      size="sm"
-                                      onClick={() => setAssigningJobId(job.id)}
-                                      disabled={loading}
-                                      className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 w-full"
-                                    >
-                                      <UserPlus className="w-4 h-4" />
+                                      <Button
+                                        size="sm"
+                                        onClick={() => setAssigningJobId(job.id)}
+                                        disabled={loading}
+                                        className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 w-full"
+                                      >
+                                        <UserPlus className="w-4 h-4" />
                                         Assign Designer
-                                    </Button>
+                                      </Button>
                                       <Button
                                         variant="default"
                                         size="sm"
@@ -2184,10 +2261,10 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                   )}
                                 </div>
                               )}
-                              
+
                               {job.status === 'HOD_REVIEW' && (
                                 <div className="space-y-2">
-                                  <Button 
+                                  <Button
                                     size="sm"
                                     onClick={() => approveJob(job.id)}
                                     disabled={loading}
@@ -2196,8 +2273,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                     <ThumbsUp className="w-4 h-4" />
                                     Approve
                                   </Button>
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     variant="outline"
                                     onClick={() => rejectJob(job.id)}
                                     disabled={loading}
@@ -2210,26 +2287,26 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                               )}
 
                               {/* Status Update Button - Show for jobs assigned to HOD or IN_PROGRESS jobs */}
-                              {(job.assigned_designer_id === JSON.parse(localStorage.getItem('user') || '{}').id?.toString() || 
-                                  job.status === 'IN_PROGRESS' || 
-                                  job.status === 'ASSIGNED') && 
-                               job.status !== 'COMPLETED' && 
-                               job.status !== 'HOD_REVIEW' && (
-                                <Button 
-                                  size="sm" 
-                                  variant="outline"
-                                  onClick={() => handleStatusUpdateClick(job)}
-                                  disabled={loading}
-                                  className="gap-2 w-full bg-white/50 hover:bg-white/80 border-gray-200 hover:border-blue-300 transition-all duration-200"
-                                >
-                                  <RefreshCw className="w-4 h-4" />
-                                  Update Status
-                                </Button>
-                              )}
+                              {(job.assigned_designer_id === JSON.parse(localStorage.getItem('user') || '{}').id?.toString() ||
+                                job.status === 'IN_PROGRESS' ||
+                                job.status === 'ASSIGNED') &&
+                                job.status !== 'COMPLETED' &&
+                                job.status !== 'HOD_REVIEW' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleStatusUpdateClick(job)}
+                                    disabled={loading}
+                                    className="gap-2 w-full bg-white/50 hover:bg-white/80 border-gray-200 hover:border-blue-300 transition-all duration-200"
+                                  >
+                                    <RefreshCw className="w-4 h-4" />
+                                    Update Status
+                                  </Button>
+                                )}
 
                               {job.assigned_designer && job.status !== 'COMPLETED' && job.status !== 'HOD_REVIEW' && (
-                                <Button 
-                                  size="sm" 
+                                <Button
+                                  size="sm"
                                   variant="outline"
                                   onClick={() => handleReassignClick(job)}
                                   disabled={loading}
@@ -2240,9 +2317,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                                 </Button>
                               )}
 
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
+                              <Button
+                                size="sm"
+                                variant="outline"
                                 className="gap-2 w-full bg-white/50 hover:bg-white/80 border-gray-200 hover:border-purple-300 transition-all duration-200"
                                 onClick={() => handleEditProcessSequence(job)}
                               >
@@ -2254,7 +2331,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         </motion.div>
                       ))}
                     </AnimatePresence>
-                    
+
                     {filteredJobs.length === 0 && (
                       <div className="text-center py-12">
                         <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -2346,11 +2423,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="day" />
                       <Tooltip />
-                      <Area 
-                        type="monotone" 
-                        dataKey="completed" 
-                        stroke="#10B981" 
-                        fill="#10B981" 
+                      <Area
+                        type="monotone"
+                        dataKey="completed"
+                        stroke="#10B981"
+                        fill="#10B981"
                         fillOpacity={0.6}
                       />
                     </AreaChart>
@@ -2455,7 +2532,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               Production Ratio Report - {ratioReport?.job_number}
             </DialogTitle>
           </DialogHeader>
-          
+
           {ratioReport && (
             <div className="space-y-6">
               {/* Order Information */}
@@ -2507,16 +2584,16 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-600">
-                      {typeof ratioReport.efficiency_percentage === 'number' 
-                        ? ratioReport.efficiency_percentage.toFixed(1) 
+                      {typeof ratioReport.efficiency_percentage === 'number'
+                        ? ratioReport.efficiency_percentage.toFixed(1)
                         : ratioReport.efficiency_percentage || 'N/A'}%
                     </div>
                     <div className="text-sm text-blue-700">Efficiency</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-600">
-                      {typeof ratioReport.excess_percentage === 'number' 
-                        ? ratioReport.excess_percentage.toFixed(1) 
+                      {typeof ratioReport.excess_percentage === 'number'
+                        ? ratioReport.excess_percentage.toFixed(1)
                         : ratioReport.excess_percentage || 'N/A'}%
                     </div>
                     <div className="text-sm text-purple-700">Excess %</div>
@@ -2572,8 +2649,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                         {ratioReport.color_details.map((detail, index) => {
                           const isMarked = markedItems.has(index);
                           return (
-                            <tr 
-                              key={index} 
+                            <tr
+                              key={index}
                               className={`
                                 ${isMarked ? 'bg-green-100 border-l-4 border-green-500' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
                                 cursor-pointer hover:bg-blue-50 transition-colors duration-200
@@ -2633,8 +2710,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {Object.entries(ratioReport.plate_distribution).map(([plate, data], index) => {
                       // Handle both old format (number) and new format (object with sheets, colors, totalUPS)
-                      const sheets = typeof data === 'object' && data !== null && 'sheets' in data 
-                        ? (data as any).sheets 
+                      const sheets = typeof data === 'object' && data !== null && 'sheets' in data
+                        ? (data as any).sheets
                         : (typeof data === 'number' ? data : 0);
                       return (
                         <motion.div
@@ -2688,9 +2765,9 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               {ratioReport.excel_file_link && (
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h4 className="font-medium text-gray-800 mb-2">Source File</h4>
-                  <a 
-                    href={ratioReport.excel_file_link} 
-                    target="_blank" 
+                  <a
+                    href={ratioReport.excel_file_link}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:text-blue-800 underline flex items-center gap-2"
                   >
@@ -2794,7 +2871,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                 <Label>Job Number</Label>
                 <p className="text-sm font-medium">{selectedJobForStatusUpdate.job_card_id}</p>
               </div>
-              
+
               {/* Client Layout Link Display */}
               {selectedJobForStatusUpdate.client_layout_link && (
                 <div>
@@ -2812,7 +2889,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   </div>
                 </div>
               )}
-              
+
               <div>
                 <Label htmlFor="final-design-link">Final Design Link (Google Drive) *</Label>
                 <Input
@@ -2827,7 +2904,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   Upload your final design (PDF/AI) to Google Drive and paste the shareable link here
                 </p>
               </div>
-              
+
               <div>
                 <Label htmlFor="design-notes">Notes (Optional)</Label>
                 <Textarea
@@ -2838,7 +2915,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   rows={3}
                 />
               </div>
-              
+
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
@@ -2899,11 +2976,11 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
             <div className="mt-4">
               {(() => {
                 const savedProcessSequence = jobProcessSequences[selectedJobForProcessView.id];
-                
+
                 if (savedProcessSequence && savedProcessSequence.steps) {
                   const selectedSteps = savedProcessSequence.steps.filter((step: any) => step.isSelected);
                   const totalSteps = savedProcessSequence.steps.length;
-                  
+
                   return (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
@@ -2921,23 +2998,21 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="space-y-2">
                         {savedProcessSequence.steps.map((step: any) => (
-                          <div 
+                          <div
                             key={step.id}
-                            className={`flex items-center justify-between p-4 rounded-lg border ${
-                              step.isSelected
-                                ? 'bg-green-50 border-green-300' 
-                                : 'bg-gray-50 border-gray-200'
-                            }`}
+                            className={`flex items-center justify-between p-4 rounded-lg border ${step.isSelected
+                              ? 'bg-green-50 border-green-300'
+                              : 'bg-gray-50 border-gray-200'
+                              }`}
                           >
                             <div className="flex items-center gap-3 flex-1">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${
-                                step.isSelected
-                                  ? 'bg-green-600 text-white' 
-                                  : 'bg-gray-400 text-white'
-                              }`}>
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${step.isSelected
+                                ? 'bg-green-600 text-white'
+                                : 'bg-gray-400 text-white'
+                                }`}>
                                 {step.order}
                               </div>
                               <div className="flex-1">
@@ -3028,7 +3103,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setMachinePlatePairs([...machinePlatePairs, {machineId: '', plateCount: ''}]);
+                      setMachinePlatePairs([...machinePlatePairs, { machineId: '', plateCount: '' }]);
                     }}
                     className="text-xs"
                   >
@@ -3038,8 +3113,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                 </div>
 
                 {machinePlatePairs.map((pair, index) => {
-                  const filteredMachines = ctpMachines.filter(machine => 
-                    !machineSearchTerm || 
+                  const filteredMachines = ctpMachines.filter(machine =>
+                    !machineSearchTerm ||
                     machine.machine_name.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
                     machine.machine_code.toLowerCase().includes(machineSearchTerm.toLowerCase()) ||
                     (machine.model && machine.model.toLowerCase().includes(machineSearchTerm.toLowerCase())) ||
@@ -3053,8 +3128,8 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                           <Label htmlFor={`machine-${index}`} className="text-xs text-gray-600">
                             CTP Machine {index + 1} *
                           </Label>
-                          <Select 
-                            value={pair.machineId} 
+                          <Select
+                            value={pair.machineId}
                             onValueChange={(value) => {
                               const updated = [...machinePlatePairs];
                               updated[index].machineId = value;
@@ -3160,7 +3235,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       {blankSizeUnit === 'mm' ? '1 inch = 25.4 mm' : '1 mm = 0.0394 inches'}
                     </p>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label htmlFor="blank-width" className="text-xs text-gray-600">
@@ -3193,7 +3268,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       />
                     </div>
                   </div>
-                  
+
                   {blankWidth && blankHeight && (
                     <div className="p-2 bg-blue-50 rounded text-xs text-blue-700">
                       <strong>Preview:</strong> {blankWidth} × {blankHeight} {blankSizeUnit}
@@ -3218,7 +3293,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                   onClick={() => {
                     setIsPlateInfoDialogOpen(false);
                     setSelectedJobForPlateInfo(null);
-                    setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                    setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                     setMachineSearchTerm('');
                     setBlankWidth('');
                     setBlankHeight('');
@@ -3274,14 +3349,14 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
 
                       if (response.success) {
                         toast.success(`Plate information updated successfully for ${machines.length} machine(s)! 🎨`);
-                        
+
                         // Reload data to get updated info
                         loadHODData();
-                        
+
                         // Close dialog and reset form
                         setIsPlateInfoDialogOpen(false);
                         setSelectedJobForPlateInfo(null);
-                        setMachinePlatePairs([{machineId: '', plateCount: ''}]);
+                        setMachinePlatePairs([{ machineId: '', plateCount: '' }]);
                         setMachineSearchTerm('');
                         setBlankWidth('');
                         setBlankHeight('');
@@ -3296,7 +3371,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
                       setLoading(false);
                     }
                   }}
-                  disabled={loading || 
+                  disabled={loading ||
                     machinePlatePairs.some(pair => !pair.machineId || pair.plateCount === '' || Number(pair.plateCount) <= 0) ||
                     !blankWidth || !blankHeight || parseFloat(blankWidth) <= 0 || parseFloat(blankHeight) <= 0}
                   className="bg-indigo-600 hover:bg-indigo-700"
@@ -3318,7 +3393,7 @@ export const HodPrepressDashboard: React.FC<HodPrepressDashboardProps> = ({
               Ratio Report Preview - {ratioReport?.job_number}
             </DialogTitle>
           </DialogHeader>
-          
+
           {ratioReport && (
             <div className="space-y-4">
               {/* Key Metrics */}

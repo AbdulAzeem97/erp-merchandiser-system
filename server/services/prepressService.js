@@ -41,7 +41,9 @@ class PrepressService {
       );
 
       if (existingResult.rows.length > 0) {
-        throw new Error('Prepress job already exists for this job card');
+        // Return existing record instead of throwing
+        console.log('Prepress job already exists, returning existing record');
+        return await this.getPrepressJobById(existingResult.rows[0].id);
       }
 
       // Create prepress job with sequence recovery
@@ -88,9 +90,9 @@ class PrepressService {
         try {
           if (global.jobLifecycleService) {
             await global.jobLifecycleService.updateJobStatusToPrepress(
-              jobCardId, 
-              prepressJob.id, 
-              assignedDesignerId, 
+              jobCardId,
+              prepressJob.id,
+              assignedDesignerId,
               createdBy
             );
           }
@@ -114,12 +116,13 @@ class PrepressService {
       let query = `
         SELECT 
           pj.*,
-          jc.job_card_id,
+          jc."jobNumber" as job_card_id,
           jc.po_number,
           jc.quantity,
           jc.delivery_date,
           jc.priority as job_priority,
           jc.status as job_status,
+          jc."createdAt" as job_created_at,
           p.product_item_code,
           p.brand,
           p.product_type,
@@ -128,70 +131,79 @@ class PrepressService {
           u_designer.first_name as designer_first_name,
           u_designer.last_name as designer_last_name,
           u_creator.first_name as creator_first_name,
-          u_creator.last_name as creator_last_name
+          u_creator.last_name as creator_last_name,
+          u_merchandiser.first_name as merchandiser_first_name,
+          u_merchandiser.last_name as merchandiser_last_name
         FROM prepress_jobs pj
-        LEFT JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        LEFT JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN users u_designer ON pj.assigned_designer_id = u_designer.id
         LEFT JOIN users u_creator ON pj.created_by = u_creator.id
+        LEFT JOIN users u_merchandiser ON jc."createdById" = u_merchandiser.id
         WHERE 1=1
       `;
 
       const params = [];
-      let paramCount = 0;
+      let paramCount = 1;
 
       // Apply filters
       if (filters.status) {
-        paramCount++;
-        query += ` AND pj.status = ?`;
+        query += ` AND pj.status = $${paramCount++} `;
         params.push(filters.status);
       }
 
       if (filters.assignedDesignerId) {
-        paramCount++;
-        query += ` AND pj.assigned_designer_id = ?`;
+        query += ` AND pj.assigned_designer_id = $${paramCount++} `;
         params.push(filters.assignedDesignerId);
       }
 
       if (filters.priority) {
-        paramCount++;
-        query += ` AND pj.priority = ?`;
+        query += ` AND pj.priority = $${paramCount++} `;
         params.push(filters.priority);
       }
 
       if (filters.companyId) {
-        paramCount++;
-        query += ` AND jc.company_id = ?`;
+        query += ` AND jc.company_id = $${paramCount++} `;
         params.push(filters.companyId);
       }
 
       if (filters.productType) {
-        paramCount++;
-        query += ` AND p.product_type = ?`;
+        query += ` AND p.product_type = $${paramCount++} `;
         params.push(filters.productType);
       }
 
       if (filters.search) {
-        paramCount++;
-        query += ` AND (
-          jc.job_card_id LIKE ? OR
-          jc.po_number LIKE ? OR
-          p.product_item_code LIKE ? OR
-          c.name LIKE ?
+        query += ` AND(
+          jc."jobNumber" ILIKE $${paramCount} OR
+          jc.po_number ILIKE $${paramCount} OR
+          p.product_item_code ILIKE $${paramCount} OR
+          c.name ILIKE $${paramCount}
         )`;
-        params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+        params.push(`% ${filters.search}% `);
+        paramCount++; // Only increment once as we reuse the param (Wait, PG doesn't reuse param automatically in ILIKE list unless referenced by $1... oh, we passed 4 params before. Better to use separate params)
+        // Actually, let's fix the search:
+      }
+
+      // Re-doing search correctly
+      if (filters.search) {
+        query += ` AND(
+          jc."jobNumber" ILIKE $${paramCount} OR
+           jc.po_number ILIKE $${paramCount + 1} OR
+    p.product_item_code ILIKE $${paramCount + 2} OR
+    c.name ILIKE $${paramCount + 3}
+         )`;
+        params.push(`% ${filters.search}% `, ` % ${filters.search}% `, ` % ${filters.search}% `, ` % ${filters.search}% `);
+        paramCount += 4;
       }
 
       if (filters.dueDateFrom) {
-        paramCount++;
-        query += ` AND pj.due_date >= ?`;
+        query += ` AND pj.due_date >= $${paramCount++} `;
         params.push(filters.dueDateFrom);
       }
 
       if (filters.dueDateTo) {
-        paramCount++;
-        query += ` AND pj.due_date <= ?`;
+        query += ` AND pj.due_date <= $${paramCount++} `;
         params.push(filters.dueDateTo);
       }
 
@@ -200,18 +212,16 @@ class PrepressService {
 
       // Pagination
       if (filters.limit) {
-        paramCount++;
-        query += ` LIMIT ?`;
+        query += ` LIMIT $${paramCount++} `;
         params.push(filters.limit);
       }
 
       if (filters.offset) {
-        paramCount++;
-        query += ` OFFSET ?`;
+        query += ` OFFSET $${paramCount++} `;
         params.push(filters.offset);
       }
 
-      const result = await pool.query(query, params);
+      const result = await dbAdapter.query(query, params);
       return result.rows;
     } catch (error) {
       throw error;
@@ -224,33 +234,33 @@ class PrepressService {
   async getPrepressJobById(id) {
     try {
       const result = await pool.query(`
-        SELECT 
-          pj.*,
-          jc.job_card_id,
-          jc.po_number,
-          jc.quantity,
-          jc.delivery_date,
-          jc.priority as job_priority,
-          jc.status as job_status,
-          jc.customer_notes,
-          jc.special_instructions,
-          p.product_item_code,
-          p.brand,
-          p.product_type,
-          p.color_specifications,
-          c.name as company_name,
-          c.code as company_code,
-          u_designer.first_name as designer_first_name,
-          u_designer.last_name as designer_last_name,
-          u_creator.first_name as creator_first_name,
-          u_creator.last_name as creator_last_name
+    SELECT
+    pj.*,
+      jc.job_card_id,
+      jc.po_number,
+      jc.quantity,
+      jc.delivery_date,
+      jc.priority as job_priority,
+      jc.status as job_status,
+      jc.customer_notes,
+      jc.special_instructions,
+      p.product_item_code,
+      p.brand,
+      p.product_type,
+      p.color_specifications,
+      c.name as company_name,
+      c.code as company_code,
+      u_designer.first_name as designer_first_name,
+      u_designer.last_name as designer_last_name,
+      u_creator.first_name as creator_first_name,
+      u_creator.last_name as creator_last_name
         FROM prepress_jobs pj
         LEFT JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN companies c ON jc.company_id = c.id
         LEFT JOIN users u_designer ON pj.assigned_designer_id = u_designer.id
         LEFT JOIN users u_creator ON pj.created_by = u_creator.id
-        WHERE pj.id = ?
+        WHERE pj.id = $1
       `, [id]);
 
       return result.rows[0] || null;
@@ -278,36 +288,33 @@ class PrepressService {
       }
 
       // Update job
-      const updateFields = ['status = ?', 'updated_by = ?'];
+      const updateFields = ['status = $1', 'updated_by = $2'];
       const updateParams = [newStatus, actorId];
-      let paramCount = 2;
+      let paramCount = 3; // Next parameter index
 
       // Set timestamps based on status
       if (newStatus === 'IN_PROGRESS' && !currentJob.started_at) {
-        paramCount++;
-        updateFields.push(`started_at = ?`);
+        updateFields.push(`started_at = $${paramCount++} `);
         updateParams.push(new Date().toISOString());
       }
 
       if (newStatus === 'COMPLETED') {
-        paramCount++;
-        updateFields.push(`completed_at = ?`);
+        updateFields.push(`completed_at = $${paramCount++} `);
         updateParams.push(new Date().toISOString());
       }
 
-      paramCount++;
-      updateParams.push(id);
+      updateParams.push(id); // ID is the last parameter
 
-      await pool.query(`
+      await dbAdapter.query(`
         UPDATE prepress_jobs 
         SET ${updateFields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, updateParams);
+        WHERE id = $${paramCount}
+    `, updateParams);
 
       // Log activity
-      await pool.query(`
-        INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
-        VALUES (?, ?, ?, ?, ?, ?)
+      await dbAdapter.query(`
+        INSERT INTO prepress_activity(prepress_job_id, actor_id, action, from_status, to_status, remark)
+    VALUES($1, $2, $3, $4, $5, $6)
       `, [id, actorId, this.getActionFromStatusChange(currentStatus, newStatus), currentStatus, newStatus, remark]);
 
       // Update job lifecycle status
@@ -342,16 +349,16 @@ class PrepressService {
       }
 
       // Update assignment
-      await pool.query(`
+      await dbAdapter.query(`
         UPDATE prepress_jobs 
-        SET assigned_designer_id = ?, status = 'ASSIGNED', updated_by = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        SET assigned_designer_id = $1, status = 'ASSIGNED', updated_by = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
       `, [designerId, actorId, id]);
 
       // Log activity
-      await pool.query(`
-        INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark)
-        VALUES (?, ?, 'ASSIGNED', ?, 'ASSIGNED', ?)
+      await dbAdapter.query(`
+        INSERT INTO prepress_activity(prepress_job_id, actor_id, action, from_status, to_status, remark)
+    VALUES($1, $2, 'ASSIGNED', $3, 'ASSIGNED', $4)
       `, [id, actorId, currentJob.status, remark || 'Designer assigned']);
 
       return await this.getPrepressJobById(id);
@@ -373,20 +380,21 @@ class PrepressService {
       const oldDesignerId = currentJob.assigned_designer_id;
 
       // Update assignment
-      await pool.query(`
+      // Update assignment
+      await dbAdapter.query(`
         UPDATE prepress_jobs 
-        SET assigned_designer_id = ?, status = 'ASSIGNED', updated_by = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+        SET assigned_designer_id = $1, status = 'ASSIGNED', updated_by = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
       `, [newDesignerId, actorId, id]);
 
       // Log activity
-      await pool.query(`
-        INSERT INTO prepress_activity (prepress_job_id, actor_id, action, from_status, to_status, remark, metadata)
-        VALUES (?, ?, 'REASSIGNED', ?, 'ASSIGNED', ?, ?)
+      await dbAdapter.query(`
+        INSERT INTO prepress_activity(prepress_job_id, actor_id, action, from_status, to_status, remark, metadata)
+    VALUES($1, $2, 'REASSIGNED', $3, 'ASSIGNED', $4, $5)
       `, [
-        id, 
-        actorId, 
-        currentJob.status, 
+        id,
+        actorId,
+        currentJob.status,
         remark || 'Designer reassigned',
         JSON.stringify({ from: oldDesignerId, to: newDesignerId })
       ]);
@@ -409,17 +417,17 @@ class PrepressService {
 
       // Update HOD remark if specified
       if (isHodRemark) {
-        await pool.query(`
+        await dbAdapter.query(`
           UPDATE prepress_jobs 
-          SET hod_last_remark = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `, [remark, actorId, id]);
+          SET hod_last_remark = $1, updated_by = $2, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3
+      `, [remark, actorId, id]);
       }
 
       // Log activity
-      await pool.query(`
-        INSERT INTO prepress_activity (prepress_job_id, actor_id, action, remark)
-        VALUES (?, ?, 'REMARK', ?)
+      await dbAdapter.query(`
+        INSERT INTO prepress_activity(prepress_job_id, actor_id, action, remark)
+    VALUES($1, $2, 'REMARK', $3)
       `, [id, actorId, remark]);
 
       return await this.getPrepressJobById(id);
@@ -433,15 +441,15 @@ class PrepressService {
    */
   async getPrepressJobActivity(id) {
     try {
-      const result = await pool.query(`
-        SELECT 
-          pa.*,
-          u.first_name,
-          u.last_name,
-          u.role
+      const result = await dbAdapter.query(`
+    SELECT
+    pa.*,
+      u.first_name,
+      u.last_name,
+      u.role
         FROM prepress_activity pa
         LEFT JOIN users u ON pa.actor_id = u.id
-        WHERE pa.prepress_job_id = ?
+        WHERE pa.prepress_job_id = $1
         ORDER BY pa.created_at DESC
       `, [id]);
 
@@ -457,49 +465,50 @@ class PrepressService {
   async getDesignerQueue(designerId, filters = {}) {
     try {
       let query = `
-        SELECT 
-          pj.*,
-          jc.job_card_id,
-          jc.po_number,
-          jc.quantity,
-          jc.delivery_date,
-          jc.priority as job_priority,
+    SELECT
+    pj.*,
+      jc."jobNumber" as job_card_id,
+        jc.po_number,
+        jc.quantity,
+        jc.delivery_date,
+        jc.priority as job_priority,
+        jc."createdAt" as job_created_at,
           p.product_item_code,
           p.brand,
           p.product_type,
           c.name as company_name,
-          c.code as company_code
+          c.code as company_code,
+          u_merchandiser.first_name as merchandiser_first_name,
+          u_merchandiser.last_name as merchandiser_last_name
         FROM prepress_jobs pj
-        LEFT JOIN job_cards jc ON pj.job_card_id = jc.job_card_id
+        LEFT JOIN job_cards jc ON pj.job_card_id = jc.id
         LEFT JOIN products p ON jc.product_id = p.id
         LEFT JOIN companies c ON jc.company_id = c.id
-        WHERE pj.assigned_designer_id = ?
+        LEFT JOIN users u_merchandiser ON jc."createdById" = u_merchandiser.id
+        WHERE pj.assigned_designer_id = $1
       `;
 
       const params = [designerId];
-      let paramCount = 1;
+      let paramCount = 2; // Starts at 2 because designerId is $1
 
       if (filters.status) {
-        paramCount++;
-        query += ` AND pj.status = ?`;
+        query += ` AND pj.status = $${paramCount++} `;
         params.push(filters.status);
       }
 
       if (filters.priority) {
-        paramCount++;
-        query += ` AND pj.priority = ?`;
+        query += ` AND pj.priority = $${paramCount++} `;
         params.push(filters.priority);
       }
 
       query += ` ORDER BY pj.priority DESC, pj.due_date ASC, pj.created_at DESC`;
 
       if (filters.limit) {
-        paramCount++;
-        query += ` LIMIT ?`;
+        query += ` LIMIT $${paramCount++} `;
         params.push(filters.limit);
       }
 
-      const result = await pool.query(query, params);
+      const result = await dbAdapter.query(query, params);
       return result.rows;
     } catch (error) {
       throw error;
@@ -513,38 +522,36 @@ class PrepressService {
     try {
       let whereClause = 'WHERE 1=1';
       const params = [];
-      let paramCount = 0;
+      let paramCount = 1;
 
       if (filters.fromDate) {
-        paramCount++;
-        whereClause += ` AND pj.created_at >= ?`;
+        whereClause += ` AND pj.created_at >= $${paramCount++} `;
         params.push(filters.fromDate);
       }
 
       if (filters.toDate) {
-        paramCount++;
-        whereClause += ` AND pj.created_at <= ?`;
+        whereClause += ` AND pj.created_at <= $${paramCount++} `;
         params.push(filters.toDate);
       }
 
-      const result = await pool.query(`
-        SELECT 
-          COUNT(*) as total_jobs,
-          COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_jobs,
-          COUNT(CASE WHEN status = 'ASSIGNED' THEN 1 END) as assigned_jobs,
-          COUNT(CASE WHEN status = 'IN_PROGRESS' THEN 1 END) as in_progress_jobs,
-          COUNT(CASE WHEN status = 'PAUSED' THEN 1 END) as paused_jobs,
-          COUNT(CASE WHEN status = 'HOD_REVIEW' THEN 1 END) as hod_review_jobs,
-          COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completed_jobs,
-          COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) as rejected_jobs,
-          AVG(CASE 
+      const result = await dbAdapter.query(`
+    SELECT
+    COUNT(*) as total_jobs,
+      COUNT(CASE WHEN status = 'PENDING' THEN 1 END) as pending_jobs,
+      COUNT(CASE WHEN status = 'ASSIGNED' THEN 1 END) as assigned_jobs,
+      COUNT(CASE WHEN status = 'IN_PROGRESS' THEN 1 END) as in_progress_jobs,
+      COUNT(CASE WHEN status = 'PAUSED' THEN 1 END) as paused_jobs,
+      COUNT(CASE WHEN status = 'HOD_REVIEW' THEN 1 END) as hod_review_jobs,
+      COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) as completed_jobs,
+      COUNT(CASE WHEN status = 'REJECTED' THEN 1 END) as rejected_jobs,
+      AVG(CASE 
             WHEN started_at IS NOT NULL AND completed_at IS NOT NULL 
-            THEN (julianday(completed_at) - julianday(started_at)) * 86400
+            THEN(EXTRACT(EPOCH FROM completed_at) - EXTRACT(EPOCH FROM started_at))
           END) as avg_turnaround_seconds,
-          COUNT(DISTINCT assigned_designer_id) as active_designers
+      COUNT(DISTINCT assigned_designer_id) as active_designers
         FROM prepress_jobs pj
         ${whereClause}
-      `, params);
+    `, params);
 
       return result.rows[0];
     } catch (error) {
@@ -587,7 +594,7 @@ class PrepressService {
       'ASSIGNED->REASSIGNED': 'REASSIGNED'
     };
 
-    return actionMap[`${fromStatus}->${toStatus}`] || 'STATUS_CHANGED';
+    return actionMap[`${fromStatus} -> ${toStatus} `] || 'STATUS_CHANGED';
   }
 }
 

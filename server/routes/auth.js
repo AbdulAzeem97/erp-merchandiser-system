@@ -107,7 +107,7 @@ router.post('/register', registerValidation, asyncHandler(async (req, res) => {
      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, username, email, "firstName", "lastName", role, "createdAt"`,
     [username, email, passwordHash, first_name, last_name, role]
   );
-  
+
   const user = result.rows[0];
   const token = generateToken(user.id);
 
@@ -192,7 +192,7 @@ router.post('/change-password', [
 // Get users by role (for designer assignment)
 router.get('/users/role/:role', asyncHandler(async (req, res) => {
   const { role } = req.params;
-  
+
   try {
     const query = `
       SELECT id, username, email, "firstName", "lastName", role, "isActive"
@@ -200,10 +200,10 @@ router.get('/users/role/:role', asyncHandler(async (req, res) => {
       WHERE role = $1 AND "isActive" = true
       ORDER BY "firstName", "lastName"
     `;
-    
+
     const result = await dbAdapter.query(query, [role.toUpperCase()]);
     const users = result.rows;
-    
+
     res.json({
       success: true,
       users: users.map(user => ({
@@ -232,13 +232,13 @@ router.get('/designers', asyncHandler(async (req, res) => {
     const query = `
       SELECT id, username, email, "firstName", "lastName", role, "isActive"
       FROM users 
-      WHERE role = 'DESIGNER' AND "isActive" = true
+      WHERE role IN ('DESIGNER', 'HOD_PREPRESS') AND "isActive" = true
       ORDER BY "firstName", "lastName"
     `;
-    
+
     const result = await dbAdapter.query(query);
     const designers = result.rows;
-    
+
     res.json({
       success: true,
       designers: designers.map(designer => ({

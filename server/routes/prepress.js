@@ -25,7 +25,7 @@ const handleValidationErrors = (req, res, next) => {
  * @desc Create a new prepress job
  * @access MERCHANDISER, HOD_PREPRESS, ADMIN
  */
-router.post('/jobs', 
+router.post('/jobs',
   requirePermission('CREATE_PREPRESS_JOBS'),
   [
     body('jobCardId').isInt().withMessage('Valid job card ID is required'),
@@ -37,7 +37,7 @@ router.post('/jobs',
   async (req, res) => {
     try {
       const { jobCardId, assignedDesignerId, priority, dueDate } = req.body;
-      
+
       const prepressJob = await prepressService.createPrepressJob(
         jobCardId,
         assignedDesignerId,
@@ -69,9 +69,9 @@ router.get('/jobs',
   requirePermission('VIEW_PREPRESS_JOBS'),
   [
     query('status').optional().isIn(['PENDING', 'ASSIGNED', 'IN_PROGRESS', 'PAUSED', 'HOD_REVIEW', 'COMPLETED', 'REJECTED']),
-    query('assignedDesignerId').optional().isUUID(),
+    query('assignedDesignerId').optional().isInt().withMessage('Designer ID must be an integer'),
     query('priority').optional().isIn(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
-    query('companyId').optional().isUUID(),
+    query('companyId').optional().isInt(),
     query('productType').optional().isString(),
     query('search').optional().isString(),
     query('dueDateFrom').optional().isISO8601(),
@@ -163,13 +163,13 @@ router.get('/jobs/my',
 router.get('/jobs/:id',
   requirePermission('VIEW_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required')
+    param('id').isInt().withMessage('Valid prepress job ID is required')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const prepressJob = await prepressService.getPrepressJobById(req.params.id);
-      
+
       if (!prepressJob) {
         return res.status(404).json({
           error: 'Prepress job not found'
@@ -204,15 +204,15 @@ router.get('/jobs/:id',
 router.patch('/jobs/:id/assign',
   requirePermission('ASSIGN_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
-    body('designerId').isUUID().withMessage('Valid designer ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
+    body('designerId').isInt().withMessage('Valid designer ID is required'),
     body('remark').optional().isString().withMessage('Remark must be a string')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { designerId, remark } = req.body;
-      
+
       const prepressJob = await prepressService.assignDesigner(
         req.params.id,
         designerId,
@@ -242,15 +242,15 @@ router.patch('/jobs/:id/assign',
 router.patch('/jobs/:id/reassign',
   requirePermission('REASSIGN_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
-    body('designerId').isUUID().withMessage('Valid designer ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
+    body('designerId').isInt().withMessage('Valid designer ID is required'),
     body('remark').optional().isString().withMessage('Remark must be a string')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { designerId, remark } = req.body;
-      
+
       const prepressJob = await prepressService.reassignDesigner(
         req.params.id,
         designerId,
@@ -280,7 +280,7 @@ router.patch('/jobs/:id/reassign',
 router.patch('/jobs/:id/start',
   requirePermission('START_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required')
+    param('id').isInt().withMessage('Valid prepress job ID is required')
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -315,14 +315,14 @@ router.patch('/jobs/:id/start',
 router.patch('/jobs/:id/pause',
   requirePermission('PAUSE_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
     body('remark').optional().isString().withMessage('Remark must be a string')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const prepressJob = await prepressService.updatePrepressJobStatus(
         req.params.id,
         'PAUSED',
@@ -353,7 +353,7 @@ router.patch('/jobs/:id/pause',
 router.patch('/jobs/:id/resume',
   requirePermission('START_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required')
+    param('id').isInt().withMessage('Valid prepress job ID is required')
   ],
   handleValidationErrors,
   async (req, res) => {
@@ -388,14 +388,14 @@ router.patch('/jobs/:id/resume',
 router.patch('/jobs/:id/submit',
   requirePermission('COMPLETE_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
     body('remark').optional().isString().withMessage('Remark must be a string')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const prepressJob = await prepressService.updatePrepressJobStatus(
         req.params.id,
         'HOD_REVIEW',
@@ -426,14 +426,14 @@ router.patch('/jobs/:id/submit',
 router.patch('/jobs/:id/approve',
   requirePermission('APPROVE_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
     body('remark').optional().isString().withMessage('Remark must be a string')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const prepressJob = await prepressService.updatePrepressJobStatus(
         req.params.id,
         'COMPLETED',
@@ -464,14 +464,14 @@ router.patch('/jobs/:id/approve',
 router.patch('/jobs/:id/reject',
   requirePermission('REJECT_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
     body('remark').isString().notEmpty().withMessage('Rejection remark is required')
   ],
   handleValidationErrors,
   async (req, res) => {
     try {
       const { remark } = req.body;
-      
+
       const prepressJob = await prepressService.updatePrepressJobStatus(
         req.params.id,
         'REJECTED',
@@ -502,7 +502,7 @@ router.patch('/jobs/:id/reject',
 router.post('/jobs/:id/remark',
   requirePermission('VIEW_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required'),
+    param('id').isInt().withMessage('Valid prepress job ID is required'),
     body('remark').isString().notEmpty().withMessage('Remark is required'),
     body('isHodRemark').optional().isBoolean().withMessage('isHodRemark must be boolean')
   ],
@@ -510,14 +510,14 @@ router.post('/jobs/:id/remark',
   async (req, res) => {
     try {
       const { remark, isHodRemark = false } = req.body;
-      
+
       // Check if user can add HOD remarks
       if (isHodRemark && !['HOD_PREPRESS', 'ADMIN'].includes(req.user.role)) {
         return res.status(403).json({
           error: 'Only HOD can add HOD remarks'
         });
       }
-      
+
       const prepressJob = await prepressService.addRemark(
         req.params.id,
         remark,
@@ -547,7 +547,7 @@ router.post('/jobs/:id/remark',
 router.get('/jobs/:id/activity',
   requirePermission('VIEW_PREPRESS_JOBS'),
   [
-    param('id').isUUID().withMessage('Valid prepress job ID is required')
+    param('id').isInt().withMessage('Valid prepress job ID is required')
   ],
   handleValidationErrors,
   async (req, res) => {

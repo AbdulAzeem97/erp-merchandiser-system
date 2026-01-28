@@ -62,11 +62,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { getApiUrl } from '@/utils/apiConfig';
 import { useSocket } from '@/services/socketService.tsx';
 import { MainLayout } from '../layout/MainLayout';
-import { authAPI, jobsAPI, usersAPI } from '@/services/api';
+import { authAPI, jobsAPI, usersAPI, jobAssignmentAPI } from '@/services/api';
 import { getProcessSequence } from '@/data/processSequences';
 import { Separator } from '@/components/ui/separator';
 import AnimatedKPICards from '@/components/ui/animated-kpi-cards';
@@ -110,6 +111,10 @@ interface HODJob {
   designer_id: string;
   assigned_by_first_name: string;
   assigned_by_last_name: string;
+  // Outsourcing Information
+  outsourcing_die_making_initiated?: boolean;
+  fil_initiated_request?: boolean;
+  blocks_initiated?: boolean;
 }
 
 interface HODStats {
@@ -192,7 +197,7 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
   const [assignDueDate, setAssignDueDate] = useState('');
   const [assignNotes, setAssignNotes] = useState('');
   const [activeTab, setActiveTab] = useState('overview');
-  
+
   // Enhanced HOD functionality state
   const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
   const [isJobDetailsOpen, setIsJobDetailsOpen] = useState(false);
@@ -343,6 +348,29 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
     } catch (error) {
       console.error('Error assigning job:', error);
       toast.error('Error assigning job');
+    }
+  };
+
+  // Handle outsourcing status update
+  const handleOutsourcingUpdate = async (jobId: string, field: string, value: boolean) => {
+    try {
+      if (!jobId) {
+        console.warn('HOD: Cannot update outsourcing status: invalid jobId');
+        toast.error('Cannot update status: Prepress job not found');
+        return;
+      }
+      console.log(`🔄 HOD: Updating outsourcing field ${field} to ${value} for job ${jobId}`);
+      await jobAssignmentAPI.updateOutsourcingStatus(jobId, { [field]: value });
+
+      // Update local state
+      setJobs(prevJobs => prevJobs.map(job =>
+        job.prepress_job_id === jobId ? { ...job, [field]: value } : job
+      ));
+
+      toast.success('Outsourcing status updated');
+    } catch (error) {
+      console.error('Error updating outsourcing status:', error);
+      toast.error('Failed to update outsourcing status');
     }
   };
 
@@ -698,7 +726,7 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                                 <span className="ml-1">{job.priority}</span>
                               </Badge>
                             </div>
-                            
+
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                               <div>
                                 <p className="text-sm text-gray-500">Company</p>
@@ -728,6 +756,57 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                                 <p className="font-medium">{job.assigned_by_first_name} {job.assigned_by_last_name}</p>
                               </div>
                             </div>
+
+                            {/* Outsourcing Status Section for HOD */}
+                            {job.prepress_job_id && (
+                              <div className="bg-purple-50/50 p-3 rounded-lg border border-purple-100 mb-4 shadow-sm">
+                                <p className="text-[11px] font-bold text-purple-800 uppercase tracking-wider mb-2">Outsourcing Status</p>
+                                <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                  <div className="flex items-center space-x-2 group">
+                                    <Checkbox
+                                      id={`die-making-hod-${job.prepress_job_id}`}
+                                      checked={job.outsourcing_die_making_initiated}
+                                      onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'outsourcing_die_making_initiated', !!checked)}
+                                      className="h-4 w-4 data-[state=checked]:bg-purple-600 border-purple-300 ring-offset-white"
+                                    />
+                                    <Label
+                                      htmlFor={`die-making-hod-${job.prepress_job_id}`}
+                                      className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-purple-700 transition-colors"
+                                    >
+                                      Die Making
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2 group">
+                                    <Checkbox
+                                      id={`fil-req-hod-${job.prepress_job_id}`}
+                                      checked={job.fil_initiated_request}
+                                      onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'fil_initiated_request', !!checked)}
+                                      className="h-4 w-4 data-[state=checked]:bg-purple-600 border-purple-300 ring-offset-white"
+                                    />
+                                    <Label
+                                      htmlFor={`fil-req-hod-${job.prepress_job_id}`}
+                                      className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-purple-700 transition-colors"
+                                    >
+                                      Fil Req
+                                    </Label>
+                                  </div>
+                                  <div className="flex items-center space-x-2 group">
+                                    <Checkbox
+                                      id={`blocks-hod-${job.prepress_job_id}`}
+                                      checked={job.blocks_initiated}
+                                      onCheckedChange={(checked) => handleOutsourcingUpdate(job.prepress_job_id, 'blocks_initiated', !!checked)}
+                                      className="h-4 w-4 data-[state=checked]:bg-purple-600 border-purple-300 ring-offset-white"
+                                    />
+                                    <Label
+                                      htmlFor={`blocks-hod-${job.prepress_job_id}`}
+                                      className="text-xs font-semibold text-gray-700 cursor-pointer group-hover:text-purple-700 transition-colors"
+                                    >
+                                      Blocks
+                                    </Label>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex flex-col space-y-2 ml-4">
@@ -742,8 +821,8 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                               <Edit className="h-4 w-4 mr-2" />
                               Update Status
                             </Button>
-                            <Button 
-                              variant="outline" 
+                            <Button
+                              variant="outline"
                               size="sm"
                               onClick={() => {
                                 setSelectedJob(job);
@@ -799,8 +878,8 @@ const HODDesignerDashboard: React.FC<HODDesignerDashboardProps> = ({ onLogout, o
                         <span className="font-medium text-yellow-600">{designer.paused_jobs}</span>
                       </div>
                       <div className="mt-4">
-                        <Progress 
-                          value={(designer.completed_jobs / designer.total_jobs) * 100} 
+                        <Progress
+                          value={(designer.completed_jobs / designer.total_jobs) * 100}
                           className="h-2"
                         />
                         <p className="text-xs text-gray-500 mt-1">
